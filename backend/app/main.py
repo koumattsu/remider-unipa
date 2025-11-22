@@ -21,11 +21,13 @@ def on_startup() -> None:
 # CORS設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    # ローカル開発用：どこからでも許可（file:// → null も含めて通す）
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # APIルーター
 app.include_router(api_router, prefix="/api/v1")

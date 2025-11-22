@@ -15,4 +15,5 @@ class User(Base):
     # リレーションシップ
     tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
     notification_setting = relationship("NotificationSetting", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    notification_logs = relationship("TaskNotificationLog",back_populates="user",cascade="all, delete-orphan")
 

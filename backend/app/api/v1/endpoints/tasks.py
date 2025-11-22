@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import and_
@@ -10,6 +11,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from app.services.sync_unipa import sync_unipa_tasks
 
 router = APIRouter()
 
@@ -114,3 +116,63 @@ async def delete_task(
     db.delete(task)
     db.commit()
     return None
+
+from sqlalchemy import and_
+from app.schemas.task import MoodleHtmlImportRequest
+from app.services.moodle_client import parse_moodle_timeline_html
+
+
+@router.post("/import-moodle-html")
+def import_moodle_html(
+    body: MoodleHtmlImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    MoodleのタイムラインHTMLを受け取って、tasksテーブルに保存するAPI。
+
+    - HTMLをパースして課題リストを取得
+    - 同じユーザー・course_name・title のタスクが存在すれば
+      deadline / memo を上書き更新（upsert）
+    - なければ新規作成
+    """
+    unipa_tasks = parse_moodle_timeline_html(body.html)
+
+    created_count = 0
+    updated_count = 0
+
+    for t in unipa_tasks:
+        # 同じユーザー・科目名・タイトルの課題があるかチェック
+        existing = (
+            db.query(Task)
+            .filter(
+                and_(
+                    Task.user_id == current_user.id,
+                    Task.course_name == t.course_name,
+                    Task.title == t.title,
+                )
+            )
+            .first()
+        )
+
+        if existing:
+            # 既存タスクを最新の情報で更新（締切変更などに追従）
+            existing.deadline = t.deadline
+            existing.memo = t.memo
+            updated_count += 1
+        else:
+            # 新規作成
+            task = Task(
+                user_id=current_user.id,
+                title=t.title,
+                course_name=t.course_name,
+                deadline=t.deadline,
+                memo=t.memo,
+                is_done=False,
+            )
+            db.add(task)
+            created_count += 1
+
+    db.commit()
+
+    return {"created": created_count, "updated": updated_count}

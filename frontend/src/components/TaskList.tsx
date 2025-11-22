@@ -64,11 +64,31 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onTaskUpdated }) => {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: '0 0 0.5rem 0', textDecoration: task.is_done ? 'line-through' : 'none' }}>
-                    {task.title}
-                  </h3>
+                  {/* タイトル + チェックボックス */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={task.is_done}
+                      onChange={() => handleToggleDone(task)}
+                    />
+                    <h3
+                      style={{
+                        margin: 0,
+                        textDecoration: task.is_done ? 'line-through' : 'none',
+                      }}
+                    >
+                      {task.title}
+                    </h3>
+                  </div>
+
                   <p style={{ margin: '0.25rem 0', color: '#666' }}>授業: {task.course_name}</p>
-                  <p style={{ margin: '0.25rem 0', color: isOverdue ? '#dc3545' : '#666', fontWeight: isOverdue ? 'bold' : 'normal' }}>
+                  <p
+                    style={{
+                      margin: '0.25rem 0',
+                      color: isOverdue ? '#dc3545' : '#666',
+                      fontWeight: isOverdue ? 'bold' : 'normal',
+                    }}
+                  >
                     締切: {formatDateTime(task.deadline)}
                     {isOverdue && ' (期限切れ)'}
                   </p>
@@ -76,21 +96,12 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onTaskUpdated }) => {
                     <p style={{ margin: '0.25rem 0', color: '#666' }}>メモ: {task.memo}</p>
                   )}
                 </div>
+
                 <div>
-                  <button
-                    onClick={() => handleToggleDone(task)}
-                    style={{
-                      marginRight: '0.5rem',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: task.is_done ? '#6c757d' : '#28a745',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {task.is_done ? '未完了に戻す' : '完了'}
-                  </button>
+                  {/* statusをテキスト表示だけに */}
+                  <div style={{ marginBottom: '0.5rem', textAlign: 'right', fontSize: '0.9rem', color: '#555' }}>
+                    {task.is_done ? '✅ 完了済み' : '⏳ 未完了'}
+                  </div>
                   <button
                     onClick={() => handleDelete(task.id)}
                     style={{
@@ -113,4 +124,3 @@ export const TaskList: React.FC<TaskListProps> = ({ tasks, onTaskUpdated }) => {
     </div>
   );
 };
-

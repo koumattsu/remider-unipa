@@ -1,14 +1,17 @@
-from fastapi import Request, HTTPException, status
-from sqlalchemy.orm import Session
 from typing import Optional
+
+from fastapi import Request, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
 from app.models.user import User
 from app.core.config import settings
 
 
 async def get_current_user(
     request: Request,
-    db: Session
-) -> Optional[User]:
+    db: Session = Depends(get_db),  # ★ ここが超重要
+) -> User:
     """
     現在のユーザーを取得する（ダミー認証版）
     
@@ -20,13 +23,13 @@ async def get_current_user(
         # TODO: LINEログインの認証処理を実装
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="認証が必要です"
+            detail="認証が必要です",
         )
-    
+
     # ダミー認証：ヘッダーからユーザーIDを取得
     dummy_user_id = request.headers.get("X-Dummy-User-Id")
     user_id = int(dummy_user_id) if dummy_user_id else settings.DUMMY_USER_ID
-    
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         # ダミーユーザーが存在しない場合は作成
@@ -35,16 +38,15 @@ async def get_current_user(
             line_user_id=f"dummy_line_{user_id}",
             display_name=f"ダミーユーザー{user_id}",
             university="テスト大学",
-            plan="free"
+            plan="free",
         )
         db.add(user)
         db.commit()
         db.refresh(user)
-    
+
     return user
 
 
 def require_auth(func):
     """認証が必要なエンドポイント用デコレータ（簡易版）"""
     return func
-

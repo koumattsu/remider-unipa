@@ -15,3 +15,4 @@ jobs:
       - name: Call UNIPA cron endpoint
         run: |
           curl -X POST "${{ secrets.UNIPA_CRON_ENDPOINT }}"
+

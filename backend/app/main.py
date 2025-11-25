@@ -11,24 +11,25 @@ app = FastAPI(
     debug=settings.DEBUG,
 )
 
+
 @app.on_event("startup")
 def on_startup() -> None:
     """アプリ起動時に一度だけDB初期化."""
     init_db()
 
 
-# ===== CORS 設定（本番想定版）=====
+# ===== CORS 設定 =====
 
 origins = [
     "http://127.0.0.1:8000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://unipa-reminder-frontend.onrender.com",  # ← 本番フロント
+    "https://unipa-reminder-frontend.onrender.com",  # 本番フロント
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # ← まずは全部OK
+    allow_origins=origins,       # ← ここが超重要：["*"] ではなく origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

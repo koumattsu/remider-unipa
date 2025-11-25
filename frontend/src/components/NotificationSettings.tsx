@@ -3,7 +3,7 @@ import { NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
 
 export const NotificationSettings: React.FC = () => {
-  const [setting, setSetting] = useState<NotificationSetting | null>(null);
+  const [, setSetting] = useState<NotificationSetting | null>(null);
   const [offsets, setOffsets] = useState<number[]>([24, 3, 1]);
   const [digestTime, setDigestTime] = useState<string>('08:00');
   const [isLoading, setIsLoading] = useState(true);

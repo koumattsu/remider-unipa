@@ -11,25 +11,34 @@ app = FastAPI(
     debug=settings.DEBUG,
 )
 
-
 @app.on_event("startup")
 def on_startup() -> None:
     """アプリ起動時に一度だけDB初期化."""
     init_db()
 
 
-# CORS設定
+# ===== CORS 設定（本番想定版）=====
+
+origins = [
+    "http://127.0.0.1:5173",     # Vite
+    "http://localhost:5173",
+
+    # フロントをRender / Netlify / Vercelにデプロイしたら追加する
+    # 例：
+    # "https://unipa-reminder.onrender.com",
+    # "https://unipa-reminder.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    # ローカル開発用：どこからでも許可（file:// → null も含めて通す）
-    allow_origins=["*"],
+    allow_origins=origins,   # ← "*" ではなく限定
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ===== API ルーター =====
 
-# APIルーター
 app.include_router(api_router, prefix="/api/v1")
 
 

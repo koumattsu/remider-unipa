@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
-import { User } from '../types';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();

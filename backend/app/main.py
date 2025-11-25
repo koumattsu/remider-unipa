@@ -20,22 +20,20 @@ def on_startup() -> None:
 # ===== CORS 設定（本番想定版）=====
 
 origins = [
-    "http://127.0.0.1:5173",     # Vite
+    "http://127.0.0.1:8000",
     "http://localhost:5173",
-
-    # フロントをRender / Netlify / Vercelにデプロイしたら追加する
-    # 例：
-    # "https://unipa-reminder.onrender.com",
-    # "https://unipa-reminder.vercel.app",
+    "http://127.0.0.1:5173",
+    "https://unipa-reminder-frontend.onrender.com",  # ← 本番フロント
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,   # ← "*" ではなく限定
+    allow_origins=origins,      # ← ["*"] でもいいけど、将来的にはこうやって絞る
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ===== API ルーター =====
 

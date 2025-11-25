@@ -1,15 +1,18 @@
+// frontend/src/api/client.ts
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const baseURL =
+  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    // ダミー認証用ヘッダー（開発時）
-    'X-Dummy-User-Id': '1',
-  },
+  baseURL,
+});
+
+// 今はダミーユーザーで運用するので、共通ヘッダーで付ける
+apiClient.interceptors.request.use((config) => {
+  config.headers = config.headers ?? {};
+  (config.headers as any)['X-Dummy-User-Id'] = '1';
+  return config;
 });
 
 export default apiClient;
-

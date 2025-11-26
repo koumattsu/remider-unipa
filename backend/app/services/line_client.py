@@ -135,3 +135,12 @@ async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
 
     text = _build_daily_digest_message(tasks)
     await _push_text_message(line_user_id, text)
+
+# ファイルの一番下あたりに追加（既存の関数はそのまま）
+
+async def send_simple_text(line_user_id: str, text: str) -> None:
+    """
+    任意のテキストメッセージを1件だけ送る簡易ヘルパー。
+    デバッグや将来のカスタム通知用。
+    """
+    await _push_text_message(line_user_id, text)

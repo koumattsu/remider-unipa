@@ -3,52 +3,44 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.db.base import init_db
+from app.api.v1.endpoints.line_webhook import router as line_webhook_router  # ← ここがポイント
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    debug=settings.DEBUG,
-)
+def get_application() -> FastAPI:
+    app = FastAPI(
+        title="UNIPA Reminder Backend",
+        description="UNIPA / Moodle 課題リマインダー用バックエンド（FastAPI）",
+        version="0.1.0",
+    )
 
+    # --- CORS 設定 ---
+    if getattr(settings, "BACKEND_CORS_ORIGINS", None):
+        origins = settings.BACKEND_CORS_ORIGINS
+    else:
+        origins = ["*"]
 
-@app.on_event("startup")
-def on_startup() -> None:
-    """アプリ起動時に一度だけDB初期化."""
-    init_db()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
+    # 既存の v1 API
+    app.include_router(api_router, prefix="/api/v1")
 
-# ===== CORS 設定 =====
+    # 追加: LINE Webhook (/line/webhook)
+    app.include_router(line_webhook_router, prefix="/line", tags=["line"])
 
-origins = [
-    "http://127.0.0.1:8000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://unipa-reminder-frontend.onrender.com",  # 本番フロント
-]
+    @app.get("/")
+    async def root():
+        return {"message": "UNIPA Reminder Backend is running"}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,       # ← ここが超重要：["*"] ではなく origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    @app.get("/health")
+    async def health_check():
+        return {"status": "ok"}
 
-
-# ===== API ルーター =====
-
-app.include_router(api_router, prefix="/api/v1")
-
-
-@app.get("/")
-async def root():
-    return {
-        "message": "UniPA Reminder App API",
-        "version": settings.APP_VERSION,
-    }
+    return app
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+app = get_application()

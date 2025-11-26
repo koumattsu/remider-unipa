@@ -12,6 +12,11 @@ def get_application() -> FastAPI:
         version="0.1.0",
     )
 
+    # 👇 ここに追加
+    from app.db.base import Base
+    from app.db.session import engine
+    Base.metadata.create_all(bind=engine)
+
     # --- CORS 設定 ---
     if getattr(settings, "BACKEND_CORS_ORIGINS", None):
         origins = settings.BACKEND_CORS_ORIGINS

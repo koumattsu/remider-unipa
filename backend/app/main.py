@@ -6,8 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
-from app.db.base import Base
-from app.db.session import engine
+from app.db.base import Base, engine  # ★ engine を base からインポート
 
 
 def create_tables() -> None:

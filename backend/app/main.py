@@ -1,21 +1,32 @@
+# backend/app/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.v1.api import api_router
-from app.api.v1.endpoints.line_webhook import router as line_webhook_router  # ← ここがポイント
+from app.api.v1.endpoints.line_webhook import router as line_webhook_router
+from app.db.base import Base
+from app.db.session import engine
+
+
+def create_tables() -> None:
+    """
+    アプリ起動時にDBテーブルを自動作成するヘルパー。
+    既にテーブルがある場合は何もしない。
+    """
+    Base.metadata.create_all(bind=engine)
+
 
 def get_application() -> FastAPI:
+    # まずテーブルを作成（なければ作る）
+    create_tables()
+
     app = FastAPI(
         title="UNIPA Reminder Backend",
         description="UNIPA / Moodle 課題リマインダー用バックエンド（FastAPI）",
         version="0.1.0",
     )
-
-    # 👇 ここに追加
-    from app.db.base import Base
-    from app.db.session import engine
-    Base.metadata.create_all(bind=engine)
 
     # --- CORS 設定 ---
     if getattr(settings, "BACKEND_CORS_ORIGINS", None):

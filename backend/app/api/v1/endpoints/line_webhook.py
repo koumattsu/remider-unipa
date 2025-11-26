@@ -3,9 +3,12 @@
 import base64
 import hashlib
 import hmac
+from typing import Any, Dict
+
 from fastapi import APIRouter, Request, Header, HTTPException
 
 from app.core.config import settings
+from app.services import line_client  # ★ 追加：LINE返信用クライアント
 
 router = APIRouter()
 
@@ -44,19 +47,49 @@ async def handle_line_webhook(
     x_line_signature: str | None = Header(default=None),
 ):
     """
-    LINE Messaging API からの Webhook 受信エンドポイント（暫定版）
+    LINE Messaging API からの Webhook 受信エンドポイント。
 
     - 署名検証（LINE_CHANNEL_SECRET 使用）
-    - ボディをログに出して {"status": "ok"} を返すだけ
+    - events をパースして type / userId をログ出力
+    - テキストメッセージが来たらオウム返し
     """
     body_bytes = await request.body()
 
     # 署名検証
     verify_line_signature(body_bytes, x_line_signature)
 
-    body_str = body_bytes.decode("utf-8")
+    # JSONとしてパース
+    body_json: Dict[str, Any] = await request.json()
+
     print("=== LINE webhook received ===")
-    print(body_str)
+    print(body_json)
     print("=============================")
+
+    events = body_json.get("events", [])
+    for event in events:
+        event_type = event.get("type")
+        reply_token = event.get("replyToken")
+        source = event.get("source", {})
+        user_id = source.get("userId")
+
+        print(f"[EVENT] type={event_type}, user_id={user_id}")
+
+        # メッセージイベント（テキスト）のときだけオウム返し
+        if event_type == "message":
+            message = event.get("message", {})
+            if message.get("type") == "text":
+                text = message.get("text", "")
+                if reply_token:
+                    reply_text = f"『{text}』って言った？ UNIPAリマインダーBotです👋"
+                    await line_client._push_text_message(  # 既存の共通関数を使う
+                        line_user_id=user_id,
+                        text=reply_text,
+                    )
+
+        # 友だち追加イベントなど
+        if event_type == "follow":
+            print(f"[FOLLOW] user_id={user_id}")
+            # ★ 将来ここで user_id を DB に保存する
+            #   例: user_service.save_line_user(user_id)
 
     return {"status": "ok"}

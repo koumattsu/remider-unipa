@@ -138,6 +138,46 @@ async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
 
 # ファイルの一番下あたりに追加（既存の関数はそのまま）
 
+async def _push_text_message(line_user_id: str, text: str) -> None:
+    """
+    LINE Messaging API の push メッセージを送信する共通処理。
+    アクセストークンが無ければダミーモード（print）で動作。
+    """
+    access_token = _get_line_access_token()
+
+    # アクセストークンが無いときはダミーモード（コンソール出力のみ）
+    if not access_token:
+        print("[LINE通知 ダミー] 宛先:", line_user_id)
+        print(text)
+        return
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    body = {
+        "to": line_user_id,
+        "messages": [
+            {
+                "type": "text",
+                "text": text,
+            }
+        ],
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(LINE_PUSH_URL, headers=headers, json=body)
+
+    if resp.status_code >= 400:
+        # ここでエラー内容をログに出して、APIとしては落とさない
+        print("[LINE ERROR]", resp.status_code, resp.text)
+        return
+
+    print("[LINE PUSH OK]", resp.status_code)
+
+# ここまでに _push_text_message(...) などが定義されているはず
+
 async def send_simple_text(line_user_id: str, text: str) -> None:
     """
     任意のテキストメッセージを1件だけ送る簡易ヘルパー。

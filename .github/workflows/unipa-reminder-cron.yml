@@ -1,0 +1,19 @@
+name: UNIPA Reminder Cron
+
+on:
+  schedule:
+    # 毎時0分に実行（UTC）。JSTでも毎時間動けばOKなのでこれで十分。
+    - cron: "0 * * * *"
+  # 手動実行用（GitHubのActionsタブから押せるように）
+  workflow_dispatch:
+
+jobs:
+  call-daily-cron:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Render /api/v1/cron/daily
+        run: |
+          curl -X POST "https://unipa-reminder-backend.onrender.com/api/v1/cron/daily" \
+               -H "Content-Type: application/json" \
+               --fail

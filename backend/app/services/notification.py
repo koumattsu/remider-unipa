@@ -64,35 +64,39 @@ def get_tasks_due_in_hours(
     hours: int,
 ) -> List[Task]:
     """
-    【例】3時間前通知用
-    - 現在時刻 + 3時間 を中心に、±5分のものを取得
-    - 未完了 (is_done = False)
-    - まだ通知していないものだけ
+    【例】3時間前通知用（毎時実行前提）
+
+    - 「締切までの残り時間」が hours ±0.5時間 のタスクを拾う
+      例: hours=3 の場合 → 2.5〜3.5時間の間
+    - is_done = False
+    - まだその hours の通知が送られていないものだけ
     """
 
     now = datetime.now()
-    target_time = now + timedelta(hours=hours)
 
-    # 少し幅を持たせる（cronの実行ズレ対策）
-    start_dt = target_time - timedelta(minutes=5)
-    end_dt = target_time + timedelta(minutes=5)
+    # とりあえず「今から hours+1時間後まで」のタスクをざっくり取る
+    window_end = now + timedelta(hours=hours + 1)
 
-    tasks = (
+    candidates = (
         db.query(Task)
         .filter(
             Task.user_id == user_id,
             Task.is_done == False,  # noqa: E712
-            Task.deadline >= start_dt,
-            Task.deadline <= end_dt,
+            Task.deadline >= now,
+            Task.deadline <= window_end,
         )
         .all()
     )
 
-    # すでに通知済みのものを除外
     result: List[Task] = []
-    for task in tasks:
-        if not has_notification_been_sent(db, user_id, task.id, hours):
-            result.append(task)
+    for task in candidates:
+        # 締切までの残り時間（時間単位）
+        diff_hours = (task.deadline - now).total_seconds() / 3600.0
+
+        # ざっくり hours ±0.5時間の範囲を「hours時間前」とみなす
+        if (hours - 0.5) <= diff_hours <= (hours + 0.5):
+            if not has_notification_been_sent(db, user_id, task.id, hours):
+                result.append(task)
 
     return result
 

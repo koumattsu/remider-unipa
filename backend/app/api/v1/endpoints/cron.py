@@ -161,6 +161,8 @@ async def debug_register_user(
     手動で User を1件登録 or 取得する。
     - すでに存在する line_user_id ならそのユーザーを返す
     - 無ければ新規作成する
+    ※ display_name / university / plan にデフォルトを入れて、
+      NOT NULL 制約で落ちないようにしている。
     """
     user = (
         db.query(User)
@@ -170,7 +172,12 @@ async def debug_register_user(
 
     created = False
     if not user:
-        user = User(line_user_id=line_user_id)
+        user = User(
+            line_user_id=line_user_id,
+            display_name="LINEユーザー",
+            university="未設定",
+            plan="free",
+        )
         db.add(user)
         db.commit()
         db.refresh(user)

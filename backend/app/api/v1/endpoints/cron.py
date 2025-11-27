@@ -194,5 +194,51 @@ async def debug_register_user(
     line_user_id: str,
     db: Session = Depends(get_db),
 ):
-    ...
-    # （元コードのまま）
+    """
+    デバッグ用:
+    手動で User を1件登録 or 取得する。
+    - すでに存在する line_user_id ならそのユーザーを返す
+    - 無ければ新規作成する
+    ※ display_name / university / plan にデフォルトを入れて、
+      NOT NULL 制約で落ちないようにしている。
+    """
+
+    try:
+        # 既存ユーザー検索
+        user = (
+            db.query(User)
+            .filter(User.line_user_id == line_user_id)
+            .first()
+        )
+
+        created = False
+
+        # なければ新規作成
+        if not user:
+            user = User(
+                line_user_id=line_user_id,
+                display_name="LINEユーザー",
+                university="未設定",
+                plan="free",
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            created = True
+
+        # ★ 必ず dict を return する（None を返さない）
+        return {
+            "created": created,
+            "user": {
+                "id": user.id,
+                "line_user_id": user.line_user_id,
+            },
+        }
+
+    except Exception as e:
+        # 例外が出ても null を返さないようにする
+        db.rollback()
+        return {
+            "created": False,
+            "error": str(e),
+        }

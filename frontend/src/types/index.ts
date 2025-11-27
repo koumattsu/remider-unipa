@@ -38,10 +38,12 @@ export interface NotificationSetting {
   user_id: number;
   reminder_offsets_hours: number[];
   daily_digest_time: string;
+  enable_morning_notification: boolean;
 }
 
 export interface NotificationSettingUpdate {
   reminder_offsets_hours: number[];
   daily_digest_time: string;
+  enable_morning_notification?: boolean;
 }
 

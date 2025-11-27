@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, JSON
+# backend/app/models/notification_setting.py
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -7,10 +8,35 @@ class NotificationSetting(Base):
     __tablename__ = "notification_settings"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
-    reminder_offsets_hours = Column(JSON, nullable=False, default=[24, 3, 1])  # 締切何時間前に通知するか [24, 3, 1]
-    daily_digest_time = Column(String, nullable=False, default="08:00")  # "HH:MM" 形式
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    # デフォルトは「3時間前通知のみ」
+    # → 3時間前OFFにしたいときはフロントから 3 を外す
+    reminder_offsets_hours = Column(
+        JSON,
+        nullable=False,
+        default=[3],
+    )
+
+    # 朝通知の時刻（デフォルト 08:00）
+    daily_digest_time = Column(
+        String,
+        nullable=False,
+        default="08:00",
+    )
+
+    # ✅ 朝通知の ON / OFF フラグ（デフォルト ON）
+    enable_morning_notification = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
     
     # リレーションシップ
     user = relationship("User", back_populates="notification_setting")
-

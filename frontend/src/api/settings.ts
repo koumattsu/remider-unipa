@@ -1,3 +1,5 @@
+// frontend/src/api/settings.ts
+
 import apiClient from './client';
 import { NotificationSetting, NotificationSettingUpdate } from '../types';
 
@@ -12,4 +14,3 @@ export const settingsApi = {
     return response.data;
   },
 };
-

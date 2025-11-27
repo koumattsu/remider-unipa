@@ -4,8 +4,19 @@ import { settingsApi } from '../api/settings';
 
 export const NotificationSettings: React.FC = () => {
   const [, setSetting] = useState<NotificationSetting | null>(null);
-  const [offsets, setOffsets] = useState<number[]>([24, 3, 1]);
+
+  // 時間前通知（例: [3,5,7]）
+  const [offsets, setOffsets] = useState<number[]>([3]);
+
+  // 朝通知の時刻
   const [digestTime, setDigestTime] = useState<string>('08:00');
+
+  // ✅ 朝通知 ON / OFF
+  const [enableMorning, setEnableMorning] = useState<boolean>(true);
+
+  // ✅ 3時間前通知 ON / OFF
+  const [enableThreeHours, setEnableThreeHours] = useState<boolean>(true);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -17,8 +28,22 @@ export const NotificationSettings: React.FC = () => {
     try {
       const data = await settingsApi.getNotification();
       setSetting(data);
-      setOffsets([...data.reminder_offsets_hours]);
+
+      const hours = [...data.reminder_offsets_hours];
+      setOffsets(hours);
+
       setDigestTime(data.daily_digest_time);
+
+      // 3時間前があれば ON
+      setEnableThreeHours(hours.includes(3));
+
+      // 朝通知があれば ON（なければ true にする）
+      setEnableMorning(
+        data.enable_morning_notification !== undefined
+          ? data.enable_morning_notification
+          : true
+      );
+
     } catch (error) {
       console.error('通知設定の取得に失敗しました:', error);
     } finally {
@@ -31,7 +56,8 @@ export const NotificationSettings: React.FC = () => {
   };
 
   const handleRemoveOffset = (index: number) => {
-    setOffsets(offsets.filter((_, i) => i !== index));
+    const newOffsets = offsets.filter((_, i) => i !== index);
+    setOffsets(newOffsets);
   };
 
   const handleOffsetChange = (index: number, value: number) => {
@@ -42,13 +68,30 @@ export const NotificationSettings: React.FC = () => {
 
   const handleSave = async () => {
     setIsSaving(true);
+
     try {
+      let newOffsets = offsets.filter((o) => o > 0);
+
+      // ✅ 3時間前 OFF のときは 3 を削除
+      if (!enableThreeHours) {
+        newOffsets = newOffsets.filter((o) => o !== 3);
+      } else {
+        if (!newOffsets.includes(3)) {
+          newOffsets.push(3);
+        }
+      }
+
       const updateData: NotificationSettingUpdate = {
-        reminder_offsets_hours: offsets.filter((o) => o > 0),
+        reminder_offsets_hours: newOffsets,
         daily_digest_time: digestTime,
+
+        // ✅ 朝通知 ON / OFF
+        enable_morning_notification: enableMorning,
       };
+
       await settingsApi.updateNotification(updateData);
       await loadSettings();
+
       alert('通知設定を保存しました');
     } catch (error) {
       console.error('通知設定の保存に失敗しました:', error);
@@ -65,12 +108,40 @@ export const NotificationSettings: React.FC = () => {
   return (
     <div style={{ marginBottom: '2rem', padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px' }}>
       <h2 style={{ marginTop: 0 }}>通知設定</h2>
-      
+
+      {/* ✅ 朝8時通知 ON / OFF */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{ fontWeight: 'bold', marginRight: '1rem' }}>
+          朝通知 (8:00)
+        </label>
+        <input
+          type="checkbox"
+          checked={enableMorning}
+          onChange={() => setEnableMorning(!enableMorning)}
+        />
+      </div>
+
+      {/* ✅ 3時間前通知 ON / OFF */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{ fontWeight: 'bold', marginRight: '1rem' }}>
+          締切3時間前通知
+        </label>
+        <input
+          type="checkbox"
+          checked={enableThreeHours}
+          onChange={() => setEnableThreeHours(!enableThreeHours)}
+        />
+      </div>
+
+      {/* その他の時間設定 */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-          締切リマインド（何時間前に通知するか）
+          その他のリマインド時間（自由設定）
         </label>
-        {offsets.map((offset, index) => (
+
+        {offsets
+          .filter((o) => o !== 3)
+          .map((offset, index) => (
           <div key={index} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
             <input
               type="number"
@@ -80,24 +151,24 @@ export const NotificationSettings: React.FC = () => {
               style={{ width: '100px', padding: '0.5rem', marginRight: '0.5rem' }}
             />
             <span>時間前</span>
-            {offsets.length > 1 && (
-              <button
-                onClick={() => handleRemoveOffset(index)}
-                style={{
-                  marginLeft: '0.5rem',
-                  padding: '0.25rem 0.5rem',
-                  backgroundColor: '#dc3545',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                削除
-              </button>
-            )}
+
+            <button
+              onClick={() => handleRemoveOffset(index)}
+              style={{
+                marginLeft: '0.5rem',
+                padding: '0.25rem 0.5rem',
+                backgroundColor: '#dc3545',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              削除
+            </button>
           </div>
         ))}
+
         <button
           onClick={handleAddOffset}
           style={{
@@ -114,9 +185,10 @@ export const NotificationSettings: React.FC = () => {
         </button>
       </div>
 
+      {/* 朝通知時刻 */}
       <div style={{ marginBottom: '1.5rem' }}>
         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-          日次ダイジェスト送信時間
+          朝通知の時刻
         </label>
         <input
           type="time"
@@ -144,4 +216,3 @@ export const NotificationSettings: React.FC = () => {
     </div>
   );
 };
-

@@ -30,10 +30,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
     対応する通知：
     ✅ 3時間前通知
     ✅ 当日朝（8:00）通知
-
-    - 完了済み(is_done=True)は notification サービス側で除外
-    - 通知済み(Logあり)も notification サービス側で除外
-    - DBに line_user_id が登録されている全ユーザーが対象
     """
 
     now = datetime.now()
@@ -73,13 +69,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if tasks_today:
                 await send_deadline_reminder(line_user_id=line_user_id, tasks=tasks_today)
                 for task in tasks_today:
-                    # 0 = 朝通知、という扱い（元の設計に合わせている）
+                    # 0 = 朝通知
                     mark_notification_as_sent(db, user_id, task.id, 0)
                 results["morning"] += len(tasks_today)
 
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
 
     return {"notified": notified, "detail": results}
+
 
 @router.post("/debug-send")
 async def debug_send(db: Session = Depends(get_db)):
@@ -133,6 +130,7 @@ async def debug_send(db: Session = Depends(get_db)):
         }
     }
 
+
 @router.get("/debug-users")
 async def debug_users(db: Session = Depends(get_db)):
     """
@@ -150,4 +148,38 @@ async def debug_users(db: Session = Depends(get_db)):
             }
             for u in users
         ],
+    }
+
+
+@router.post("/debug-register-user")
+async def debug_register_user(
+    line_user_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    デバッグ用:
+    手動で User を1件登録 or 取得する。
+    - すでに存在する line_user_id ならそのユーザーを返す
+    - 無ければ新規作成する
+    """
+    user = (
+        db.query(User)
+        .filter(User.line_user_id == line_user_id)
+        .first()
+    )
+
+    created = False
+    if not user:
+        user = User(line_user_id=line_user_id)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        created = True
+
+    return {
+        "created": created,
+        "user": {
+            "id": user.id,
+            "line_user_id": user.line_user_id,
+        },
     }

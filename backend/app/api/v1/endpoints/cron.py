@@ -132,3 +132,22 @@ async def debug_send(db: Session = Depends(get_db)):
             "message": "debug reminder sent.",
         }
     }
+
+@router.get("/debug-users")
+async def debug_users(db: Session = Depends(get_db)):
+    """
+    デバッグ用:
+    Userテーブルの中身をざっくり確認するためのエンドポイント。
+    """
+    users = db.query(User).all()
+
+    return {
+        "count": len(users),
+        "users": [
+            {
+                "id": u.id,
+                "line_user_id": u.line_user_id,
+            }
+            for u in users
+        ],
+    }

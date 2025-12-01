@@ -69,41 +69,6 @@ def _build_daily_digest_message(tasks: List[Task]) -> str:
     return "\n".join(lines)
 
 
-async def _push_text_message(line_user_id: str, text: str) -> None:
-    """
-    LINE Messaging API の push メッセージを送信する共通処理。
-    アクセストークンが無ければダミーモード（print）で動作。
-    """
-    access_token = _get_line_access_token()
-
-    # アクセストークンが無いときはダミーモード（コンソール出力のみ）
-    if not access_token:
-        print("[LINE通知 ダミー] 宛先:", line_user_id)
-        print(text)
-        return
-
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-    body = {
-        "to": line_user_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": text,
-            }
-        ],
-    }
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(LINE_PUSH_URL, headers=headers, json=body)
-
-    # 2xx 以外なら例外を投げておく（cron側のログで気づけるように）
-    resp.raise_for_status()
-
-
 async def send_deadline_reminder(line_user_id: str, tasks: List[Task]) -> None:
     """
     指定ユーザーに「明日締切」の課題リマインドを送る。

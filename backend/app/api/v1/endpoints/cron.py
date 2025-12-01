@@ -18,6 +18,7 @@ from app.services.notification import (
 from app.services.line_client import (
     send_deadline_reminder,
     send_simple_text,
+    send_daily_digest,
 )
 
 router = APIRouter()
@@ -142,7 +143,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if not tasks:
                 continue
 
-            await send_deadline_reminder(line_user_id=line_user_id, tasks=tasks)
+            await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
 
             for task in tasks:
                 mark_notification_as_sent(db, user_id, task.id, hours)

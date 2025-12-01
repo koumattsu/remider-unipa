@@ -58,6 +58,10 @@ def mark_notification_as_sent(
 # 3時間前通知用
 # ================================
 
+# app/services/notification.py
+
+# backend/app/services/notification.py
+
 def get_tasks_due_in_hours(
     db: Session,
     user_id: int,
@@ -67,21 +71,26 @@ def get_tasks_due_in_hours(
     【例】3時間前通知用（毎時実行前提）
 
     - 「締切までの残り時間」が hours ±0.5時間 のタスクを拾う
-      例: hours=3 の場合 → 2.5〜3.5時間の間
     - is_done = False
+    - 通知ONのタスクだけ (Task.should_notify == True)
     - まだその hours の通知が送られていないものだけ
     """
 
     now = datetime.now()
-
-    # とりあえず「今から hours+1時間後まで」のタスクをざっくり取る
     window_end = now + timedelta(hours=hours + 1)
+
+    # ★ デバッグログ（いつでも消してOK）
+    print("=== get_tasks_due_in_hours debug ===")
+    print("  now:", now)
+    print("  target hours:", hours)
+    print("  window_end:", window_end)
 
     candidates = (
         db.query(Task)
         .filter(
             Task.user_id == user_id,
-            Task.is_done == False,  # noqa: E712
+            Task.is_done == False,       # noqa: E712
+            Task.should_notify == True,  # 通知ONのタスクだけ
             Task.deadline >= now,
             Task.deadline <= window_end,
         )
@@ -89,21 +98,33 @@ def get_tasks_due_in_hours(
     )
 
     result: List[Task] = []
+
     for task in candidates:
-        # 締切までの残り時間（時間単位）
         diff_hours = (task.deadline - now).total_seconds() / 3600.0
 
-        # ざっくり hours ±0.5時間の範囲を「hours時間前」とみなす
+        # ★ 各タスクごとのデバッグ
+        print(
+            "  task:", task.title,
+            "deadline:", task.deadline,
+            "diff_hours:", diff_hours,
+            "should_notify:", task.should_notify,
+            "is_done:", task.is_done,
+        )
+
         if (hours - 0.5) <= diff_hours <= (hours + 0.5):
             if not has_notification_been_sent(db, user_id, task.id, hours):
+                print("   → このタスクが通知対象！", task.title)
                 result.append(task)
 
+    print("=== get_tasks_due_in_hours result count:", len(result), "===\n")
     return result
 
 
 # ================================
 # 当日朝（8:00）通知用
 # ================================
+
+# app/services/notification.py
 
 def get_tasks_due_today_morning(
     db: Session,
@@ -114,6 +135,7 @@ def get_tasks_due_today_morning(
 
     - 今日が締切
     - is_done = False
+    - ★ 通知ONのタスクだけ (Task.should_notify == True)
     - まだ当日朝通知(0)が送られていないもの
     """
 
@@ -126,14 +148,14 @@ def get_tasks_due_today_morning(
         db.query(Task)
         .filter(
             Task.user_id == user_id,
-            Task.is_done == False,  # noqa: E712
+            Task.is_done == False,        # noqa: E712
+            Task.should_notify == True,   # ★ 通知ONのタスクだけ
             Task.deadline >= start_dt,
             Task.deadline <= end_dt,
         )
         .all()
     )
 
-    # すでに朝通知済みのものを除外
     result: List[Task] = []
     for task in tasks:
         if not has_notification_been_sent(db, user_id, task.id, 0):

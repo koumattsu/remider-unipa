@@ -178,11 +178,43 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
 
 # ここから下の debug 系は、君の元コードそのまま残してOK
-
 @router.post("/debug-send")
 async def debug_send(db: Session = Depends(get_db)):
-    ...
-    # （ここは君の元コードをそのまま使ってOK）
+    """
+    デバッグ用:
+    現在登録されているユーザー全員にテストメッセージを送る。
+    LINE Messaging API の動作確認に使用。
+    """
+    users = (
+        db.query(User)
+        .filter(User.line_user_id.isnot(None))
+        .all()
+    )
+
+    results = []
+
+    for user in users:
+        if not user.line_user_id:
+            continue
+
+        # テスト用メッセージ
+        msg = "🔧 デバッグ通知テスト\nUNIPAリマインダーのLINE送信テストです。"
+
+        # 実際に1件送信
+        await send_simple_text(user.line_user_id, msg)
+
+        results.append({
+            "user_id": user.id,
+            "line_user_id": user.line_user_id,
+            "status": "sent"
+        })
+
+    return {
+        "message": "debug-send executed",
+        "count": len(results),
+        "results": results,
+    }
+
 
 @router.get("/debug-users")
 async def debug_users(db: Session = Depends(get_db)):

@@ -13,6 +13,8 @@ import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 
 const WEEKLY_SKIP_STORAGE_KEY = 'unipa_weekly_skips_v1';
 
+const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
+
 /** localStorage から「スキップした毎週タスクのキー」を読み込み */
 const loadWeeklySkipKeys = (): string[] => {
   if (typeof window === 'undefined') return [];
@@ -26,6 +28,20 @@ const loadWeeklySkipKeys = (): string[] => {
   }
 };
 
+
+/** 🔔 localStorage から通知ON/OFFの上書き情報を読み込み */
+const loadNotifyOverrides = (): Record<number, boolean> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(NOTIFY_OVERRIDES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 /** localStorage に保存 */
 const saveWeeklySkipKeys = (keys: string[]) => {
   if (typeof window === 'undefined') return;
@@ -34,6 +50,18 @@ const saveWeeklySkipKeys = (keys: string[]) => {
     JSON.stringify(Array.from(new Set(keys)))
   );
 };
+
+/** 🔔 通知ON/OFFの上書き情報を localStorage に保存 */
+const saveNotifyOverrides = (map: Record<number, boolean>) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(
+    NOTIFY_OVERRIDES_STORAGE_KEY,
+    JSON.stringify(map)
+  );
+};
+
+
+
 
 /** weekly_task_id + 日付 から一意キーを作る */
 const makeSkipKey = (weeklyTaskId: number, date: Date): string => {
@@ -58,13 +86,19 @@ export const Dashboard: React.FC = () => {
     loadWeeklySkipKeys()
   );
 
-  // 🔔 通知ON/OFFの上書き状態（today / all で共有）
-  const [notifyOverrides, setNotifyOverrides] = useState<Record<number, boolean>>({});
-
+    // 🔔 通知ON/OFFの上書き状態（today / all で共有）
+  //    → 初期値を localStorage から読み込む
+  const [notifyOverrides, setNotifyOverrides] =
+    useState<Record<number, boolean>>(() => loadNotifyOverrides());
 
   const handleNotifyChange = (taskId: number, value: boolean) => {
-    setNotifyOverrides((prev) => ({ ...prev, [taskId]: value }));
+    setNotifyOverrides((prev) => {
+      const next = { ...prev, [taskId]: value };
+      saveNotifyOverrides(next); // ← 変更を永続化
+      return next;
+    });
   };
+
 
   useEffect(() => {
     loadTasks();
@@ -221,11 +255,12 @@ export const Dashboard: React.FC = () => {
         0
       );
 
-      const payload: TaskCreate = {
+      const payload: TaskCreate= {
         title: title.trim(),
         course_name: '',
         deadline: tomorrow.toISOString(),
         memo: '',
+        should_notify: true, 
       };
 
       try {

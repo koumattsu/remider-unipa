@@ -7,6 +7,7 @@ export interface Task {
   deadline: string;
   memo?: string | null;
   is_done: boolean;
+  should_notify: boolean | null;
 }
 
 // 課題作成用
@@ -15,6 +16,7 @@ export interface TaskCreate {
   course_name: string;
   deadline: string;
   memo?: string | null;
+  should_notify: boolean;
 }
 
 export interface TaskUpdate {
@@ -23,6 +25,7 @@ export interface TaskUpdate {
   deadline?: string;
   memo?: string | null;
   is_done?: boolean;
+  should_notify?: boolean;
 }
 
 /* 👇 ここから毎週タスク関連 */

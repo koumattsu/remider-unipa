@@ -1,7 +1,7 @@
 // frontend/src/components/TaskList.tsx
 
 import { useState } from 'react';
-import { Task } from '../types';
+import { Task, TaskUpdate } from '../types';
 import { tasksApi } from '../api/tasks';
 
 interface TaskListProps {
@@ -10,7 +10,6 @@ interface TaskListProps {
   notifyOverrides: Record<number, boolean>;
   onNotifyChange: (taskId: number, value: boolean) => void;
   onVirtualTaskDelete?: (taskId: Task) => void;
-
 }
 
 // Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
@@ -26,57 +25,66 @@ export const TaskList: React.FC<TaskListProps> = ({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
+
+
+    // ★ 仮タスク用の is_done 上書き状態（フロント限定）
+    const [localDoneOverrides, setLocalDoneOverrides] = useState<
+      Record<number, boolean>
+    >({});
+
+    const handleToggleDone = async (task: Task, newIsDone: boolean) => {
+      // ★ 仮タスク（id < 0）はフロントだけで is_done を反映
+      if (isVirtualTask(task)) {
+        setLocalDoneOverrides((prev) => ({ ...prev, [task.id]: newIsDone }));
+
+        // 仮タスクは「とりあえず今まで通り」進捗と通知を軽く連動させておく
+        const hasOverride = notifyOverrides[task.id] !== undefined;
+        if (!hasOverride) {
+          onNotifyChange(task.id, !newIsDone);
+        }
+        return;
+      }
+
+      // ------- ここから実タスク（API あり） -------
+      const payload: TaskUpdate = {
+        is_done: newIsDone,
+      };
+
+      // ★ いったん「進捗に応じて should_notify を自動でいじる」のはやめる
+      //    通知は通知トグル（NotificationPill）を押したときだけ変更することにする
+
+      try {
+        await tasksApi.update(task.id, payload);
+        onTaskUpdated();
+      } catch (error) {
+        console.error('課題の更新に失敗しました:', error);
+        alert('課題の更新に失敗しました');
+      }
+    };
+
+
+
+
+  const handleToggleNotify = async (task: Task, newValue: boolean) => {
+    // 仮想タスクはフロント側の override だけ
+    if (isVirtualTask(task)) {
+      onNotifyChange(task.id, newValue);
+      return;
+    }
+
+    try {
+      await tasksApi.update(task.id, { should_notify: newValue });
+      onNotifyChange(task.id, newValue);
+    } catch (error) {
+      console.error('通知設定の更新に失敗しました:', error);
+      alert('通知設定の更新に失敗しました');
+    }
+  };
+
+
+
   
 
-  // ★ 仮タスク用の is_done 上書き状態（フロント限定）
-  const [localDoneOverrides, setLocalDoneOverrides] = useState<
-    Record<number, boolean>
-  >({});
-
-  const handleToggleDone = async (task: Task, newIsDone: boolean) => {
-    // ★ 仮タスク（id < 0）はフロントだけで is_done を反映
-    if (isVirtualTask(task)) {
-      // 表示用 is_done を反映
-      setLocalDoneOverrides((prev) => ({ ...prev, [task.id]: newIsDone }));
-
-      // ★ 進捗と通知を完全連動（未→完→OFF / 完→未→ON）
-      onNotifyChange(task.id, !newIsDone);
-
-      return;
-    }
-
-    // ★ 実タスク（API あり）
-    try {
-      await tasksApi.update(task.id, { is_done: newIsDone });
-      onTaskUpdated();
-
-      // ★ 通知も完全連動（未→完→OFF / 完→未→ON）
-      onNotifyChange(task.id, !newIsDone);
-
-    } catch (error) {
-      console.error('課題の更新に失敗しました:', error);
-      alert('課題の更新に失敗しました');
-    }
-  };
-
-
-  const handleDelete = async (task: Task) => {
-    if (isVirtualTask(task)) {
-      alert(
-        '毎週タスクから自動生成された行です。この週だけ不要な場合は左端のチェックで選択して一括削除してください。'
-      );
-      return;
-    }
-    if (!confirm('この課題を削除しますか？')) return;
-
-    try {
-      await tasksApi.delete(task.id);
-      onTaskUpdated();
-    } catch (error) {
-      console.error('課題の削除に失敗しました:', error);
-      alert('課題の削除に失敗しました');
-    }
-  };
 
   const handleBulkDelete = async () => {
     const realIds = selectedIds.filter((id) => id > 0);
@@ -244,8 +252,17 @@ export const TaskList: React.FC<TaskListProps> = ({
               const isDone =
                 overrideDone !== undefined ? overrideDone : task.is_done;
 
+              // DB に should_notify が入っているか
+              const hasNotifyFlag =
+                task.should_notify !== undefined && task.should_notify !== null;
+
+              // フラグがあればそれを使う。なければ「未ならON / 完ならOFF」という初期ルール
+              const baseNotify = hasNotifyFlag ? !!task.should_notify : !isDone;
+
+              // 親からの override があればそれを優先
               const override = notifyOverrides[task.id];
-              const effectiveNotify = override !== undefined ? override : !isDone;
+              const effectiveNotify =
+                override !== undefined ? override : baseNotify;
 
               const baseMemo = task.memo || task.course_name || '';
 
@@ -257,6 +274,7 @@ export const TaskList: React.FC<TaskListProps> = ({
                     borderTop: '1px solid #eee',
                   }}
                 >
+
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                     <input
                       type="checkbox"
@@ -319,8 +337,8 @@ export const TaskList: React.FC<TaskListProps> = ({
                   <td style={{ padding: '0.5rem' }}>
                     <NotificationPill
                       isOn={effectiveNotify}
-                      onToggle={() => onNotifyChange(task.id, !effectiveNotify)}
-                    />
+                      onToggle={() => handleToggleNotify(task, !effectiveNotify)}
+/>
                   </td>
                 </tr>
               );

@@ -38,6 +38,8 @@ class Task(Base):
     deadline = Column(DateTime(timezone=True), nullable=False, index=True)
     memo = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False, nullable=False)
+    should_notify = Column(Boolean, nullable=False, default=True)
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

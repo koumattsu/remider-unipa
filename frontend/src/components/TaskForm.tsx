@@ -9,7 +9,9 @@ interface TaskFormProps {
 }
 
 export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
-  const [formData, setFormData] = useState<Omit<TaskCreate, 'deadline'>>({
+  const [formData, setFormData] = useState<
+    Omit<TaskCreate, 'deadline' | 'should_notify'>
+  >({
     title: '',
     course_name: '',
     memo: '',
@@ -56,7 +58,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
       course_name: formData.course_name?.trim() || '',
       memo: formData.memo?.trim() || '',
       deadline: deadlineStr,
+      should_notify: true,        // ★ ここ追加：作成時は通知ONを初期値にする
     });
+
 
     // フォームをリセット
     setFormData({

@@ -89,17 +89,10 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
 
     return setting
 
-
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
     """
     定期実行ジョブ（Scheduler / GitHub Actions 用）
-
-    対応する通知：
-    - NotificationSetting.reminder_offsets_hours による「○時間前」通知
-      （デフォルト: 3時間前）
-    - NotificationSetting.daily_digest_time & enable_morning_notification による朝通知
-      （デフォルト: 08:00 & ON）
     """
 
     now = datetime.now()
@@ -109,6 +102,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
         "morning": 0,
         "users_targeted": 0,
     }
+
+    # ★★ 追加：絶対に初期化しておく（UnboundLocalError対策）
+    tasks_today = []
+    tasks_3h = []
 
     users = (
         db.query(User)
@@ -124,10 +121,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
         results["users_targeted"] += 1
 
-        # ユーザーごとの設定取得
+        # 通知設定取得
         setting = get_or_create_notification_setting(db, user_id=user_id)
 
-        # ---------- ① 「○時間前」通知（3時間前ON/OFF含む） ----------
+        # ---------- ① 「○時間前」通知 ----------
         offsets = setting.reminder_offsets_hours or []
 
         for offset in offsets:
@@ -139,38 +136,40 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if hours <= 0:
                 continue
 
-            tasks = get_tasks_due_in_hours(db, user_id=user_id, hours=hours)
-            if not tasks:
+            tasks_3h = get_tasks_due_in_hours(db, user_id=user_id, hours=hours)
+            if not tasks_3h:
                 continue
 
-            await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
+            await send_deadline_reminder(line_user_id=line_user_id, tasks=tasks_3h)
 
-            for task in tasks:
+            for task in tasks_3h:
                 mark_notification_as_sent(db, user_id, task.id, hours)
 
             if hours == 3:
-                results["three_hours_before"] += len(tasks)
+                results["three_hours_before"] += len(tasks_3h)
             else:
                 key = f"offset_{hours}"
-                results[key] = results.get(key, 0) + len(tasks)
+                results[key] = results.get(key, 0) + len(tasks_3h)
 
-        # ---------- ② 朝通知（enable_morning_notification でON/OFF） ----------
+        # ---------- ② 朝通知 ----------
         try:
             digest_hour, digest_minute = map(int, setting.daily_digest_time.split(":"))
         except ValueError:
             digest_hour, digest_minute = 8, 0
 
         if (
-            setting.enable_morning_notification                    # ★ フラグ
+            setting.enable_morning_notification
             and now.hour == digest_hour
-            and abs(now.minute - digest_minute) <= 10             # 多少の遅延許容
+            and abs(now.minute - digest_minute) <= 10
         ):
             tasks_today = get_tasks_due_today_morning(db, user_id=user_id)
+
             if tasks_today:
-                await send_deadline_reminder(line_user_id=line_user_id, tasks=tasks_today)
+                await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
+
                 for task in tasks_today:
-                    # 0 = 朝通知
                     mark_notification_as_sent(db, user_id, task.id, 0)
+
                 results["morning"] += len(tasks_today)
 
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)

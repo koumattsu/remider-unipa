@@ -1,12 +1,11 @@
 // frontend/src/components/TodayTaskList.tsx
 
 import { useState, useMemo } from 'react';
-import { Task } from '../types';
+import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 
 // Task.id が負の値のものは「毎週タスク」から生成した仮想タスク
 const isVirtualTask = (task: Task) => task.id < 0;
-
 
 interface TodayTaskListProps {
   tasks: Task[];
@@ -68,6 +67,34 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
     [tasks]
   );
 
+  // 締切が過去かどうか判定（24:00 ロジック考慮）
+  const isOverdue = (deadline: string) => {
+    const raw = new Date(deadline);
+    const effective = new Date(raw);
+
+    if (effective.getHours() === 0 && effective.getMinutes() === 0) {
+      effective.setDate(effective.getDate() - 1);
+    }
+
+    const now = new Date();
+
+    const toYMD = (d: Date) => ({
+      y: d.getFullYear(),
+      m: d.getMonth(),
+      d: d.getDate(),
+    });
+
+    const d1 = toYMD(effective);
+    const d2 = toYMD(now);
+
+    if (d1.y < d2.y) return true;
+    if (d1.y > d2.y) return false;
+    if (d1.m < d2.m) return true;
+    if (d1.m > d2.m) return false;
+    return d1.d < d2.d;
+  };
+
+
   const { percent, doneCount, totalCount } = useMemo(() => {
     const total = tasks.length;
     const done = tasks.filter((t) => t.is_done).length;
@@ -77,24 +104,48 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
 
   // frontend/src/components/TodayTaskList.tsx 内
 
-    const handleToggleDone = async (task: Task, newIsDone: boolean) => {
+      const handleToggleDone = async (task: Task, newIsDone: boolean) => {
     // ローカル表示用の is_done 更新
     mergeLocal(task.id, { is_done: newIsDone });
 
     // ★ 仮タスクはフロント側だけで完了状態＋通知を反映
     if (isVirtualTask(task)) {
-      // 未(false) → 完(true)   : !true  = false  → 通知OFF
-      // 完(true)  → 未(false)  : !false = true   → 通知ON
-      onNotifyChange(task.id, !newIsDone);
+      const hasOverride = notifyOverrides[task.id] !== undefined;
+
+      // ユーザーが明示的にトグルしていないときだけ、自動連動
+      if (!hasOverride) {
+        onNotifyChange(task.id, !newIsDone);
+      }
       return;
     }
 
+    // ------- ここから実タスク（API あり） -------
+
+    // backend に送る更新ペイロード
+    const payload: TaskUpdate = {
+      is_done: newIsDone,
+    };
+
+    // backend から明示的な should_notify が来ているか
+    const hasExplicitNotify =
+      task.should_notify !== undefined && task.should_notify !== null;
+
+    // すでにフロント側で override しているか
+    const hasOverride = notifyOverrides[task.id] !== undefined;
+
+    // ★ どちらもない場合だけ「進捗に応じて通知を自動設定」
+    if (!hasExplicitNotify && !hasOverride) {
+      payload.should_notify = !newIsDone; // 未→完でOFF / 完→未でON
+    }
+
     try {
-      await tasksApi.update(task.id, { is_done: newIsDone });
+      await tasksApi.update(task.id, payload);
       onTaskUpdated();
 
-      // ★ 進捗に連動して通知も更新
-      onNotifyChange(task.id, !newIsDone);
+      // payload に should_notify を入れた場合だけ、フロント側の状態も更新
+      if (payload.should_notify !== undefined) {
+        onNotifyChange(task.id, payload.should_notify);
+      }
     } catch (error) {
       console.error('タスクの更新に失敗しました:', error);
       alert('タスクの更新に失敗しました');
@@ -102,7 +153,25 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
   };
 
 
-    const handleTitleSave = async (task: Task, newTitle: string) => {
+
+  const handleToggleNotify = async (task: Task, newValue: boolean) => {
+    // 仮想タスクは override だけ
+    if (isVirtualTask(task)) {
+      onNotifyChange(task.id, newValue);
+      return;
+    }
+
+    try {
+      await tasksApi.update(task.id, { should_notify: newValue });
+      onNotifyChange(task.id, newValue);
+    } catch (error) {
+      console.error('通知の更新に失敗しました:', error);
+      alert('通知の更新に失敗しました');
+    }
+  };
+
+
+  const handleTitleSave = async (task: Task, newTitle: string) => {
     const trimmed = newTitle.trim();
     if (!trimmed || trimmed === task.title) return;
 
@@ -277,10 +346,11 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
                 local.is_done !== undefined ? local.is_done : task.is_done;
 
               // 通知 ON/OFF は親からの共有状態 + task の should_notify / is_done で決定
-              const baseNotify =
-                (task as any).should_notify !== undefined
-                  ? (task as any).should_notify
-                  : !task.is_done;
+              const hasExplicitNotifyValue =
+                task.should_notify !== undefined && task.should_notify !== null;
+
+              const baseNotify = hasExplicitNotifyValue ? !!task.should_notify : !task.is_done;
+
               const override = notifyOverrides[task.id];
               const effectiveNotify =
                 override !== undefined ? override : baseNotify;
@@ -290,15 +360,22 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
               const effectiveMemo = local.memo ?? baseMemo;
 
               const isSelected = selectedIds.includes(task.id);
+              const isRowOverdue = !effectiveIsDone && isOverdue(task.deadline);
 
               return (
                 <tr
                   key={task.id}
                   style={{
-                    backgroundColor: isSelected ? '#e9f5ff' : 'white',
+                    backgroundColor: isSelected
+                      ? '#e0f2fe'
+                      : isRowOverdue
+                      ? '#fef2f2' // 期限切れは薄い赤
+                      : 'white',
                     borderTop: '1px solid #eee',
+                    transition: 'background-color 0.15s ease-out',
                   }}
                 >
+
                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                     <input
                       type="checkbox"
@@ -315,9 +392,17 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
                     />
                   </td>
 
-                  <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+                  <td
+                    style={{
+                      padding: '0.5rem',
+                      whiteSpace: 'nowrap',
+                      fontWeight: isRowOverdue ? 600 : 400,
+                      color: isRowOverdue ? '#b91c1c' : '#111827',
+                    }}
+                  >
                     {formatDeadline(task.deadline)}
                   </td>
+
 
                   <td style={{ padding: '0.5rem' }}>
                     <select
@@ -349,7 +434,7 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
                     <NotificationPill
                       isOn={effectiveNotify}
                       onToggle={() =>
-                        onNotifyChange(task.id, !effectiveNotify)
+                        handleToggleNotify(task, !effectiveNotify)
                       }
                     />
                   </td>

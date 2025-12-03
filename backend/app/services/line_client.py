@@ -1,10 +1,7 @@
-# app/services/line_client.py
-
 from __future__ import annotations
 
 from typing import List
 import os
-
 import httpx
 
 from app.models.task import Task
@@ -12,107 +9,64 @@ from app.core.config import settings
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
-
+# ============================================
+# アクセストークン取得（settings or env）
+# ============================================
 def _get_line_access_token() -> str | None:
-    """
-    設定から LINE チャネルアクセストークンを取得。
-    なければ環境変数からもフォールバック。
-    """
     token = getattr(settings, "LINE_CHANNEL_ACCESS_TOKEN", None)
     if not token:
         token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
     return token or None
 
 
+# ============================================
+# メッセージ生成（3時間前通知用）
+# ============================================
 def _build_deadline_message(tasks: List[Task]) -> str:
-    """
-    明日締切の課題一覧メッセージテキストを生成。
-    """
     if not tasks:
-        return "明日締切の課題はありません。"
+        return "締切が近い課題はありません。"
 
     lines: list[str] = []
-    lines.append("【UNIPAリマインダー】明日締切の課題一覧")
-    lines.append("")
+    lines.append("🔔【締切リマインダー】（3時間前）\n")
 
     for task in tasks:
         deadline_str = task.deadline.strftime("%Y/%m/%d %H:%M")
         lines.append(f"・{task.title}")
         lines.append(f"　科目: {task.course_name}")
-        lines.append(f"　締切: {deadline_str}")
-        lines.append("")
+        lines.append(f"　締切: {deadline_str}\n")
 
-    lines.append("がんばろう💪")
     return "\n".join(lines)
 
 
+# ============================================
+# メッセージ生成（朝8時のダイジェスト）
+# ============================================
 def _build_daily_digest_message(tasks: List[Task]) -> str:
-    """
-    日次ダイジェスト用のメッセージテキストを生成。
-    """
     if not tasks:
-        return "本日の課題はありません。"
+        return "【UNIPAリマインダー】\n本日の締切課題はありません。"
 
     lines: list[str] = []
-    lines.append("【UNIPAリマインダー】本日の課題ダイジェスト")
-    lines.append(f"本日の課題数: {len(tasks)}")
-    lines.append("")
+    lines.append("📘【本日の締切課題ダイジェスト】")
+    lines.append(f"本日の課題数: {len(tasks)}\n")
 
     for task in tasks:
-        status = "✅ 完了" if task.is_done else "⏰ 未完了"
         deadline_str = task.deadline.strftime("%Y/%m/%d %H:%M")
+        status = "⏰ 未完了" if not task.is_done else "✅ 完了"
         lines.append(f"・{status} {task.title}")
         lines.append(f"　科目: {task.course_name}")
-        lines.append(f"　締切: {deadline_str}")
-        lines.append("")
+        lines.append(f"　締切: {deadline_str}\n")
 
     return "\n".join(lines)
 
 
-async def send_deadline_reminder(line_user_id: str, tasks: List[Task]) -> None:
-    """
-    指定ユーザーに「明日締切」の課題リマインドを送る。
-
-    - LINE_CHANNEL_ACCESS_TOKEN（settings or env）が未設定の時:
-        → 既存と同じようにコンソールへダミーログ出力のみ
-    - 設定されている時:
-        → 実際に LINE Messaging API の push メッセージを送信
-    """
-    if not tasks:
-        # 何もなければ何も送らない（従来どおり）
-        return
-
-    text = _build_deadline_message(tasks)
-    await _push_text_message(line_user_id, text)
-
-
-async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
-    """
-    指定ユーザーに日次ダイジェストのLINEメッセージを送る。
-
-    - 課題が0件のときも、「課題はありません」とメッセージを送る仕様。
-    """
-    if not tasks:
-        # 課題0件のときもメッセージ送る設計（元コードの挙動を継承）
-        text = "【UNIPAリマインダー】本日の課題ダイジェスト\n本日の課題はありません。"
-        await _push_text_message(line_user_id, text)
-        return
-
-    text = _build_daily_digest_message(tasks)
-    await _push_text_message(line_user_id, text)
-
-# ファイルの一番下あたりに追加（既存の関数はそのまま）
-
+# ============================================
+# 実際の LINE送信（Push API）
+# ============================================
 async def _push_text_message(line_user_id: str, text: str) -> None:
-    """
-    LINE Messaging API の push メッセージを送信する共通処理。
-    アクセストークンが無ければダミーモード（print）で動作。
-    """
     access_token = _get_line_access_token()
 
-    # アクセストークンが無いときはダミーモード（コンソール出力のみ）
     if not access_token:
-        print("[LINE通知 ダミー] 宛先:", line_user_id)
+        print("[LINE通知: ダミー出力] →", line_user_id)
         print(text)
         return
 
@@ -135,17 +89,32 @@ async def _push_text_message(line_user_id: str, text: str) -> None:
         resp = await client.post(LINE_PUSH_URL, headers=headers, json=body)
 
     if resp.status_code >= 400:
-        # ここでエラー内容をログに出して、APIとしては落とさない
         print("[LINE ERROR]", resp.status_code, resp.text)
+    else:
+        print("[LINE PUSH OK]", resp.status_code)
+
+
+# ============================================
+# 外部向け: 3時間前通知
+# ============================================
+async def send_deadline_reminder(line_user_id: str, tasks: List[Task]) -> None:
+    if not tasks:
         return
 
-    print("[LINE PUSH OK]", resp.status_code)
+    text = _build_deadline_message(tasks)
+    await _push_text_message(line_user_id, text)
 
-# ここまでに _push_text_message(...) などが定義されているはず
 
+# ============================================
+# 外部向け: 朝8時通知
+# ============================================
+async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
+    text = _build_daily_digest_message(tasks)
+    await _push_text_message(line_user_id, text)
+
+
+# ============================================
+# 任意テキスト送信用（デバッグ用）
+# ============================================
 async def send_simple_text(line_user_id: str, text: str) -> None:
-    """
-    任意のテキストメッセージを1件だけ送る簡易ヘルパー。
-    デバッグや将来のカスタム通知用。
-    """
     await _push_text_message(line_user_id, text)

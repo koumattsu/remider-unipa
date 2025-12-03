@@ -4,11 +4,10 @@ from datetime import datetime, timedelta, date, time
 from typing import List
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import or_
 
 from app.models.task import Task
 from app.models.task_notification_log import TaskNotificationLog
-
 
 # ================================
 # 共通ヘルパー
@@ -58,8 +57,6 @@ def mark_notification_as_sent(
 # 3時間前通知用
 # ================================
 
-# app/services/notification.py
-
 # backend/app/services/notification.py
 
 def get_tasks_due_in_hours(
@@ -72,7 +69,6 @@ def get_tasks_due_in_hours(
 
     - 「締切までの残り時間」が hours ±0.5時間 のタスクを拾う
     - is_done = False
-    - 通知ONのタスクだけ (Task.should_notify == True)
     - まだその hours の通知が送られていないものだけ
     """
 
@@ -89,8 +85,11 @@ def get_tasks_due_in_hours(
         db.query(Task)
         .filter(
             Task.user_id == user_id,
-            Task.is_done == False,       # noqa: E712
-            Task.should_notify == True,  # 通知ONのタスクだけ
+            Task.is_done == False,  # noqa: E712
+
+            # ※ ここではタスク側の通知ON/OFFフラグは見ない
+            # （ユーザー全体の通知設定は NotificationSetting で判定）
+
             Task.deadline >= now,
             Task.deadline <= window_end,
         )
@@ -107,7 +106,6 @@ def get_tasks_due_in_hours(
             "  task:", task.title,
             "deadline:", task.deadline,
             "diff_hours:", diff_hours,
-            "should_notify:", task.should_notify,
             "is_done:", task.is_done,
         )
 
@@ -135,7 +133,6 @@ def get_tasks_due_today_morning(
 
     - 今日が締切
     - is_done = False
-    - ★ 通知ONのタスクだけ (Task.should_notify == True)
     - まだ当日朝通知(0)が送られていないもの
     """
 
@@ -148,8 +145,9 @@ def get_tasks_due_today_morning(
         db.query(Task)
         .filter(
             Task.user_id == user_id,
-            Task.is_done == False,        # noqa: E712
-            Task.should_notify == True,   # ★ 通知ONのタスクだけ
+            Task.is_done == False,  # noqa: E712
+
+            # ※ ここでもタスク単位の通知ON/OFFは見ていない
             Task.deadline >= start_dt,
             Task.deadline <= end_dt,
         )

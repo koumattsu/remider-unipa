@@ -85,23 +85,27 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
     }
   };
 
-  const handleEditClick = (tpl: WeeklyTask) => {
-    const isMidnight = tpl.time_hour === 0;
+const handleEditClick = (tpl: WeeklyTask) => {
+  const isMidnight = tpl.time_hour === 0;
 
-    // DB上は「火曜0:00」だけど、UIでは「月曜24:00」として見せる
-    const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
-    const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
-    setEditingId(tpl.id);
-    setForm({
-      title: tpl.title,
-      course_name: tpl.course_name || '',
-      memo: tpl.memo || '',
-      weekday: tpl.weekday,
-      time_hour: tpl.time_hour === 0 ? 24 : (tpl.time_hour ?? 24),
-      time_minute: tpl.time_minute ?? 0,
-      is_active: tpl.is_active,
-    });
-  };
+  // DB上は「火曜0:00」だけど、UIでは「月曜24:00」として見せる
+  const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
+  const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
+
+  setEditingId(tpl.id);
+  setForm({
+    title: tpl.title,
+    course_name: tpl.course_name || '',
+    memo: tpl.memo || '',
+    // ★ ここを tpl.weekday → uiWeekday にする
+    weekday: uiWeekday,
+    // ★ 時刻も uiHour を使う
+    time_hour: uiHour,
+    time_minute: tpl.time_minute ?? 0,
+    is_active: tpl.is_active,
+  });
+};
+
 
   const handleDeleteClick = async (tpl: WeeklyTask) => {
     if (!confirm(`"${tpl.title}" を削除しますか？`)) return;
@@ -339,7 +343,7 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
 
               return (
                 <tr key={tpl.id} style={{ borderTop: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '0.4rem' }}>{weekdayLabels[tpl.weekday]}</td>
+                  <td style={{ padding: '0.4rem' }}>{weekdayLabels[uiWeekdayIndex]}</td>
                   <td style={{ padding: '0.4rem' }}>
                     {String(hourDisplay).padStart(2, '0')}:
                     {String(tpl.time_minute ?? 0).padStart(2, '0')}

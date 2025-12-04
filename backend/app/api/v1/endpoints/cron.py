@@ -140,7 +140,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if not tasks_3h:
                 continue
 
-            await send_deadline_reminder(line_user_id=line_user_id, tasks=tasks_3h)
+            await send_deadline_reminder(
+                line_user_id=line_user_id,
+                tasks=tasks_3h,
+                hours=hours,
+            )
+
 
             for task in tasks_3h:
                 mark_notification_as_sent(db, user_id, task.id, hours)

@@ -18,43 +18,56 @@ def _get_line_access_token() -> str | None:
         token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
     return token or None
 
-
 # ============================================
-# メッセージ生成（3時間前通知用）
+# メッセージ生成（◯時間前通知用）
 # ============================================
-def _build_deadline_message(tasks: List[Task]) -> str:
+def _build_deadline_message(tasks: List[Task], hours: int) -> str:
     if not tasks:
         return "締切が近い課題はありません。"
 
     lines: list[str] = []
-    lines.append("🔔【締切リマインダー】（3時間前）\n")
 
-    for task in tasks:
-        deadline_str = task.deadline.strftime("%Y/%m/%d %H:%M")
-        lines.append(f"・{task.title}")
-        lines.append(f"　科目: {task.course_name}")
-        lines.append(f"　締切: {deadline_str}\n")
+    # タイトル
+    lines.append(f"⏰ 締切{hours}時間前リマインド")
+    lines.append(f"対象の課題は {len(tasks)}件あります。\n")
+
+    # 課題一覧
+    for i, task in enumerate(tasks, start=1):
+        deadline_str = task.deadline.strftime("%m/%d %H:%M")
+        lines.append(f"{i}. {task.title}")
+        lines.append(f"   科目: {task.course_name}")
+        lines.append(f"   締切: {deadline_str}\n")
+
+    # 一言
+    lines.append("※締切まで時間が少ないので早めに対応しよう💪")
 
     return "\n".join(lines)
 
 
+
 # ============================================
-# メッセージ生成（朝8時のダイジェスト）
+# メッセージ生成（朝のダイジェスト）
 # ============================================
 def _build_daily_digest_message(tasks: List[Task]) -> str:
+    # 今日締切がゼロ件のとき
     if not tasks:
-        return "【UNIPAリマインダー】\n本日の締切課題はありません。"
+        return "🌅 今日締切の課題はありません。\n余裕のある一日にしよう✨"
 
     lines: list[str] = []
-    lines.append("📘【本日の締切課題ダイジェスト】")
-    lines.append(f"本日の課題数: {len(tasks)}\n")
 
-    for task in tasks:
-        deadline_str = task.deadline.strftime("%Y/%m/%d %H:%M")
-        status = "⏰ 未完了" if not task.is_done else "✅ 完了"
-        lines.append(f"・{status} {task.title}")
-        lines.append(f"　科目: {task.course_name}")
-        lines.append(f"　締切: {deadline_str}\n")
+    # タイトルと件数
+    lines.append("🌅 今日締切の課題まとめ")
+    lines.append(f"本日の締切は {len(tasks)}件あります。\n")
+
+    # 課題一覧
+    for i, task in enumerate(tasks, start=1):
+        deadline_str = task.deadline.strftime("%m/%d %H:%M")
+        lines.append(f"{i}. {task.title}")
+        lines.append(f"   科目: {task.course_name}")
+        lines.append(f"   締切: {deadline_str}\n")
+
+    # 一言
+    lines.append("今日のうちに片付けて、明日以降をラクにしよう💪")
 
     return "\n".join(lines)
 
@@ -95,13 +108,17 @@ async def _push_text_message(line_user_id: str, text: str) -> None:
 
 
 # ============================================
-# 外部向け: 3時間前通知
+# 外部向け: ◯時間前通知
 # ============================================
-async def send_deadline_reminder(line_user_id: str, tasks: List[Task]) -> None:
+async def send_deadline_reminder(
+    line_user_id: str,
+    tasks: List[Task],
+    hours: int,
+) -> None:
     if not tasks:
         return
 
-    text = _build_deadline_message(tasks)
+    text = _build_deadline_message(tasks, hours)
     await _push_text_message(line_user_id, text)
 
 

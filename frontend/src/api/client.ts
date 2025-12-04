@@ -1,52 +1,36 @@
 import axios, { AxiosError } from 'axios';
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const baseURL =
+  import.meta.env.VITE_API_BASE_URL ||
+  'https://unipa-reminder-backend.onrender.com'; // ← ここも本番にしとく
+
+const LINE_USER_ID =
+  import.meta.env.VITE_LINE_USER_ID || 'Uf7ec7ba2180b713c38d377eec2d9dfcb';
 
 const apiClient = axios.create({
   baseURL,
-  timeout: 10000, // 10秒タイムアウト
+  timeout: 10000,
 });
 
-// =============
-// リクエスト前処理
-// =============
 apiClient.interceptors.request.use(
   (config) => {
-    // ダミーユーザー（あとでLINEログインに変更できる）
-    // 型エラーを避けるため headers を any として扱う
     const headers = (config.headers ?? {}) as any;
 
-    headers['X-Dummy-User-Id'] = '1';
-    config.headers = headers;
+    // 今後はこれだけ使う
+    headers['X-Line-User-Id'] = LINE_USER_ID;
 
+    config.headers = headers;
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error),
 );
 
-
-// =============
-// レスポンスエラー処理
-// =============
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response) {
-      console.error('API Error:', {
-        status: error.response.status,
-        data: error.response.data,
-        url: error.config?.url,
-      });
-    } else if (error.request) {
-      console.error('No response received:', error.message);
-    } else {
-      console.error('Request setup error:', error.message);
-    }
-
+    // 略（今のままでOK）
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiClient;

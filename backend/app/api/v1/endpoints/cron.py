@@ -1,6 +1,6 @@
 # backend/app/api/v1/endpoints/cron.py
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 
 from fastapi import APIRouter, Depends
@@ -22,6 +22,9 @@ from app.services.line_client import (
 )
 
 router = APIRouter()
+
+# 日本時間(JST)のタイムゾーン
+JST = timezone(timedelta(hours=9))
 
 from sqlalchemy import text
 
@@ -95,7 +98,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
     定期実行ジョブ（Scheduler / GitHub Actions 用）
     """
 
-    now = datetime.now()
+    # ✅ 日本時間(JST)の現在時刻を使う
+    now_jst = datetime.now(JST)
+    print("=== run_daily_job ===")
+    print("  now_jst:", now_jst)
+
 
     results: Dict[str, int] = {
         "three_hours_before": 0,
@@ -146,7 +153,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 hours=hours,
             )
 
-
             for task in tasks_3h:
                 mark_notification_as_sent(db, user_id, task.id, hours)
 
@@ -164,8 +170,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
         if (
             setting.enable_morning_notification
-            and now.hour == digest_hour
-            and abs(now.minute - digest_minute) <= 10
+            # ✅ JSTベースで「daily_digest_time ±10分」のときだけ送る
+           and now_jst.hour == digest_hour
+           and abs(now_jst.minute - digest_minute) <= 10
         ):
             tasks_today = get_tasks_due_today_morning(db, user_id=user_id)
 

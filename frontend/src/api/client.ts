@@ -1,8 +1,11 @@
 import axios, { AxiosError } from 'axios';
 
-const baseURL =
-  import.meta.env.VITE_API_BASE_URL ||
-  'https://unipa-reminder-backend.onrender.com'; // ← ここも本番にしとく
+const baseURL ='http://127.0.0.1:8000';
+  //import.meta.env.VITE_API_BASE_URL ||
+  //(import.meta.env.DEV
+  //  ? 'http://127.0.0.1:8000'                       // ← 開発中はローカル backend
+  //  : 'https://unipa-reminder-backend.onrender.com' // ← ビルド時は本番
+  //'http://127.0.0.1:8000' );
 
 const LINE_USER_ID =
   import.meta.env.VITE_LINE_USER_ID || 'Uf7ec7ba2180b713c38d377eec2d9dfcb';

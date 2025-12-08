@@ -16,6 +16,14 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 
+from app.models.task_notification_override import TaskNotificationOverride
+# ...
+notification_override = relationship(
+    "TaskNotificationOverride",
+    back_populates="task",
+    uselist=False,
+)
+
 
 class Task(Base):
     __tablename__ = "tasks"

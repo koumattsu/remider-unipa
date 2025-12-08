@@ -10,10 +10,40 @@ import { NotificationSettings } from '../components/NotificationSettings';
 import { TodayTaskList } from '../components/TodayTaskList';
 import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
+import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
+
 
 const WEEKLY_SKIP_STORAGE_KEY = 'unipa_weekly_skips_v1';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
+
+type TaskNotificationOptions = {
+  morning: boolean;
+  offsetsHours: number[];
+};
+
+const TASK_NOTIFY_OPTIONS_STORAGE_KEY = 'unipa_task_notify_options_v1';
+
+const loadTaskNotifyOptions = (): Record<number, TaskNotificationOptions> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(TASK_NOTIFY_OPTIONS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveTaskNotifyOptions = (map: Record<number, TaskNotificationOptions>) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(
+    TASK_NOTIFY_OPTIONS_STORAGE_KEY,
+    JSON.stringify(map)
+  );
+};
+
 
 /** localStorage から「スキップした毎週タスクのキー」を読み込み */
 const loadWeeklySkipKeys = (): string[] => {
@@ -41,6 +71,7 @@ const loadNotifyOverrides = (): Record<number, boolean> => {
     return {};
   }
 };
+
 
 /** localStorage に保存 */
 const saveWeeklySkipKeys = (keys: string[]) => {
@@ -90,6 +121,40 @@ export const Dashboard: React.FC = () => {
   //    → 初期値を localStorage から読み込む
   const [notifyOverrides, setNotifyOverrides] =
     useState<Record<number, boolean>>(() => loadNotifyOverrides());
+
+  // 🔔 タスクごとの通知詳細（朝ON/OFF + ◯時間前の配列）
+  const [taskNotifyOptions, setTaskNotifyOptions] =
+    useState<Record<number, TaskNotificationOptions>>(() =>
+      loadTaskNotifyOptions()
+    );
+
+  // 🔔 タスクごとの通知設定が変わったときのハンドラ
+  const handleTaskNotifyOptionsChange = async (
+    taskId: number,
+    value: TaskNotificationOptions
+  ) => {
+    // id > 0 = 実タスク → DB にも保存する
+    if (taskId > 0) {
+      try {
+        await taskNotificationOverrideApi.upsert(taskId, {
+          enable_morning: value.morning,
+          reminder_offsets_hours: value.offsetsHours,
+        });
+      } catch (e) {
+        console.error('タスク通知設定の保存に失敗しました:', e);
+        alert('タスク通知設定の保存に失敗しました');
+        return; // 失敗したらフロント側の状態は変えない
+      }
+    }
+    // id < 0 = 仮想タスク（毎週タスク） → これまで通りフロントだけで保持
+    setTaskNotifyOptions((prev) => {
+      const next = { ...prev, [taskId]: value };
+      saveTaskNotifyOptions(next); // localStorage にもキャッシュ
+      return next;
+    });
+  };
+
+
 
   const handleNotifyChange = (taskId: number, value: boolean) => {
     setNotifyOverrides((prev) => {
@@ -313,28 +378,35 @@ export const Dashboard: React.FC = () => {
       case 'today':
         return (
           <>
-            {/* 大きなタイトル「今日のタスク」は削除 */}
             <TodayTaskList
               tasks={todayTasks}
               onTaskUpdated={loadTasks}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
+              // ★ 追加
+              taskNotificationOverrides={taskNotifyOptions}
+              onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
             />
           </>
         );
+
       case 'all':
         return (
           <>
-            {/* 大きなタイトル「全てのタスク」は削除 */}
             <TaskList
               tasks={allTasksWithWeekly}
               onTaskUpdated={loadTasks}
               onVirtualTaskDelete={handleVirtualWeeklyDelete}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
+              // ★ 追加
+              taskNotificationOverrides={taskNotifyOptions}
+              onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
             />
           </>
         );
+
+
       case 'stats':
         return (
           <>

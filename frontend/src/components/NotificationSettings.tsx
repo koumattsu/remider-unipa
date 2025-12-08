@@ -4,6 +4,14 @@ import { useState, useEffect } from 'react';
 import { NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
 
+const NOTIFICATION_STORAGE_KEY = 'unipa_notification_settings_v1';
+
+type StoredNotificationSettings = {
+  enableMorning: boolean;
+  dailyDigestTime: string;
+  reminderOffsetsHours: number[];
+};
+
 // 5:00〜10:00 を30分刻みで生成
 const MORNING_TIME_OPTIONS = Array.from({ length: 11 }, (_, i) => {
   const totalMinutes = 5 * 60 + i * 30; // 5:00スタート
@@ -82,29 +90,44 @@ export const NotificationSettings: React.FC = () => {
       setSetting(data);
 
       const hours = [...data.reminder_offsets_hours];
-      setOffsets(hours);
 
       // 朝通知時刻：options にない値なら "08:00" にフォールバック
       const time = MORNING_TIME_OPTIONS.includes(data.daily_digest_time)
         ? data.daily_digest_time
         : '08:00';
-      setDigestTime(time);
-
-      // 3時間前があれば ON
-      setEnableThreeHours(hours.includes(3));
 
       // 朝通知 ON/OFF（未定義なら true 扱い）
-      setEnableMorning(
+      const enableMorningValue =
         data.enable_morning_notification !== undefined
           ? data.enable_morning_notification
-          : true
-      );
+          : true;
+
+      setOffsets(hours);
+      setDigestTime(time);
+      setEnableThreeHours(hours.includes(3));
+      setEnableMorning(enableMorningValue);
+
+      // 👇 ここで localStorage にも保存しておく
+      try {
+        const stored: StoredNotificationSettings = {
+          enableMorning: enableMorningValue,
+          dailyDigestTime: time,
+          reminderOffsetsHours: hours,
+        };
+        window.localStorage.setItem(
+          NOTIFICATION_STORAGE_KEY,
+          JSON.stringify(stored)
+        );
+      } catch (e) {
+        console.warn('localStorage への保存に失敗しました:', e);
+      }
     } catch (error) {
       console.error('通知設定の取得に失敗しました:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
 
   const handleAddOffset = () => {
     setOffsets((prev) => [...prev, 1]);
@@ -177,8 +200,37 @@ export const NotificationSettings: React.FC = () => {
         enable_morning_notification: enableMorning,
       };
 
+      // 👇 localStorage にも保存しておく
+      try {
+        const stored: StoredNotificationSettings = {
+          enableMorning,
+          dailyDigestTime: digestTime,
+          reminderOffsetsHours: newOffsets,
+        };
+        window.localStorage.setItem(
+          NOTIFICATION_STORAGE_KEY,
+          JSON.stringify(stored)
+        );
+      } catch (e) {
+        console.warn('localStorage への保存に失敗しました:', e);
+      }
+
+
       await settingsApi.updateNotification(updateData);
       await loadSettings();
+
+      // 🔔 成功したらフロント側キャッシュも更新（loadSettings 内でもやっているけど念のため）
+      if (typeof window !== 'undefined') {
+        const stored = {
+          enableMorning,
+          dailyDigestTime: digestTime,
+          reminderOffsetsHours: newOffsets,
+        };
+        window.localStorage.setItem(
+          NOTIFICATION_STORAGE_KEY,
+          JSON.stringify(stored)
+        );
+      }
 
       alert('通知設定を保存しました');
     } catch (error) {

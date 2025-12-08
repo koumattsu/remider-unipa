@@ -9,6 +9,7 @@ from sqlalchemy import or_
 
 from app.models.task import Task
 from app.models.task_notification_log import TaskNotificationLog
+from app.models.task_notification_override import TaskNotificationOverride
 
 JST = timezone(timedelta(hours=9))
 
@@ -83,15 +84,22 @@ def get_tasks_due_in_hours(
     print("  now_jst:", now_jst)
     print("  target hours:", hours)
 
-    # ユーザーの未完了タスクを全部取得
+    # ユーザーの「未完了 & 通知ON」のタスクを取得
     candidates = (
         db.query(Task)
         .filter(
             Task.user_id == user_id,
             Task.is_done == False,  # noqa: E712
+            # 通知OFFのタスクは対象外にする（NULL は「ON扱い」）
+            or_(
+                Task.should_notify == True,
+                Task.should_notify.is_(None),
+            ),
         )
         .all()
     )
+
+
 
     result: List[Task] = []
 
@@ -112,10 +120,27 @@ def get_tasks_due_in_hours(
             "is_done:", task.is_done,
         )
 
-        if (hours - 0.5) <= diff_hours <= (hours + 0.5):
-            if not has_notification_been_sent(db, user_id, task.id, hours):
-                print("   → このタスクが通知対象！", task.title)
-                result.append(task)
+                # --- 🔔 タスクごとの通知オーバーライド取得 ---
+        override = (
+            db.query(TaskNotificationOverride)
+            .filter(
+                TaskNotificationOverride.user_id == user_id,
+                TaskNotificationOverride.task_id == task.id,
+            )
+            .first()
+        )
+
+        # このタスクに対して有効な通知オフセット一覧
+        if override and override.reminder_offsets_hours is not None:
+            effective_offsets = override.reminder_offsets_hours
+        else:
+            effective_offsets = [hours]  # ← ここは cron 側の hours を使う
+
+        for offset in effective_offsets:
+            if (offset - 0.5) <= diff_hours <= (offset + 0.5):
+                if not has_notification_been_sent(db, user_id, task.id, offset):
+                    print("   → このタスクが通知対象！", task.title, f"({offset}時間前)")
+                    result.append(task)
 
     print("=== get_tasks_due_in_hours result count:", len(result), "===\n")
     return result
@@ -141,15 +166,22 @@ def get_tasks_due_today_morning(
     start_dt = datetime.combine(today_jst, time(0, 0, 0, tzinfo=JST))
     end_dt = datetime.combine(today_jst, time(23, 59, 59, tzinfo=JST))
 
-    # ユーザーの未完了タスクを全部取得
+    # ユーザーの「未完了 & 通知ON」のタスクを取得
     candidates = (
         db.query(Task)
         .filter(
             Task.user_id == user_id,
             Task.is_done == False,  # noqa: E712
+            or_(
+                Task.should_notify == True,
+                Task.should_notify.is_(None),
+            ),
         )
         .all()
     )
+
+
+
 
     result: List[Task] = []
     for task in candidates:
@@ -162,4 +194,3 @@ def get_tasks_due_today_morning(
                 result.append(task)
 
     return result
-

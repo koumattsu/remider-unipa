@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import auth, tasks, settings, cron
-from app.api.v1.endpoints import weekly_tasks  # ← 追加
+from app.api.v1.endpoints import weekly_tasks  
+from app.api.v1.endpoints import task_notification_override
+
 
 api_router = APIRouter()
 
@@ -15,4 +17,11 @@ api_router.include_router(
     weekly_tasks.router,
     prefix="/weekly-tasks",
     tags=["weekly_tasks"],
+)
+
+# 🔔 タスクごとの通知オーバーライド用ルーター
+api_router.include_router(
+    task_notification_override.router,
+    prefix="/tasks",
+    tags=["task_notification_override"],
 )

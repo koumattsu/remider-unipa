@@ -293,8 +293,30 @@ async def debug_send(db: Session = Depends(get_db)):
 
 @router.get("/debug-users")
 async def debug_users(db: Session = Depends(get_db)):
-    ...
-    # （元コードのまま）
+    """
+    デバッグ用:
+    User テーブルの中身をざっくり確認するエンドポイント。
+    line_user_id を持っているかどうかを中心に見る。
+    """
+    users = db.query(User).all()
+
+    result = []
+    for u in users:
+        result.append(
+            {
+                "id": u.id,
+                "line_user_id": u.line_user_id,
+                "display_name": getattr(u, "display_name", None),
+                "university": getattr(u, "university", None),
+                "plan": getattr(u, "plan", None),
+            }
+        )
+
+    return {
+        "count": len(result),
+        "users": result,
+    }
+
 
 @router.post("/debug-register-user")
 async def debug_register_user(

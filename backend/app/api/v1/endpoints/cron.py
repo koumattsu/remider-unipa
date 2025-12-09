@@ -2,10 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
@@ -48,8 +46,6 @@ async def debug_migrate_notification_setting(db: Session = Depends(get_db)):
     except Exception as e:
         # すでにカラムがある場合などはここに来る
         return {"status": "error", "message": str(e)}
-
-
 
 # ユーザーごとの通知設定を取得 or デフォルトで作成
 def get_or_create_notification_setting(db: Session, user_id: int) -> NotificationSetting:

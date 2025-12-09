@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
+from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting  # ★ 追加
 from app.services.notification import (
     get_tasks_due_in_hours,
@@ -92,27 +93,96 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
 
     return setting
 
+def ensure_today_tasks_from_weekly(db: Session, user_id: int) -> None:
+    """
+    そのユーザーの WeeklyTask から、
+    「今日分の Task レコード」を自動生成する。
+
+    すでに同じ title / course_name / deadline の Task があれば作らない。
+    """
+    # 今日の日付（JST）と曜日 (0=月〜6=日)
+    today_jst = datetime.now(JST).date()
+    today_weekday = today_jst.weekday()
+
+    # 対象ユーザーの有効な WeeklyTask 一覧
+    templates = (
+        db.query(WeeklyTask)
+        .filter(
+            WeeklyTask.user_id == user_id,
+            WeeklyTask.is_active == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    for tpl in templates:
+        # DB上の weekday は 0=月〜6=日 を想定
+        # 「今日の曜日」のテンプレだけ今日分を作る
+        if tpl.weekday != today_weekday:
+            continue
+
+        hour = tpl.time_hour or 0
+        minute = tpl.time_minute or 0
+
+        # JST基準の締切を naive datetime で作る
+        # （DB では「JSTとして解釈される naive」として保存）
+        deadline = datetime(
+            year=today_jst.year,
+            month=today_jst.month,
+            day=today_jst.day,
+            hour=hour,
+            minute=minute,
+        )
+
+        # すでに同じ Task があればスキップ（重複防止）
+        existing = (
+            db.query(Task)
+            .filter(
+                Task.user_id == user_id,
+                Task.title == tpl.title,
+                Task.course_name == tpl.course_name,
+                Task.deadline == deadline,
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        new_task = Task(
+            user_id=user_id,
+            title=tpl.title,
+            course_name=tpl.course_name,
+            memo=tpl.memo,
+            deadline=deadline,
+            should_notify=True,
+            is_done=False,
+        )
+        db.add(new_task)
+
+    db.commit()
+
+
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
     """
     定期実行ジョブ（Scheduler / GitHub Actions 用）
+
+    - 「○時間前」通知：reminder_offsets_hours に従って毎回チェック
+    - 「当日タスクの朝通知」：get_tasks_due_today_morning に任せる（時間条件は外し、1日1回だけLogで制御）
     """
 
-    # ✅ 日本時間(JST)の現在時刻を使う
-    now_jst = datetime.now(JST)
-    print("=== run_daily_job ===")
-    print("  now_jst:", now_jst)
+    # 内部の基準はUTC、ログ表示はJST
+    now_utc = datetime.now(timezone.utc)
+    now_jst = now_utc.astimezone(JST)
 
+    print("=== run_daily_job ===")
+    print("  now_utc:", now_utc)
+    print("  now_jst:", now_jst)
 
     results: Dict[str, int] = {
         "three_hours_before": 0,
         "morning": 0,
         "users_targeted": 0,
     }
-
-    # ★★ 追加：絶対に初期化しておく（UnboundLocalError対策）
-    tasks_today = []
-    tasks_3h = []
 
     users = (
         db.query(User)
@@ -131,6 +201,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # 通知設定取得
         setting = get_or_create_notification_setting(db, user_id=user_id)
 
+        # ★ 追加：今日分の WeeklyTask から Task を自動生成
+        ensure_today_tasks_from_weekly(db, user_id=user_id)
+
         # ---------- ① 「○時間前」通知 ----------
         offsets = setting.reminder_offsets_hours or []
 
@@ -147,6 +220,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if not tasks_3h:
                 continue
 
+            # 3時間前などのまとめ通知
             await send_deadline_reminder(
                 line_user_id=line_user_id,
                 tasks=tasks_3h,
@@ -154,6 +228,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             )
 
             for task in tasks_3h:
+                # offset=hours でログ（3, 24, 1 など）
                 mark_notification_as_sent(db, user_id, task.id, hours)
 
             if hours == 3:
@@ -162,24 +237,16 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 key = f"offset_{hours}"
                 results[key] = results.get(key, 0) + len(tasks_3h)
 
-        # ---------- ② 朝通知 ----------
-        try:
-            digest_hour, digest_minute = map(int, setting.daily_digest_time.split(":"))
-        except ValueError:
-            digest_hour, digest_minute = 8, 0
-
-        if (
-            setting.enable_morning_notification
-            # ✅ JSTベースで「daily_digest_time ±10分」のときだけ送る
-           and now_jst.hour == digest_hour
-           and abs(now_jst.minute - digest_minute) <= 10
-        ):
+        # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
+        if setting.enable_morning_notification:
             tasks_today = get_tasks_due_today_morning(db, user_id=user_id)
 
             if tasks_today:
+                # 当日タスクのダイジェスト（1日1回だけ送られるイメージ）
                 await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
 
                 for task in tasks_today:
+                    # offset=0 を「当日朝送った」ログとして扱う
                     mark_notification_as_sent(db, user_id, task.id, 0)
 
                 results["morning"] += len(tasks_today)

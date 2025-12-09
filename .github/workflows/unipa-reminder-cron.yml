@@ -4,10 +4,10 @@ name: UNIPA Reminder Cron
 
 on:
   schedule:
-    # 毎時0分に実行（UTC）。JSTでも毎時間動けばOKなのでこれで十分。
-    - cron: "*/30 * * * *"
-  # 手動実行用（GitHubのActionsタブから押せるように）
+    # 毎時 00 分 と 30 分 に実行（UTC）
+    - cron: "0,30 * * * *"
   workflow_dispatch:
+
 
 jobs:
   call-daily-cron:

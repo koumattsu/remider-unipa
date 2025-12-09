@@ -63,7 +63,7 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
       course_name: form.course_name.trim(),
       memo: form.memo,
       weekday: form.weekday,
-      time_hour: form.time_hour,
+      time_hour: backendHour,
       time_minute: form.time_minute,
       is_active: form.is_active,
     };

@@ -6,7 +6,7 @@ interface StatsViewProps {
   tasks: Task[];
 }
 
-export const StatsView: React.FC<{tasks:Task[]}> = ({ tasks }) => {
+export const StatsView: React.FC<StatsViewProps> = ({ tasks }) => {
   const now = new Date();
 
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());

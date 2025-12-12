@@ -6,20 +6,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
-from app.db.base import Base, engine  # ★ engine を base からインポート
+from app.db.base import Base, engine
 
-
-def create_tables() -> None:
+def create_tables_if_needed() -> None:
     """
-    アプリ起動時にDBテーブルを自動作成するヘルパー。
-    既にテーブルがある場合は何もしない。
+    ローカル(SQLite)開発ではテーブルを自動作成してOK。
+    本番(PostgreSQL)では起動時 create_all は事故の元なので実行しない。
     """
-    Base.metadata.create_all(bind=engine)
-
+    db_url = settings.DATABASE_URL or ""
+    if db_url.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
 
 def get_application() -> FastAPI:
-    # まずテーブルを作成（なければ作る）
-    create_tables()
+    # SQLiteのときだけ作成
+    create_tables_if_needed()
 
     app = FastAPI(
         title="UNIPA Reminder Backend",
@@ -41,10 +41,7 @@ def get_application() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 既存の v1 API
     app.include_router(api_router, prefix="/api/v1")
-
-    # 追加: LINE Webhook (/line/webhook)
     app.include_router(line_webhook_router, prefix="/line", tags=["line"])
 
     @app.get("/")

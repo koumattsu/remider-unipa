@@ -9,7 +9,6 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     Index,
-    UniqueConstraint,  # 👈 追加
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -17,26 +16,13 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 from app.models.task_notification_override import TaskNotificationOverride
-# ...
-notification_override = relationship(
-    "TaskNotificationOverride",
-    back_populates="task",
-    uselist=False,
-)
-
+from app.models.weekly_task import WeeklyTask
 
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         # ユーザーごとの締切順ソート用 Index（元のまま）
         Index("ix_tasks_user_deadline", "user_id", "deadline"),
-        # 「同じユーザー・同じ授業・同じタイトル」は1件にするユニーク制約 👇
-        UniqueConstraint(
-            "user_id",
-            "course_name",
-            "title",
-            name="uq_tasks_user_course_title",
-        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -47,6 +33,7 @@ class Task(Base):
     memo = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False, nullable=False)
     should_notify = Column(Boolean, nullable=False, default=True)
+    weekly_task_id = Column(Integer, ForeignKey("weekly_tasks.id"), nullable=True, index=True)
 
     created_at = Column(
         DateTime(timezone=True),
@@ -62,4 +49,19 @@ class Task(Base):
 
     # リレーションシップ
     user = relationship("User", back_populates="tasks")
-    notification_logs = relationship("TaskNotificationLog",back_populates="task",cascade="all, delete-orphan")
+    
+    # 🔔 通知ログ
+    notification_logs = relationship(
+        "TaskNotificationLog",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+
+    # 👇 1:1 のタスク別通知設定（すでにある想定）
+    notification_override = relationship(
+        "TaskNotificationOverride",
+        back_populates="task",
+        uselist=False,
+    )
+
+    weekly_task = relationship("WeeklyTask", back_populates="generated_tasks")

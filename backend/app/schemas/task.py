@@ -21,6 +21,8 @@ class TaskBase(BaseModel):
     course_name: str
     deadline: datetime
     memo: Optional[str] = None
+    # 👇 WeeklyTask 由来ならそのID（普通のタスクは None）
+    weekly_task_id: Optional[int] = None
 
 
 class TaskCreate(TaskBase):
@@ -39,6 +41,7 @@ class TaskUpdate(BaseModel):
     deadline: Optional[datetime] = None
     memo: Optional[str] = None
     is_done: Optional[bool] = None
+    weekly_task_id: Optional[int] = None
 
 
 class TaskResponse(TaskBase):

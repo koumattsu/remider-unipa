@@ -20,65 +20,68 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
   
   const [deadlineDate, setDeadlineDate] = useState('');   // 例: "2025-11-30"
   const [deadlineHour, setDeadlineHour] = useState('24'); // "1"〜"24"、デフォルト24時
+  const [deadlineMinute, setDeadlineMinute] = useState('00'); // "00" or "30"
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsSubmitting(true);
+    try {
+      if (!deadlineDate) {
+        alert('締切日を選択してください');
+        setIsSubmitting(false);
+        return;
+      }
 
-  try {
-    if (!deadlineDate) {
-      alert('締切日を選択してください');
+      const hourNum = Number(deadlineHour);      // 1〜24
+      const minuteNum = Number(deadlineMinute);  // 0 or 30 を想定
+
+      let dateObj = new Date(deadlineDate); // 選択した日付の 00:00
+
+      if (hourNum === 24) {
+        // 24:xx → 翌日の 0:xx
+        dateObj.setDate(dateObj.getDate() + 1);
+        dateObj.setHours(0, minuteNum, 0, 0);
+      } else {
+        // それ以外 → その日の hourNum:minuteNum
+        dateObj.setHours(hourNum, minuteNum, 0, 0);
+      }
+
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const hour = String(dateObj.getHours()).padStart(2, '0');
+      const minute = String(dateObj.getMinutes()).padStart(2, '0');
+      const deadlineStr = `${year}-${month}-${day}T${hour}:${minute}`;
+
+      await tasksApi.create({
+        ...formData,
+        title: formData.title.trim(),
+        course_name: formData.course_name?.trim() || '',
+        memo: formData.memo?.trim() || '',
+        deadline: deadlineStr,
+        should_notify: true,
+      });
+
+      // フォームをリセット
+      setFormData({
+        title: '',
+        course_name: '',
+        memo: '',
+      });
+      setDeadlineDate('');
+      setDeadlineHour('24');
+      setDeadlineMinute('00');   // ★ 分もリセット
+
+      onTaskCreated();
+    } catch (error) {
+      console.error('課題の作成に失敗しました:', error);
+      alert('課題の作成に失敗しました');
+    } finally {
       setIsSubmitting(false);
-      return;
     }
+  };
 
-    const hourNum = Number(deadlineHour); // 1〜24
-    let dateObj = new Date(deadlineDate); // 選択した日付の 00:00
-
-    if (hourNum === 24) {
-      // 24時 → 翌日の 00:00
-      dateObj.setDate(dateObj.getDate() + 1);
-      dateObj.setHours(0, 0, 0, 0);
-    } else {
-      // それ以外 → その日の hourNum:00
-      dateObj.setHours(hourNum, 0, 0, 0);
-    }
-
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const hour = String(dateObj.getHours()).padStart(2, '0');
-    const minute = String(dateObj.getMinutes()).padStart(2, '0');
-    const deadlineStr = `${year}-${month}-${day}T${hour}:${minute}`;
-
-    await tasksApi.create({
-      ...formData,
-      title: formData.title.trim(),
-      course_name: formData.course_name?.trim() || '',
-      memo: formData.memo?.trim() || '',
-      deadline: deadlineStr,
-      should_notify: true,        // ★ ここ追加：作成時は通知ONを初期値にする
-    });
-
-
-    // フォームをリセット
-    setFormData({
-      title: '',
-      course_name: '',
-      memo: '',
-    });
-    setDeadlineDate('');
-    setDeadlineHour('24');
-
-    onTaskCreated();
-  } catch (error) {
-    console.error('課題の作成に失敗しました:', error);
-    alert('課題の作成に失敗しました');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
 
 
   return (
@@ -152,11 +155,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
               )}
             </div>
 
-            {/* 時間：1〜24時セレクト（デフォルト24時） */}
+            {/* 時刻：時（1〜24）＋ 分（00 / 30） */}
             <select
               value={deadlineHour}
               onChange={(e) => setDeadlineHour(e.target.value)}
-              style={{ width: '120px', padding: '0.5rem', fontSize: '1rem' }}
+              style={{ width: '110px', padding: '0.5rem', fontSize: '1rem' }}
             >
               {Array.from({ length: 24 }, (_, i) => {
                 const h = i + 1; // 1〜24
@@ -167,6 +170,15 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
                   </option>
                 );
               })}
+            </select>
+
+            <select
+              value={deadlineMinute}
+              onChange={(e) => setDeadlineMinute(e.target.value)}
+              style={{ width: '90px', padding: '0.5rem', fontSize: '1rem' }}
+            >
+              <option value="00">00</option>
+              <option value="30">30</option>
             </select>
           </div>
 

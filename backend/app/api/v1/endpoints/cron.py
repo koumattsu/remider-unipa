@@ -151,6 +151,7 @@ def ensure_today_tasks_from_weekly(db: Session, user_id: int) -> None:
             deadline=deadline,
             should_notify=True,
             is_done=False,
+            weekly_task_id=tpl.id,  # 👈 このTaskはこのテンプレ由来だよ、という印
         )
         db.add(new_task)
 

@@ -12,7 +12,6 @@ import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
 
-
 const WEEKLY_SKIP_STORAGE_KEY = 'unipa_weekly_skips_v1';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';

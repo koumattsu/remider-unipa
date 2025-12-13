@@ -1,7 +1,8 @@
+# backend/app/core/config.py
+
 from pydantic_settings import BaseSettings
 from typing import Optional, Union
 from pydantic import field_validator
-
 
 class Settings(BaseSettings):
     """アプリケーション設定"""

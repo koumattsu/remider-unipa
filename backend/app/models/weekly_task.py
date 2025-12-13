@@ -6,7 +6,6 @@ from sqlalchemy.orm import relationship
 from app.db.base import Base   # ✅ ここを修正
 from app.models.user import User
 
-
 class WeeklyTask(Base):
     __tablename__ = "weekly_tasks"
 
@@ -30,3 +29,6 @@ class WeeklyTask(Base):
 
     # 有効/無効
     is_active = Column(Boolean, nullable=False, default=True)
+
+    # 👇 週タスクから生成された Task 達
+    generated_tasks = relationship("Task", back_populates="weekly_task")

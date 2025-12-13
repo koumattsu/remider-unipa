@@ -1,7 +1,7 @@
 // frontend/src/components/TaskList.tsx
 
 import { useState, useEffect } from 'react';
-import { Task, TaskUpdate } from '../types';
+import { Task, TaskUpdate, TaskCreate } from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
 
@@ -261,6 +261,63 @@ const saveTaskNotificationOptions = (
       alert('通知設定の更新に失敗しました');
     }
   };
+
+  // 👇 仮タスク（毎週タスク由来）を「この週だけの実タスク」として保存して編集する
+  const convertVirtualTaskToRealAndEdit = async (task: Task) => {
+    if (!isVirtualTask(task)) return;
+
+    // virtualId = -1 * (weeklyTaskId * 10 + offset)
+    const encoded = -task.id;
+    const weeklyTaskId = Math.floor(encoded / 10);
+
+    const payload: TaskCreate = {
+      title: task.title,
+      course_name: task.course_name ?? '',
+      memo: task.memo ?? '',
+      deadline: task.deadline, // すでに ISO 文字列
+      should_notify: true,
+      weekly_task_id: weeklyTaskId > 0 ? weeklyTaskId : undefined,
+    };
+
+    try {
+      // 1. 実タスクとして保存
+      const created = await tasksApi.create(payload);
+
+      // 2. この週の仮タスクは今後出てこないようにマーク
+      if (onVirtualTaskDelete) {
+        onVirtualTaskDelete(task);
+      }
+
+      // 3. 一覧を再読み込み
+      onTaskUpdated();
+
+      // 4. すぐ編集モーダルを開けるように、state をセット
+      const d = new Date(created.deadline);
+      let baseDate = new Date(d);
+      let hour = d.getHours();
+      const minute = d.getMinutes();
+
+      if (hour === 0 && minute === 0) {
+        baseDate.setDate(baseDate.getDate() - 1);
+        hour = 24;
+      }
+
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const yyyy = baseDate.getFullYear();
+      const mm = pad(baseDate.getMonth() + 1);
+      const dd = pad(baseDate.getDate());
+
+      setEditingTaskId(created.id);
+      setEditTitle(created.title || '');
+      setEditDate(`${yyyy}-${mm}-${dd}`);
+      setEditHour(pad(hour));
+      setEditMinute(pad(minute));
+    } catch (e) {
+      console.error('仮タスクの保存に失敗しました:', e);
+      alert('この週だけのタスクとして保存に失敗しました');
+    }
+  };
+
 
   const handleBulkDelete = async () => {
     const realIds = selectedIds.filter((id) => id > 0);
@@ -576,33 +633,37 @@ const saveTaskNotificationOptions = (
                               overflow: 'hidden',
                             }}
                           >
-                            {/* 実タスクだけ「編集」ボタンを出す */}
-                            {!isVirtualTask(task) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  openEditModal(task);
-                                  setMenuTaskId(null);
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '0.5rem 0.8rem',
-                                  fontSize: '0.85rem',
-                                  textAlign: 'left',
-                                  border: 'none',
-                                  background: 'white',
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                編集
-                              </button>
-                            )}
-
-                            {/* 「通知」は仮タスクも含めて全部のタスクで使える */}
+                            {/* 実タスク / 仮タスク 共通で「編集」 */}
                             <button
                               type="button"
                               onClick={() => {
-                                openNotificationModal(task); // 🔔 モーダルを開く
+                                if (isVirtualTask(task)) {
+                                  // 仮タスクは裏で実タスクとして保存してから編集モーダルへ
+                                  void convertVirtualTaskToRealAndEdit(task);
+                                } else {
+                                  // 既存の実タスクはそのまま編集モーダルへ
+                                  openEditModal(task);
+                                }
+                                setMenuTaskId(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem 0.8rem',
+                                fontSize: '0.85rem',
+                                textAlign: 'left',
+                                border: 'none',
+                                background: 'white',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              編集
+                            </button>
+
+                            {/* 「通知」はそのまま */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                openNotificationModal(task);
                                 setMenuTaskId(null);
                               }}
                               style={{
@@ -788,29 +849,31 @@ const saveTaskNotificationOptions = (
                           overflow: 'hidden',
                         }}
                       >
-                        {/* 実タスクだけ「編集」ボタン表示 */}
-                        {!isVirtualTask(task) && (
-                          <button
-                            type="button"
-                            onClick={() => {
+                        {/* 実タスク / 仮タスク 共通で「編集」 */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isVirtualTask(task)) {
+                              void convertVirtualTaskToRealAndEdit(task);
+                            } else {
                               openEditModal(task);
-                              setMenuTaskId(null);
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '0.5rem 0.8rem',
-                              fontSize: '0.85rem',
-                              textAlign: 'left',
-                              border: 'none',
-                              background: 'white',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            編集
-                          </button>
-                        )}
+                            }
+                            setMenuTaskId(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem 0.8rem',
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            border: 'none',
+                            background: 'white',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          編集
+                        </button>
 
-                        {/* 「通知」は仮タスクも含めて全部のタスクでOK */}
+                        {/* 「通知」はそのまま */}
                         <button
                           type="button"
                           onClick={() => {

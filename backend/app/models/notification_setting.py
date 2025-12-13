@@ -17,11 +17,10 @@ class NotificationSetting(Base):
     )
 
     # デフォルトは「3時間前通知のみ」
-    # → 3時間前OFFにしたいときはフロントから 3 を外す
     reminder_offsets_hours = Column(
         JSON,
         nullable=False,
-        default=[3],
+        default=list,
     )
 
     # 朝通知の時刻（デフォルト 08:00）

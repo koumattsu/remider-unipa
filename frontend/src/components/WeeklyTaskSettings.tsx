@@ -85,26 +85,27 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
     }
   };
 
-const handleEditClick = (tpl: WeeklyTask) => {
-  const isMidnight = tpl.time_hour === 0;
+  const handleEditClick = (tpl: WeeklyTask) => {
+    const isMidnight = tpl.time_hour === 0;
 
-  // DB上は「火曜0:00」だけど、UIでは「月曜24:00」として見せる
-  const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
-  const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
+    // ❌ ここでは weekday をズラさない
+    // const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
+    const uiWeekday = tpl.weekday;
 
-  setEditingId(tpl.id);
-  setForm({
-    title: tpl.title,
-    course_name: tpl.course_name || '',
-    memo: tpl.memo || '',
-    // ★ ここを tpl.weekday → uiWeekday にする
-    weekday: uiWeekday,
-    // ★ 時刻も uiHour を使う
-    time_hour: uiHour,
-    time_minute: tpl.time_minute ?? 0,
-    is_active: tpl.is_active,
-  });
-};
+    const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
+
+    setEditingId(tpl.id);
+    setForm({
+      title: tpl.title,
+      course_name: tpl.course_name || '',
+      memo: tpl.memo || '',
+      weekday: uiWeekday,
+      time_hour: uiHour,
+      time_minute: tpl.time_minute ?? 0,
+      is_active: tpl.is_active,
+    });
+  };
+
 
 
   const handleDeleteClick = async (tpl: WeeklyTask) => {
@@ -250,7 +251,7 @@ const handleEditClick = (tpl: WeeklyTask) => {
                 marginLeft: 4,
               }}
             >
-              {[0, 10, 20, 30, 40, 50].map((m) => (
+              {[0, 30].map((m) => (
                 <option key={m} value={m}>
                   {String(m).padStart(2, '0')}
                 </option>
@@ -328,22 +329,25 @@ const handleEditClick = (tpl: WeeklyTask) => {
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>操作</th>
             </tr>
           </thead>
+          
+          
           <tbody>
             {templates.map((tpl) => {
-              // ★ 0時のときは 24:00 として表示
               const isMidnight = tpl.time_hour === 0;
 
-              // DB: 火曜0:00 → UI: 月曜24:00
-              const uiWeekdayIndex = isMidnight
-                ? (tpl.weekday + 6) % 7
-                : tpl.weekday;
+              // DB の weekday をそのまま表示に使う
+              const weekdayIndex = tpl.weekday;
+
+              // 時刻だけ 0 → 24 に見せる
               const hourDisplay = isMidnight
                 ? 24
                 : tpl.time_hour ?? 0;
 
               return (
                 <tr key={tpl.id} style={{ borderTop: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '0.4rem' }}>{weekdayLabels[uiWeekdayIndex]}</td>
+                  <td style={{ padding: '0.4rem' }}>
+                    {weekdayLabels[weekdayIndex]}
+                  </td>
                   <td style={{ padding: '0.4rem' }}>
                     {String(hourDisplay).padStart(2, '0')}:
                     {String(tpl.time_minute ?? 0).padStart(2, '0')}

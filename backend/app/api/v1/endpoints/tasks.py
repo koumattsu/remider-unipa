@@ -1,19 +1,22 @@
 # backend/app/api/v1/endpoints/tasks.py
 
+import os
 from datetime import datetime
 from typing import Optional, List
-import os
-
+from sqlalchemy.exc import IntegrityError
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
-
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.task import Task
-from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from app.models.task_notification_override import TaskNotificationOverride
+from app.models.task_notification_log import TaskNotificationLog
+from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse, MoodleHtmlImportRequest
 from app.services.sync_unipa import sync_unipa_tasks
+from app.services.moodle_client import parse_moodle_timeline_html
 
 router = APIRouter()
 
@@ -122,33 +125,43 @@ async def update_task(
     db.refresh(task)
     return task
 
-
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_user_from_line_id),
 ):
-    """課題を削除"""
     task = (
         db.query(Task)
         .filter(and_(Task.id == task_id, Task.user_id == current_user.id))
         .first()
     )
-
     if not task:
+        raise HTTPException(status_code=404, detail="課題が見つかりません")
+    
+    try:
+        # 🔽 子テーブルを先に削除
+        db.query(TaskNotificationOverride).filter(
+            TaskNotificationOverride.task_id == task.id
+        ).delete(synchronize_session=False)
+
+        db.query(TaskNotificationLog).filter(
+            TaskNotificationLog.task_id == task.id
+        ).delete(synchronize_session=False)
+
+        # 🔽 親タスク削除
+        db.delete(task)
+        db.commit()
+
+    except IntegrityError:
+        db.rollback()
+        traceback.print_exc()  # ← Renderのログに詳細が出る
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="課題が見つかりません",
+            status_code=409,
+            detail="FK制約で削除できません（通知ログ or override が残っています）",
         )
 
-    db.delete(task)
-    db.commit()
     return None
-
-from sqlalchemy import and_
-from app.schemas.task import MoodleHtmlImportRequest
-from app.services.moodle_client import parse_moodle_timeline_html
 
 
 @router.post("/import-moodle-html")

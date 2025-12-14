@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from typing import List, Optional
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
@@ -14,7 +14,6 @@ from app.schemas.task_notification_override import (
 from app.api.v1.endpoints.tasks import get_user_from_line_id
 
 router = APIRouter()
-
 
 # ================================
 # ★ 追加するのはこれだけ（一覧GET）
@@ -44,7 +43,7 @@ def list_task_notification_overrides(
 
 @router.get(
     "/{task_id}/notification-override",
-    response_model=TaskNotificationOverrideRead | None,
+    response_model=Optional[TaskNotificationOverrideRead],
 )
 def get_task_notification_override(
     task_id: int,

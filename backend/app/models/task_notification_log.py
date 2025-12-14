@@ -10,9 +10,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
 from app.db.base import Base
-
 
 class TaskNotificationLog(Base):
     """
@@ -21,7 +19,7 @@ class TaskNotificationLog(Base):
     - 同じ user_id + task_id + offset_hours の組み合わせには
       一度しか通知を送らないようにするためのログ。
     """
-
+    
     __tablename__ = "task_notification_logs"
     __table_args__ = (
         # 同じユーザー・同じタスク・同じオフセット（何時間前）は一度だけ

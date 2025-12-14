@@ -21,6 +21,41 @@ type TaskNotificationOptions = {
   offsetsHours: number[];
 };
 
+// Dashboard.tsx 内に追加（TaskList.tsx と同じ考え方）
+const NOTIFICATION_STORAGE_KEY = 'unipa_notification_settings_v1';
+
+type StoredNotificationSettings = {
+  enableMorning: boolean;
+  dailyDigestTime: string;
+  reminderOffsetsHours: number[];
+};
+
+const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+    if (!raw) return { morning: true, offsetsHours: [3] };
+
+    const parsed = JSON.parse(raw) as StoredNotificationSettings;
+
+    const uniqueOffsets = Array.from(
+      new Set(
+        (parsed.reminderOffsetsHours ?? [])
+          .map((n) => Number(n))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    );
+
+    return {
+      morning:
+        parsed.enableMorning !== undefined ? parsed.enableMorning : true,
+      offsetsHours: uniqueOffsets.length > 0 ? uniqueOffsets : [3],
+    };
+  } catch {
+    return { morning: true, offsetsHours: [3] };
+  }
+};
+
+
 const TASK_NOTIFY_OPTIONS_STORAGE_KEY = 'unipa_task_notify_options_v1';
 
 const loadTaskNotifyOptions = (): Record<number, TaskNotificationOptions> => {
@@ -153,9 +188,8 @@ export const Dashboard: React.FC = () => {
     });
   };
 
-
-
   const handleNotifyChange = (taskId: number, value: boolean) => {
+    if (taskId > 0) return; // 実タスク(id>0)はDB(should_notify)が真実なのでlocalStorageには保存しない
     setNotifyOverrides((prev) => {
       const next = { ...prev, [taskId]: value };
       saveNotifyOverrides(next); // ← 変更を永続化
@@ -167,7 +201,42 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     loadTasks();
     loadWeeklyTemplates();
+    loadTaskNotificationOverrides();
   }, []);
+
+  const loadTaskNotificationOverrides = async () => {
+    try {
+      const rows = await taskNotificationOverrideApi.getAll();
+
+      // DBの結果を Record<number, TaskNotificationOptions> に変換
+      const fromDb: Record<number, TaskNotificationOptions> = {};
+      const defaults = loadGlobalNotificationDefaults();
+      for (const r of rows) {
+        const morning = r.enable_morning ?? defaults.morning;
+        const offsetsRaw = r.reminder_offsets_hours ?? defaults.offsetsHours;
+        const offsets = offsetsRaw
+          .map((n: any) => Number(n))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        fromDb[r.task_id] = { morning, offsetsHours: offsets.length ? offsets : [3] };
+      }
+
+      setTaskNotifyOptions((prev) => {
+        // 仮想タスク(id<0)だけ残す
+        const virtualOnly: Record<number, TaskNotificationOptions> = {};
+        for (const [k, v] of Object.entries(prev)) {
+          const id = Number(k);
+          if (id < 0) virtualOnly[id] = v;
+        }
+
+        const next = { ...virtualOnly, ...fromDb };
+        saveTaskNotifyOptions(next); // キャッシュ（仮想も含めて）
+        return next;
+      });
+    } catch (e) {
+      console.error('タスク通知設定(override)の取得に失敗しました:', e);
+      // 失敗してもlocalStorageのキャッシュで動くのでalertしない（UX優先）
+    }
+  };
 
   const loadTasks = async () => {
     try {

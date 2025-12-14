@@ -57,11 +57,13 @@ class Task(Base):
         cascade="all, delete-orphan",
     )
 
-    # 👇 1:1 のタスク別通知設定（すでにある想定）
     notification_override = relationship(
         "TaskNotificationOverride",
         back_populates="task",
         uselist=False,
+        cascade="all, delete-orphan",  # ★追加
+        passive_deletes=True,          # ★追加（DB側CASCADEに任せる）
     )
+
 
     weekly_task = relationship("WeeklyTask", back_populates="generated_tasks")

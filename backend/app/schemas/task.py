@@ -5,13 +5,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-
 class MoodleHtmlImportRequest(BaseModel):
     """
     Moodle タイムラインHTMLを一括インポートするためのリクエストスキーマ
     """
     html: str
-
 
 class TaskBase(BaseModel):
     """
@@ -23,14 +21,13 @@ class TaskBase(BaseModel):
     memo: Optional[str] = None
     # 👇 WeeklyTask 由来ならそのID（普通のタスクは None）
     weekly_task_id: Optional[int] = None
-
+    should_notify: Optional[bool] = True
 
 class TaskCreate(TaskBase):
     """
     タスク作成用スキーマ（クライアント → サーバー）
     """
     pass
-
 
 class TaskUpdate(BaseModel):
     """
@@ -42,7 +39,7 @@ class TaskUpdate(BaseModel):
     memo: Optional[str] = None
     is_done: Optional[bool] = None
     weekly_task_id: Optional[int] = None
-
+    should_notify: Optional[bool] = None
 
 class TaskResponse(TaskBase):
     """

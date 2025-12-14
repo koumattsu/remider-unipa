@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import Column, Integer, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.sqlite import JSON  # SQLite でも JSON 型として使える
+from sqlalchemy import JSON
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -14,7 +14,14 @@ class TaskNotificationOverride(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    task_id = Column(Integer, ForeignKey("tasks.id"), nullable=False, unique=True)
+    task_id = Column(
+        Integer,
+        ForeignKey("tasks.id", ondelete="CASCADE"),  # ★ここが重要
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
 
     # None = 「全体設定に従う」
     enable_morning = Column(Boolean, nullable=True)
@@ -28,5 +35,4 @@ class TaskNotificationOverride(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
 
-    # Task との片方向だけの紐付けにする（Task 側には何も生やさない）
-    task = relationship("Task")
+    task = relationship("Task", back_populates="notification_override")

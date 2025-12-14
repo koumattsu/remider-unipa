@@ -29,30 +29,23 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
     try {
       if (!deadlineDate) {
         alert('締切日を選択してください');
-        setIsSubmitting(false);
         return;
       }
 
-      const hourNum = Number(deadlineHour);      // 1〜24
-      const minuteNum = Number(deadlineMinute);  // 0 or 30 を想定
+      const hourNum = Number(deadlineHour);
+      const minuteNum = Number(deadlineMinute);
 
-      let dateObj = new Date(deadlineDate); // 選択した日付の 00:00
+      // "YYYY-MM-DD" を分解（new Date('YYYY-MM-DD') のUTC罠を避ける）
+      const [y, m, d] = deadlineDate.split('-').map(Number);
 
-      if (hourNum === 24) {
-        // 24:xx → 翌日の 0:xx
-        dateObj.setDate(dateObj.getDate() + 1);
-        dateObj.setHours(0, minuteNum, 0, 0);
-      } else {
-        // それ以外 → その日の hourNum:minuteNum
-        dateObj.setHours(hourNum, minuteNum, 0, 0);
-      }
+      // ローカル(JST)として Date を作る
+      const dateObj =
+        hourNum === 24
+          ? new Date(y, m - 1, d + 1, 0, minuteNum, 0, 0) // 24:xx → 翌日0:xx
+          : new Date(y, m - 1, d, hourNum, minuteNum, 0, 0);
 
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const hour = String(dateObj.getHours()).padStart(2, '0');
-      const minute = String(dateObj.getMinutes()).padStart(2, '0');
-      const deadlineStr = `${year}-${month}-${day}T${hour}:${minute}`;
+      // サーバーにはUTCで送る（例: 2025-12-14T14:00:00.000Z）
+      const deadlineStr = dateObj.toISOString();
 
       await tasksApi.create({
         ...formData,
@@ -63,16 +56,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
         should_notify: true,
       });
 
-      // フォームをリセット
-      setFormData({
-        title: '',
-        course_name: '',
-        memo: '',
-      });
+      // reset
+      setFormData({ title: '', course_name: '', memo: '' });
       setDeadlineDate('');
       setDeadlineHour('24');
-      setDeadlineMinute('00');   // ★ 分もリセット
-
+      setDeadlineMinute('00');
       onTaskCreated();
     } catch (error) {
       console.error('課題の作成に失敗しました:', error);
@@ -81,6 +69,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
       setIsSubmitting(false);
     }
   };
+
 
 
 

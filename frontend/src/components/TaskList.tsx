@@ -78,8 +78,6 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
   }
 };
 
-
-
 // Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
 const isVirtualTask = (task: Task) => task.id < 0;
 
@@ -225,21 +223,18 @@ const saveTaskNotificationOptions = (
 
   const handleToggleDone = async (task: Task, newIsDone: boolean) => {
     if (isVirtualTask(task)) {
-      // 仮タスクはフロント側だけで完了状態を持つ
       setLocalDoneOverrides((prev) => ({ ...prev, [task.id]: newIsDone }));
-
-      // 通知は「とりあえず今まで通り」軽く連動
+      // 仮想は今まで通り：完→OFF、未→ON
       const hasOverride = notifyOverrides[task.id] !== undefined;
-      if (!hasOverride) {
-        onNotifyChange(task.id, !newIsDone);
-      }
+      if (!hasOverride) onNotifyChange(task.id, !newIsDone);
       return;
     }
 
-    const payload: TaskUpdate = { is_done: newIsDone };
-
     try {
-      await tasksApi.update(task.id, payload);
+      await tasksApi.update(task.id, {
+        is_done: newIsDone,
+        should_notify: !newIsDone, // ★ここが希望仕様
+      });
       onTaskUpdated();
     } catch (error) {
       console.error('課題の更新に失敗しました:', error);
@@ -255,7 +250,7 @@ const saveTaskNotificationOptions = (
 
     try {
       await tasksApi.update(task.id, { should_notify: newValue });
-      onNotifyChange(task.id, newValue);
+      onTaskUpdated();
     } catch (error) {
       console.error('通知設定の更新に失敗しました:', error);
       alert('通知設定の更新に失敗しました');
@@ -391,7 +386,7 @@ const saveTaskNotificationOptions = (
     return <p style={{ color: '#666' }}>課題がありません</p>;
   }
 
-    // 日付(yyyy-MM-dd) + 時刻('01'〜'24') + 分('00' or '30') から deadline 文字列を生成
+  // ✅ TaskList.tsx の buildDeadlineFromParts をこれにする（最小）
   const buildDeadlineFromParts = (
     dateStr: string,
     hourStr: string,
@@ -403,14 +398,14 @@ const saveTaskNotificationOptions = (
     let hourNum = Number(hourStr);
     const minuteNum = Number(minuteStr);
 
-    if (!year || !month || !day || isNaN(hourNum) || isNaN(minuteNum)) {
+    if (!year || !month || !day || Number.isNaN(hourNum) || Number.isNaN(minuteNum)) {
       return null;
     }
 
-    // ベース日付
-    const base = new Date(year, month - 1, day);
+    // ローカル（JST）として Date を作る
+    const base = new Date(year, month - 1, day, 0, 0, 0, 0);
 
-    // 24:00 の場合は翌日 00:00 として扱う
+    // 24:00 は翌日 00:00
     if (hourNum === 24) {
       base.setDate(base.getDate() + 1);
       hourNum = 0;
@@ -418,14 +413,8 @@ const saveTaskNotificationOptions = (
 
     base.setHours(hourNum, minuteNum, 0, 0);
 
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const yyyy = base.getFullYear();
-    const mm = pad(base.getMonth() + 1);
-    const dd = pad(base.getDate());
-    const hh = pad(base.getHours());
-    const mi = pad(base.getMinutes());
-
-    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+    // ✅ サーバーへはUTC確定文字列で送る（Z付き）
+    return base.toISOString();
   };
 
 
@@ -546,13 +535,15 @@ const saveTaskNotificationOptions = (
                   overrideDone !== undefined ? overrideDone : task.is_done;
 
                 const hasNotifyFlag =
-                  task.should_notify !== undefined &&
-                  task.should_notify !== null;
+                  task.should_notify !== undefined && task.should_notify !== null;
 
-                const baseNotify = hasNotifyFlag ? !!task.should_notify : !isDone;
-                const override = notifyOverrides[task.id];
-                const effectiveNotify =
-                  override !== undefined ? override : baseNotify;
+                const baseNotify = hasNotifyFlag
+                  ? Boolean(task.should_notify)
+                  : !isDone;
+
+                const effectiveNotify = isVirtualTask(task)
+                  ? (notifyOverrides[task.id] !== undefined ? notifyOverrides[task.id] : baseNotify)
+                  : baseNotify;
 
                 const baseMemo = task.memo || task.course_name || '';
 
@@ -753,12 +744,12 @@ const saveTaskNotificationOptions = (
               overrideDone !== undefined ? overrideDone : task.is_done;
 
             const hasNotifyFlag =
-              task.should_notify !== undefined &&
-              task.should_notify !== null;
-            const baseNotify = hasNotifyFlag ? !!task.should_notify : !isDone;
-            const override = notifyOverrides[task.id];
-            const effectiveNotify =
-              override !== undefined ? override : baseNotify;
+              task.should_notify !== undefined && task.should_notify !== null;
+            const baseNotify = hasNotifyFlag ? Boolean(task.should_notify) : !isDone;
+            const effectiveNotify = isVirtualTask(task)
+              ? (notifyOverrides[task.id] !== undefined ? notifyOverrides[task.id] : baseNotify)
+              : baseNotify;
+
 
             const baseMemo = task.memo || task.course_name || '';
 

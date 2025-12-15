@@ -121,6 +121,8 @@ async def update_task(
         )
 
     update_data = task_data.model_dump(exclude_unset=True)
+    prev_should_notify = task.should_notify
+    prev_auto_flag = task.auto_notify_disabled_by_done
     for field, value in update_data.items():
         setattr(task, field, value)
 
@@ -143,13 +145,6 @@ async def update_task(
             if task.auto_notify_disabled_by_done:
                 task.should_notify = True
                 task.auto_notify_disabled_by_done = False
-
-    
-    # ✅ ルール：完了にしたら通知OFF（weekly由来も統一）
-    # - is_done=False に戻しても should_notify を自動復元しない
-    if update_data.get("is_done") is True:
-        task.should_notify = False
-
     db.commit()
     db.refresh(task)
     return task

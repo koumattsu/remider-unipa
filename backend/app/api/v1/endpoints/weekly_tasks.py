@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.core.security import get_current_user
+from app.api.v1.endpoints.tasks import get_user_from_line_id
 from app.models.user import User
 from app.models.weekly_task import WeeklyTask
 from app.schemas.weekly_task import (
@@ -44,7 +44,7 @@ def normalize_weekly_time(
 @router.get("/", response_model=List[WeeklyTaskResponse])
 def list_weekly_tasks(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_user_from_line_id),
 ):
     """
     ログインユーザーの毎週タスクテンプレ一覧を取得
@@ -62,7 +62,7 @@ def list_weekly_tasks(
 def create_weekly_task(
     body: WeeklyTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_user_from_line_id),
 ):
     """
     毎週タスクテンプレを新規作成
@@ -96,7 +96,7 @@ def update_weekly_task(
     weekly_task_id: int,
     body: WeeklyTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_user_from_line_id),
 ):
     """
     毎週タスクテンプレを更新
@@ -151,7 +151,7 @@ def update_weekly_task(
 def delete_weekly_task(
     weekly_task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_user_from_line_id),
 ):
     """
     毎週タスクテンプレを削除

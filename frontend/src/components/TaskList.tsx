@@ -31,7 +31,6 @@ type TaskNotificationDraft = {
   offsetsHours: string[]; // 文字列で持つ（編集しやすくするため）
 };
 
-
 // 全タスク共通のデフォルト（バックエンドのデフォルト想定: 朝 + 3時間前）
 const DEFAULT_TASK_NOTIFICATION_OPTIONS: TaskNotificationOptions = {
   morning: true,
@@ -215,7 +214,7 @@ const saveTaskNotificationOptions = (
     try {
       await tasksApi.update(task.id, {
         is_done: newIsDone,
-        should_notify: !newIsDone, // 完了したら通知OFF、未完ならON
+        // ✅ should_notify は送らない（通知のON/OFFはバック側ロジック or 通知トグルだけ）
       });
       onTaskUpdated();
     } catch (error) {
@@ -636,7 +635,9 @@ const saveTaskNotificationOptions = (
 
             const isDone = Boolean(task.is_done);
 
-            const effectiveNotify = Boolean(task.should_notify);
+            const effectiveNotify = isVirtualTask(task)
+              ? (notifyOverrides?.[task.id] ?? true)
+              : Boolean(task.should_notify);
 
             const baseMemo = task.memo || task.course_name || '';
 

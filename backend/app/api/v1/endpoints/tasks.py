@@ -30,7 +30,6 @@ def get_user_from_line_id(
 
     if not x_line_user_id:
         raise HTTPException(status_code=400, detail="X-Line-User-Id is required")
-
     """
     フロントから送られてくる X-Line-User-Id を元に User を取得 or 作成する。
     - 既存のユーザーがいればそれを返す

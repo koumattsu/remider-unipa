@@ -124,16 +124,26 @@ async def update_task(
     for field, value in update_data.items():
         setattr(task, field, value)
 
+    # ② ユーザーが通知を手動で触ったら、autoフラグは解除（勝手に復帰させない）
+    if "should_notify" in update_data:
+        task.auto_notify_disabled_by_done = False
+
     # ✅ 完了操作でOFFになった通知だけ復帰させる
     if "is_done" in update_data:
         if update_data["is_done"] is True:
-            task.should_notify = False
-            task.auto_notify_disabled_by_done = True
+            # ✅ 完了にした瞬間に「通知がONだった」場合だけ、完了OFF扱いにする
+            if task.should_notify is True:
+                task.should_notify = False
+                task.auto_notify_disabled_by_done = True
+            else:
+                # すでに手動でOFFなら、完了OFF扱いにしない
+                task.auto_notify_disabled_by_done = False
 
         elif update_data["is_done"] is False:
             if task.auto_notify_disabled_by_done:
                 task.should_notify = True
                 task.auto_notify_disabled_by_done = False
+
     
     # ✅ ルール：完了にしたら通知OFF（weekly由来も統一）
     # - is_done=False に戻しても should_notify を自動復元しない

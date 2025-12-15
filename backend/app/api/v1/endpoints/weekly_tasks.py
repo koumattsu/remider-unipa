@@ -1,10 +1,13 @@
 # backend/app/api/v1/endpoints/weekly_tasks.py
 
+from datetime import date, datetime, timedelta, timezone
+from fastapi import Body
+from sqlalchemy import and_
+from app.models.task import Task
+from app.api.v1.endpoints.tasks import get_user_from_line_id
 from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
 from app.db.session import get_db
 from app.api.v1.endpoints.tasks import get_user_from_line_id
 from app.models.user import User
@@ -16,6 +19,8 @@ from app.schemas.weekly_task import (
 )
 
 router = APIRouter()
+
+JST = timezone(timedelta(hours=9))
 
 def normalize_weekly_time(
     weekday: int,
@@ -57,7 +62,6 @@ def list_weekly_tasks(
     )
     return tasks
 
-
 @router.post("/", response_model=WeeklyTaskResponse, status_code=status.HTTP_201_CREATED)
 def create_weekly_task(
     body: WeeklyTaskCreate,
@@ -89,6 +93,82 @@ def create_weekly_task(
     db.commit()
     db.refresh(task)
     return task
+
+@router.post("/materialize")
+def materialize_weekly_tasks_to_real_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_user_from_line_id),
+):
+    """
+    向こう7日分の weekly_tasks を tasks に実体化する（存在してたら作らない）
+    ※ Dashboard 初期ロードで呼ぶ想定
+    """
+    # 1) テンプレ取得（有効のみ）
+    templates = (
+        db.query(WeeklyTask)
+        .filter(WeeklyTask.user_id == current_user.id, WeeklyTask.is_active == True)
+        .all()
+    )
+    created = 0
+    skipped = 0
+    today = datetime.now(JST).date()
+    days = 7
+
+    for offset in range(days):
+        day = today + timedelta(days=offset)
+
+        # 0=月...6=日 に合わせる（Python weekday() は 0=月..6=日）
+        weekday_mon0 = day.weekday()
+
+        for tpl in templates:
+            if tpl.weekday != weekday_mon0:
+                continue
+
+            # deadline（JST）を作る
+            deadline_dt = datetime(
+                day.year, day.month, day.day,
+                tpl.time_hour or 0,
+                tpl.time_minute or 0,
+                0,
+                tzinfo=JST,
+            )
+
+            # 2) 既に同じ (user_id, weekly_task_id, deadline) があるなら作らない
+            exists = (
+                db.query(Task.id)
+                .filter(
+                    and_(
+                        Task.user_id == current_user.id,
+                        Task.weekly_task_id == tpl.id,
+                        Task.deadline == deadline_dt,
+                    )
+                )
+                .first()
+            )
+            if exists:
+                skipped += 1
+                continue
+
+            # 3) 無ければ作成
+            task = Task(
+                user_id=current_user.id,
+                title=tpl.title,
+                course_name=tpl.course_name or "",
+                memo=tpl.memo or "",
+                deadline=deadline_dt,
+                is_done=False,
+                should_notify=True,
+                weekly_task_id=tpl.id,
+            )
+            db.add(task)
+            created += 1
+    db.commit()
+
+    # フロントは weeklyTemplates を既に別APIで取得しているので
+    # ここは response_model を本当は TaskResponse[] にしたいけど、
+    # まずは「成功したか」のAPIとして最小にしてOK。
+    # （必要なら TaskResponse[] に変更する）
+    return {"created": created, "skipped": skipped}
 
 
 @router.patch("/{weekly_task_id}", response_model=WeeklyTaskResponse)

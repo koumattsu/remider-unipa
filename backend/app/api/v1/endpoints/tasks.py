@@ -25,6 +25,12 @@ def get_user_from_line_id(
     x_line_user_id: str = Header(..., alias="X-Line-User-Id"),
     db: Session = Depends(get_db),
 ) -> User:
+    # ★追加：空白・改行対策
+    x_line_user_id = (x_line_user_id or "").strip()
+
+    if not x_line_user_id:
+        raise HTTPException(status_code=400, detail="X-Line-User-Id is required")
+
     """
     フロントから送られてくる X-Line-User-Id を元に User を取得 or 作成する。
     - 既存のユーザーがいればそれを返す
@@ -45,8 +51,6 @@ def get_user_from_line_id(
     db.commit()
     db.refresh(user)
     return user
-
-
 
 @router.get("/", response_model=List[TaskResponse])
 async def get_tasks(
@@ -78,7 +82,6 @@ async def get_tasks(
 
     tasks = query.all()
     return tasks
-
 
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
@@ -120,6 +123,22 @@ async def update_task(
     update_data = task_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(task, field, value)
+
+    # ✅ 完了操作でOFFになった通知だけ復帰させる
+    if "is_done" in update_data:
+        if update_data["is_done"] is True:
+            task.should_notify = False
+            task.auto_notify_disabled_by_done = True
+
+        elif update_data["is_done"] is False:
+            if task.auto_notify_disabled_by_done:
+                task.should_notify = True
+                task.auto_notify_disabled_by_done = False
+    
+    # ✅ ルール：完了にしたら通知OFF（weekly由来も統一）
+    # - is_done=False に戻しても should_notify を自動復元しない
+    if update_data.get("is_done") is True:
+        task.should_notify = False
 
     db.commit()
     db.refresh(task)

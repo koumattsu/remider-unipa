@@ -33,6 +33,7 @@ class Task(Base):
     memo = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False, nullable=False)
     should_notify = Column(Boolean, nullable=False, default=True)
+    auto_notify_disabled_by_done = Column(Boolean, nullable=False, default=False)
     weekly_task_id = Column(Integer, ForeignKey("weekly_tasks.id"), nullable=True, index=True)
 
     created_at = Column(
@@ -64,6 +65,5 @@ class Task(Base):
         cascade="all, delete-orphan",  # ★追加
         passive_deletes=True,          # ★追加（DB側CASCADEに任せる）
     )
-
 
     weekly_task = relationship("WeeklyTask", back_populates="generated_tasks")

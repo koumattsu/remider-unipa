@@ -19,6 +19,7 @@ from app.services.line_client import (
     send_simple_text,
     send_daily_digest,
 )
+from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 
 router = APIRouter()
 
@@ -89,73 +90,21 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
 
     return setting
 
-def ensure_today_tasks_from_weekly(db: Session, user_id: int) -> None:
+@router.post("/debug-migrate-task-auto-notify-flag")
+async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
     """
-    そのユーザーの WeeklyTask から、
-    「今日分の Task レコード」を自動生成する。
-
-    すでに同じ title / course_name / deadline の Task があれば作らない。
+    一度だけ実行する想定:
+    tasks テーブルに auto_notify_disabled_by_done カラムを追加する。
     """
-    # 今日の日付（JST）と曜日 (0=月〜6=日)
-    today_jst = datetime.now(JST).date()
-    today_weekday = today_jst.weekday()
-
-    # 対象ユーザーの有効な WeeklyTask 一覧
-    templates = (
-        db.query(WeeklyTask)
-        .filter(
-            WeeklyTask.user_id == user_id,
-            WeeklyTask.is_active == True,  # noqa: E712
-        )
-        .all()
-    )
-
-    for tpl in templates:
-        # DB上の weekday は 0=月〜6=日 を想定
-        # 「今日の曜日」のテンプレだけ今日分を作る
-        if tpl.weekday != today_weekday:
-            continue
-
-        hour = tpl.time_hour or 0
-        minute = tpl.time_minute or 0
-
-        # JST基準の締切を naive datetime で作る
-        # （DB では「JSTとして解釈される naive」として保存）
-        deadline = datetime(
-            year=today_jst.year,
-            month=today_jst.month,
-            day=today_jst.day,
-            hour=hour,
-            minute=minute,
-        )
-
-        # すでに同じ Task があればスキップ（重複防止）
-        existing = (
-            db.query(Task)
-            .filter(
-                Task.user_id == user_id,
-                Task.title == tpl.title,
-                Task.course_name == tpl.course_name,
-                Task.deadline == deadline,
-            )
-            .first()
-        )
-        if existing:
-            continue
-
-        new_task = Task(
-            user_id=user_id,
-            title=tpl.title,
-            course_name=tpl.course_name,
-            memo=tpl.memo,
-            deadline=deadline,
-            should_notify=True,
-            is_done=False,
-            weekly_task_id=tpl.id,  # 👈 このTaskはこのテンプレ由来だよ、という印
-        )
-        db.add(new_task)
-
-    db.commit()
+    try:
+        db.execute(text(
+            "ALTER TABLE tasks "
+            "ADD COLUMN auto_notify_disabled_by_done BOOLEAN NOT NULL DEFAULT 0;"
+        ))
+        db.commit()
+        return {"status": "ok", "message": "column added"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @router.post("/daily")
@@ -198,8 +147,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # 通知設定取得
         setting = get_or_create_notification_setting(db, user_id=user_id)
 
-        # ★ 追加：今日分の WeeklyTask から Task を自動生成
-        ensure_today_tasks_from_weekly(db, user_id=user_id)
+        # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
+        materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
         # ---------- ① 「○時間前」通知 ----------
         offsets = setting.reminder_offsets_hours or []

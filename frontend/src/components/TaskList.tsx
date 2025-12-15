@@ -1,16 +1,18 @@
 // frontend/src/components/TaskList.tsx
 
 import { useState, useEffect } from 'react';
-import { Task, TaskUpdate, TaskCreate } from '../types';
+import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
+
+// Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
+const isVirtualTask = (task: Task) => task.id < 0;
 
 interface TaskListProps {
   tasks: Task[];
   onTaskUpdated: () => void;
-  notifyOverrides: Record<number, boolean>;
-  onNotifyChange: (taskId: number, value: boolean) => void;
-  onVirtualTaskDelete?: (task: Task) => void;
+  notifyOverrides?: Record<number, boolean>;
+  onNotifyChange?: (taskId: number, value: boolean) => void;
   taskNotificationOverrides?: Record<number, TaskNotificationOptions>;
   onTaskNotificationOptionsChange?: (
     taskId: number,
@@ -18,9 +20,6 @@ interface TaskListProps {
   ) => void;
 }
 
-// 🔔 タスクごとの通知タイミング設定（フロント限定）
-//  - morning        : 当日朝のまとめ通知をするか
-//  - offsetsHours   : 「締切の◯時間前」に送りたい時間（例: [3, 5, 7]）
 interface TaskNotificationOptions {
   morning: boolean;
   offsetsHours: number[];
@@ -78,25 +77,16 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
   }
 };
 
-// Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
-const isVirtualTask = (task: Task) => task.id < 0;
-
 export const TaskList: React.FC<TaskListProps> = ({
   tasks,
   onTaskUpdated,
   notifyOverrides,
   onNotifyChange,
-  onVirtualTaskDelete,
   taskNotificationOverrides,
   onTaskNotificationOptionsChange,
 }) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-
-  // 仮タスク用の is_done 上書き状態（フロント限定）
-  const [localDoneOverrides, setLocalDoneOverrides] = useState<
-    Record<number, boolean>
-  >({});
 
   // 🔔 タスク個別の通知設定（フロント限定で保持）
   const [localTaskNotificationOverrides, setLocalTaskNotificationOverrides] =
@@ -222,18 +212,10 @@ const saveTaskNotificationOptions = (
   };
 
   const handleToggleDone = async (task: Task, newIsDone: boolean) => {
-    if (isVirtualTask(task)) {
-      setLocalDoneOverrides((prev) => ({ ...prev, [task.id]: newIsDone }));
-      // 仮想は今まで通り：完→OFF、未→ON
-      const hasOverride = notifyOverrides[task.id] !== undefined;
-      if (!hasOverride) onNotifyChange(task.id, !newIsDone);
-      return;
-    }
-
     try {
       await tasksApi.update(task.id, {
         is_done: newIsDone,
-        should_notify: !newIsDone, // ★ここが希望仕様
+        should_notify: !newIsDone, // 完了したら通知OFF、未完ならON
       });
       onTaskUpdated();
     } catch (error) {
@@ -243,11 +225,13 @@ const saveTaskNotificationOptions = (
   };
 
   const handleToggleNotify = async (task: Task, newValue: boolean) => {
+    // 仮想タスク(id<0) → 親に委譲（localStorage更新）
     if (isVirtualTask(task)) {
-      onNotifyChange(task.id, newValue);
+      onNotifyChange?.(task.id, newValue);
       return;
     }
 
+    // 実タスク(id>0) → DB更新
     try {
       await tasksApi.update(task.id, { should_notify: newValue });
       onTaskUpdated();
@@ -257,86 +241,17 @@ const saveTaskNotificationOptions = (
     }
   };
 
-  // 👇 仮タスク（毎週タスク由来）を「この週だけの実タスク」として保存して編集する
-  const convertVirtualTaskToRealAndEdit = async (task: Task) => {
-    if (!isVirtualTask(task)) return;
-
-    // virtualId = -1 * (weeklyTaskId * 10 + offset)
-    const encoded = -task.id;
-    const weeklyTaskId = Math.floor(encoded / 10);
-
-    const payload: TaskCreate = {
-      title: task.title,
-      course_name: task.course_name ?? '',
-      memo: task.memo ?? '',
-      deadline: task.deadline, // すでに ISO 文字列
-      should_notify: true,
-      weekly_task_id: weeklyTaskId > 0 ? weeklyTaskId : undefined,
-    };
-
-    try {
-      // 1. 実タスクとして保存
-      const created = await tasksApi.create(payload);
-
-      // 2. この週の仮タスクは今後出てこないようにマーク
-      if (onVirtualTaskDelete) {
-        onVirtualTaskDelete(task);
-      }
-
-      // 3. 一覧を再読み込み
-      onTaskUpdated();
-
-      // 4. すぐ編集モーダルを開けるように、state をセット
-      const d = new Date(created.deadline);
-      let baseDate = new Date(d);
-      let hour = d.getHours();
-      const minute = d.getMinutes();
-
-      if (hour === 0 && minute === 0) {
-        baseDate.setDate(baseDate.getDate() - 1);
-        hour = 24;
-      }
-
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const yyyy = baseDate.getFullYear();
-      const mm = pad(baseDate.getMonth() + 1);
-      const dd = pad(baseDate.getDate());
-
-      setEditingTaskId(created.id);
-      setEditTitle(created.title || '');
-      setEditDate(`${yyyy}-${mm}-${dd}`);
-      setEditHour(pad(hour));
-      setEditMinute(pad(minute));
-    } catch (e) {
-      console.error('仮タスクの保存に失敗しました:', e);
-      alert('この週だけのタスクとして保存に失敗しました');
-    }
-  };
-
-
   const handleBulkDelete = async () => {
     const realIds = selectedIds.filter((id) => id > 0);
-    const virtualIds = selectedIds.filter((id) => id < 0);
+    if (realIds.length === 0) return;
 
-    if (realIds.length === 0 && virtualIds.length === 0) return;
-
-    const totalCount = realIds.length + virtualIds.length;
-    if (!confirm(`${totalCount}件の課題をまとめて削除しますか？`)) return;
+    if (!confirm(`${realIds.length}件の課題をまとめて削除しますか？`)) return;
 
     try {
       setIsBulkDeleting(true);
-
-      if (realIds.length > 0) {
-        await Promise.all(realIds.map((id) => tasksApi.delete(id)));
-        onTaskUpdated();
-      }
-
-      if (virtualIds.length > 0 && onVirtualTaskDelete) {
-        const virtualTasks = tasks.filter((t) => virtualIds.includes(t.id));
-        virtualTasks.forEach((t) => onVirtualTaskDelete(t));
-      }
-
+      await Promise.all(realIds.map((id) => tasksApi.delete(id)));
       setSelectedIds([]);
+      onTaskUpdated();
     } catch (error) {
       console.error('課題の一括削除に失敗しました:', error);
       alert('課題の一括削除に失敗しました');
@@ -426,19 +341,15 @@ const saveTaskNotificationOptions = (
 
     // 共通: 編集モーダルを開く
   const openEditModal = (task: Task) => {
-    if (isVirtualTask(task)) return; // 仮タスクは今は編集しない
-
     const d = new Date(task.deadline);
-    let baseDate = new Date(d); // 表示用の日付
+    let baseDate = new Date(d);
     let hour = d.getHours();
     const minute = d.getMinutes();
 
-    // 0:00 を「前日 24:00」として扱う
     if (hour === 0 && minute === 0) {
       baseDate.setDate(baseDate.getDate() - 1);
       hour = 24;
     }
-
 
     const pad = (n: number) => String(n).padStart(2, '0');
     const yyyy = baseDate.getFullYear();
@@ -448,10 +359,9 @@ const saveTaskNotificationOptions = (
     setEditingTaskId(task.id);
     setEditTitle(task.title || '');
     setEditDate(`${yyyy}-${mm}-${dd}`);
-    setEditHour(pad(hour));          // '01'〜'24'
-    setEditMinute(pad(minute));      // '00' / '30' だけ想定
+    setEditHour(pad(hour));
+    setEditMinute(pad(minute));
   };
-
 
   return (
     <div>
@@ -530,20 +440,11 @@ const saveTaskNotificationOptions = (
               {sortedTasks.map((task) => {
                 const isSelected = selectedIds.includes(task.id);
 
-                const overrideDone = localDoneOverrides[task.id];
-                const isDone =
-                  overrideDone !== undefined ? overrideDone : task.is_done;
-
-                const hasNotifyFlag =
-                  task.should_notify !== undefined && task.should_notify !== null;
-
-                const baseNotify = hasNotifyFlag
-                  ? Boolean(task.should_notify)
-                  : !isDone;
+                const isDone = Boolean(task.is_done);
 
                 const effectiveNotify = isVirtualTask(task)
-                  ? (notifyOverrides[task.id] !== undefined ? notifyOverrides[task.id] : baseNotify)
-                  : baseNotify;
+                  ? (notifyOverrides?.[task.id] ?? true) // 仮想はlocalStorage(親状態)
+                  : Boolean(task.should_notify);          // 実タスクはDB
 
                 const baseMemo = task.memo || task.course_name || '';
 
@@ -628,13 +529,7 @@ const saveTaskNotificationOptions = (
                             <button
                               type="button"
                               onClick={() => {
-                                if (isVirtualTask(task)) {
-                                  // 仮タスクは裏で実タスクとして保存してから編集モーダルへ
-                                  void convertVirtualTaskToRealAndEdit(task);
-                                } else {
-                                  // 既存の実タスクはそのまま編集モーダルへ
-                                  openEditModal(task);
-                                }
+                                openEditModal(task);
                                 setMenuTaskId(null);
                               }}
                               style={{
@@ -739,17 +634,9 @@ const saveTaskNotificationOptions = (
           {sortedTasks.map((task) => {
             const isSelected = selectedIds.includes(task.id);
 
-            const overrideDone = localDoneOverrides[task.id];
-            const isDone =
-              overrideDone !== undefined ? overrideDone : task.is_done;
+            const isDone = Boolean(task.is_done);
 
-            const hasNotifyFlag =
-              task.should_notify !== undefined && task.should_notify !== null;
-            const baseNotify = hasNotifyFlag ? Boolean(task.should_notify) : !isDone;
-            const effectiveNotify = isVirtualTask(task)
-              ? (notifyOverrides[task.id] !== undefined ? notifyOverrides[task.id] : baseNotify)
-              : baseNotify;
-
+            const effectiveNotify = Boolean(task.should_notify);
 
             const baseMemo = task.memo || task.course_name || '';
 
@@ -844,11 +731,7 @@ const saveTaskNotificationOptions = (
                         <button
                           type="button"
                           onClick={() => {
-                            if (isVirtualTask(task)) {
-                              void convertVirtualTaskToRealAndEdit(task);
-                            } else {
-                              openEditModal(task);
-                            }
+                            openEditModal(task);
                             setMenuTaskId(null);
                           }}
                           style={{
@@ -999,7 +882,7 @@ const saveTaskNotificationOptions = (
     {/* 編集モーダル（カードのサイズを変えずに編集できるようにする） */}
       {editingTaskId !== null && (() => {
         const t = tasks.find((task) => task.id === editingTaskId);
-        if (!t || isVirtualTask(t)) return null;
+        if (!t) return null;
 
         return (
           <div

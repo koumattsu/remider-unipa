@@ -12,8 +12,6 @@ import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
 
-const WEEKLY_SKIP_STORAGE_KEY = 'unipa_weekly_skips_v1';
-
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
 
 type TaskNotificationOptions = {
@@ -78,21 +76,6 @@ const saveTaskNotifyOptions = (map: Record<number, TaskNotificationOptions>) => 
   );
 };
 
-
-/** localStorage から「スキップした毎週タスクのキー」を読み込み */
-const loadWeeklySkipKeys = (): string[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(WEEKLY_SKIP_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-
 /** 🔔 localStorage から通知ON/OFFの上書き情報を読み込み */
 const loadNotifyOverrides = (): Record<number, boolean> => {
   if (typeof window === 'undefined') return {};
@@ -106,16 +89,6 @@ const loadNotifyOverrides = (): Record<number, boolean> => {
   }
 };
 
-
-/** localStorage に保存 */
-const saveWeeklySkipKeys = (keys: string[]) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(
-    WEEKLY_SKIP_STORAGE_KEY,
-    JSON.stringify(Array.from(new Set(keys)))
-  );
-};
-
 /** 🔔 通知ON/OFFの上書き情報を localStorage に保存 */
 const saveNotifyOverrides = (map: Record<number, boolean>) => {
   if (typeof window === 'undefined') return;
@@ -123,17 +96,6 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
     NOTIFY_OVERRIDES_STORAGE_KEY,
     JSON.stringify(map)
   );
-};
-
-
-
-
-/** weekly_task_id + 日付 から一意キーを作る */
-const makeSkipKey = (weeklyTaskId: number, date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${weeklyTaskId}:${y}-${m}-${d}`;
 };
 
 // タブ
@@ -145,11 +107,6 @@ export const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // ★ この週だけ非表示にした「毎週タスク」のキー (localStorage と同期)
-  const [weeklySkipKeys, setWeeklySkipKeys] = useState<string[]>(() =>
-    loadWeeklySkipKeys()
-  );
 
     // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -197,12 +154,25 @@ export const Dashboard: React.FC = () => {
     });
   };
 
-
   useEffect(() => {
-    loadTasks();
-    loadWeeklyTemplates();
-    loadTaskNotificationOverrides();
+    (async () => {
+      // 1) 毎週タスクを実タスク化（向こう7日分）
+      try {
+        await weeklyTasksApi.materialize();
+      } catch (e) {
+        console.error('weekly materialize 失敗:', e);
+        // 失敗しても tasks は出したいので続行
+      }
+
+      // 2) 実タスクを取得
+      await loadTasks();
+
+      // 3) weeklyテンプレやoverrideもロード
+      await loadWeeklyTemplates();
+      await loadTaskNotificationOverrides();
+    })();
   }, []);
+
 
   const loadTaskNotificationOverrides = async () => {
     try {
@@ -260,76 +230,7 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // JS getDay() (0=日) → 0=月〜6=日の番号に変換
-  const toMonZeroWeekday = (jsDay: number) => {
-    return (jsDay + 6) % 7;
-  };
-
-    const virtualWeeklyTasks: Task[] = useMemo(() => {
-    if (weeklyTemplates.length === 0) return [];
-
-    const result: Task[] = [];
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const days = 7; // 今日〜6日後まで
-
-    for (let offset = 0; offset < days; offset++) {
-      const day = new Date(start);
-      day.setDate(start.getDate() + offset);
-
-      const jsDay = day.getDay(); // 0=日〜6=土
-      const weekdayMon0 = toMonZeroWeekday(jsDay); // 0=月〜6=日
-
-      weeklyTemplates.forEach((tpl) => {
-        if (!tpl.is_active) return;
-        if (tpl.weekday !== weekdayMon0) return;
-
-        const deadline = new Date(
-          day.getFullYear(),
-          day.getMonth(),
-          day.getDate(),
-          tpl.time_hour ?? 0,
-          tpl.time_minute ?? 0,
-          0
-        );
-
-        // ★ 表示上の日付（00:00 は前日の 24:00 として扱う）
-        const displayDate = new Date(deadline);
-        if (displayDate.getHours() === 0 && displayDate.getMinutes() === 0) {
-          displayDate.setDate(displayDate.getDate() - 1);
-        }
-
-        // ★ この (weekly_task_id, 表示日) にスキップ設定があれば生成しない
-        const skipKey = makeSkipKey(tpl.id, displayDate);
-        if (weeklySkipKeys.includes(skipKey)) {
-          return;
-        }
-
-        const virtualId = -1 * (tpl.id * 10 + offset);
-
-        const virtualTask: Task = {
-          id: virtualId,
-          title: tpl.title,
-          course_name: tpl.course_name || '',
-          memo: tpl.memo || '',
-          deadline: deadline.toISOString(),
-          is_done: false,
-        } as Task;
-
-        result.push(virtualTask);
-      });
-
-    }
-
-    return result;
-  }, [weeklyTemplates, weeklySkipKeys]);
-
-
-    const allTasksWithWeekly: Task[] = useMemo(
-    () => [...tasks, ...virtualWeeklyTasks],
-    [tasks, virtualWeeklyTasks]
-  );
-
+  const allTasksWithWeekly: Task[] = useMemo(() => tasks, [tasks]);
 
   // 🔍 24:00 ロジックを考慮した「今日のタスク」判定
   const isTodayTask = (deadline: string) => {
@@ -354,14 +255,10 @@ export const Dashboard: React.FC = () => {
     return dY.y === tY.y && dY.m === tY.m && dY.d === tY.d;
   };
 
-    const todayTasks = useMemo(
-    () =>
-      [...tasks, ...virtualWeeklyTasks].filter((t) =>
-        isTodayTask(t.deadline)
-      ),
-    [tasks, virtualWeeklyTasks]
+  const todayTasks = useMemo(
+    () => tasks.filter((t) => isTodayTask(t.deadline)),
+    [tasks]
   );
-
 
   // ➕ 右下のプラスボタンの挙動
   const handleFabClick = async () => {
@@ -406,32 +303,6 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // ★ 仮の毎週タスクを「この週だけ」非表示にする（ブラウザに保存）
-  const handleVirtualWeeklyDelete = (task: Task) => {
-    // id < 0 を元に weekly_task_id を復元
-    const encoded = -task.id;
-    const weeklyTaskId = Math.floor(encoded / 10);
-    if (weeklyTaskId <= 0) return;
-
-    const raw = new Date(task.deadline);
-    const effective = new Date(raw);
-
-    // 00:00 の場合は前日の 24:00 として扱う
-    if (effective.getHours() === 0 && effective.getMinutes() === 0) {
-      effective.setDate(effective.getDate() - 1);
-    }
-
-    const key = makeSkipKey(weeklyTaskId, effective);
-
-    setWeeklySkipKeys((prev) => {
-      if (prev.includes(key)) return prev;
-      const next = [...prev, key];
-      saveWeeklySkipKeys(next);
-      return next;
-    });
-  };
-
-
   if (isLoading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
@@ -464,16 +335,13 @@ export const Dashboard: React.FC = () => {
             <TaskList
               tasks={allTasksWithWeekly}
               onTaskUpdated={loadTasks}
-              onVirtualTaskDelete={handleVirtualWeeklyDelete}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
-              // ★ 追加
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
             />
           </>
         );
-
 
       case 'stats':
         return (
@@ -499,7 +367,15 @@ export const Dashboard: React.FC = () => {
             </p>
             <WeeklyTaskSettings
               templates={weeklyTemplates}
-              onTemplatesChanged={loadWeeklyTemplates}
+              onTemplatesChanged={async () => {
+                await loadWeeklyTemplates();
+                try {
+                  await weeklyTasksApi.materialize();
+                } catch (e) {
+                  console.error('weekly materialize 失敗:', e);
+                }
+                await loadTasks();
+              }}
             />
           </>
         );

@@ -1,3 +1,5 @@
+# backend/app/api/v1/endpoints/auth.py
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -9,7 +11,6 @@ from app.schemas.user import UserResponse
 router = APIRouter(
     tags=["auth"],  # ← prefix は消して tags だけでOK
 )
-
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(

@@ -50,6 +50,6 @@ class TaskResponse(TaskBase):
     is_done: bool
     created_at: datetime
     updated_at: datetime
-
+    auto_notify_disabled_by_done: bool
     # Pydantic v2 の ORM モード相当
     model_config = ConfigDict(from_attributes=True)

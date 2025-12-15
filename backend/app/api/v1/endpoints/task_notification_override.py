@@ -36,7 +36,6 @@ def list_task_notification_overrides(
         .all()
     )
 
-
 # ================================
 # ↓↓↓ 以下は「今のコードそのまま」
 # ================================
@@ -63,7 +62,6 @@ def get_task_notification_override(
         .first()
     )
     return override
-
 
 @router.put(
     "/{task_id}/notification-override",

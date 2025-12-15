@@ -99,8 +99,9 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
     try:
         db.execute(text(
             "ALTER TABLE tasks "
-            "ADD COLUMN auto_notify_disabled_by_done BOOLEAN NOT NULL DEFAULT 0;"
+            "ADD COLUMN IF NOT EXISTS auto_notify_disabled_by_done BOOLEAN NOT NULL DEFAULT false;"
         ))
+
         db.commit()
         return {"status": "ok", "message": "column added"}
     except Exception as e:

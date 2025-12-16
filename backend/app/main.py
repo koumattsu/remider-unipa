@@ -27,14 +27,8 @@ def get_application() -> FastAPI:
         version="0.1.0",
     )
 
-    # --- CORS 設定 ---
-    origins = getattr(settings, "BACKEND_CORS_ORIGINS", None)
-    if not origins:
-        origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "https://unipa-reminder-frontend.onrender.com",  # 実在するなら
-        ]
+    # config.py の CORS_ORIGINS をそのまま使う（validatorでlist化される）
+    origins = settings.CORS_ORIGINS
 
     app.add_middleware(
         CORSMiddleware,

@@ -1,12 +1,17 @@
-from typing import Optional
+# backend/app/core/security.py
 
+from typing import Optional
 from fastapi import Request, HTTPException, status, Depends
 from sqlalchemy.orm import Session
-
+from itsdangerous import URLSafeSerializer, BadSignature
 from app.db.session import get_db
 from app.models.user import User
 from app.core.config import settings
 
+serializer = URLSafeSerializer(
+    settings.SESSION_SECRET,
+    salt="unipa-session",
+)
 
 async def get_current_user(
     request: Request,
@@ -18,31 +23,44 @@ async def get_current_user(
     開発時はリクエストヘッダの `X-Dummy-User-Id` を見てユーザーを取得。
     将来的にLINEログインの認証に置き換える。
     """
-    if not settings.DUMMY_AUTH_ENABLED:
-        # 本番環境では実際の認証トークンを検証
-        # TODO: LINEログインの認証処理を実装
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="認証が必要です",
-        )
+    
+    # =========================
+    # 開発用：ダミー認証
+    # =========================
+    if settings.DUMMY_AUTH_ENABLED:
+        dummy_user_id = request.headers.get("X-Dummy-User-Id")
+        if not dummy_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Dummy-User-Id が必要です（DUMMY_AUTH_ENABLED=true）",
+            )
+        user_id = int(dummy_user_id)
 
-    # ダミー認証：ヘッダーからユーザーIDを取得
-    dummy_user_id = request.headers.get("X-Dummy-User-Id")
-    user_id = int(dummy_user_id) if dummy_user_id else settings.DUMMY_USER_ID
+    # =========================
+    # 本番用：Cookie セッション
+    # =========================
+    else:
+        session_cookie = request.cookies.get(settings.SESSION_COOKIE_NAME)
+        if not session_cookie:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="認証が必要です",
+            )
+        try:
+            data = serializer.loads(session_cookie)
+            user_id = int(data["user_id"])
+        except (BadSignature, KeyError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="無効なセッションです",
+            )
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        # ダミーユーザーが存在しない場合は作成
-        user = User(
-            id=user_id,
-            line_user_id=f"dummy_line_{user_id}",
-            display_name=f"ダミーユーザー{user_id}",
-            university="テスト大学",
-            plan="free",
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ユーザーが存在しません",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
 
     return user
 

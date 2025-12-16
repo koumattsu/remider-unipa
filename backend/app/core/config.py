@@ -1,6 +1,7 @@
 # backend/app/core/config.py
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from typing import Optional, Union
 from pydantic import field_validator
 
@@ -36,12 +37,35 @@ class Settings(BaseSettings):
     # ダミー認証設定（開発用）
     DUMMY_AUTH_ENABLED: bool = True
     DUMMY_USER_ID: int = 1  # デフォルトのダミーユーザーID
+
+    # ===== LINE Login (OAuth) =====
+    LINE_LOGIN_CHANNEL_ID: str = ""
+    LINE_LOGIN_CHANNEL_SECRET: str = ""
+    LINE_LOGIN_REDIRECT_URI: str = ""
+
+    # ===== Frontend =====
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # ===== Session =====
+    SESSION_SECRET: str = ""
+
+    # ===== Cookie settings =====
+    SESSION_COOKIE_NAME: str = "unipa_session"
+    ENV: str = "development"  # "production" で本番扱い
+
+    @property
+    def SESSION_COOKIE_SECURE(self) -> bool:
+        return self.ENV == "production"
+
+    @property
+    def SESSION_COOKIE_SAMESITE(self) -> str:
+        return "none" if self.ENV == "production" else "lax"
     
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
-
+        extra = "ignore"
 
 settings = Settings()
 

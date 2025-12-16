@@ -1,8 +1,11 @@
+// frontend/src/pages/Login.tsx
+
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/auth';
 
 export const Login: React.FC = () => {
+  console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
 
@@ -17,9 +20,15 @@ export const Login: React.FC = () => {
       // 認証済みならダッシュボードへ
       navigate('/dashboard');
     } catch (error) {
-      console.error('認証チェックに失敗しました:', error);
+      // 未ログイン(401)は想定内。ログイン画面を表示するだけ
       setIsLoading(false);
     }
+  };
+
+  const startLineLogin = () => {
+    const url = `${import.meta.env.VITE_API_BASE_URL}/api/v1/auth/line/authorize`;
+    console.log('LINE LOGIN URL:', url);
+    window.location.href = url;
   };
 
   if (isLoading) {
@@ -32,11 +41,10 @@ export const Login: React.FC = () => {
       <div style={{ marginTop: '2rem', padding: '2rem', border: '1px solid #ddd', borderRadius: '8px' }}>
         <h2>ログイン</h2>
         <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-          開発中はダミー認証が有効になっています。
-          実際のLINEログイン機能は今後実装予定です。
+          LINEアカウントでログインしてください。
         </p>
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={startLineLogin}
           style={{
             width: '100%',
             padding: '1rem',
@@ -48,7 +56,7 @@ export const Login: React.FC = () => {
             cursor: 'pointer',
           }}
         >
-          LINEログイン（ダミー）
+          LINEでログイン
         </button>
       </div>
     </div>

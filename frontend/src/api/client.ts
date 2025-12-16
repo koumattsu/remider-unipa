@@ -8,21 +8,15 @@ const baseURL =
     ? 'http://127.0.0.1:8000'
     : 'https://unipa-reminder-backend.onrender.com');
 
-const LINE_USER_ID =
-  import.meta.env.VITE_LINE_USER_ID || 'Uf7ec7ba2180b713c38d377eec2d9dfcb';
-
 const apiClient = axios.create({
   baseURL,
   timeout: 10000,
+  withCredentials: true,
 });
 
 apiClient.interceptors.request.use(
   (config) => {
     const headers = (config.headers ?? {}) as any;
-
-    // 今後はこれだけ使う
-    headers['X-Line-User-Id'] = LINE_USER_ID;
-
     config.headers = headers;
     return config;
   },

@@ -15,6 +15,14 @@ from app.core.config import settings
 
 router = APIRouter(tags=["auth"])
 
+def _frontend_base_url() -> str:
+    base = settings.FRONTEND_URL or "http://localhost:5173"
+    base = base.strip()
+    if not (base.startswith("http://") or base.startswith("https://")):
+        # ここが壊れてるとChromeでERR_INVALID_REDIRECTになる
+        raise HTTPException(status_code=500, detail=f"Invalid FRONTEND_URL: {base}")
+    return base.rstrip("/")
+
 def _serializer():
     return URLSafeSerializer(settings.SESSION_SECRET, salt="unipa-session")
 
@@ -70,7 +78,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 
     if not code or not state or not saved_state or state != saved_state:
         # 次の試行で詰まらないよう、先に消す
-        resp = RedirectResponse(url=(settings.FRONTEND_URL or "http://localhost:5173") + "/login", status_code=302)
+        resp = RedirectResponse(url=_frontend_base_url() + "/login", status_code=302)
         resp.delete_cookie("line_login_state", path="/")
         return resp
 
@@ -127,7 +135,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     # セッションcookie発行（user_id を署名して入れる）
     session_token = _serializer().dumps({"user_id": user.id})
 
-    redirect_to = (settings.FRONTEND_URL or "http://localhost:5173") + "/dashboard"
+    redirect_to = _frontend_base_url() + "/dashboard"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     cookie_opts = _make_cookie_opts()
@@ -138,6 +146,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout():
-    resp = RedirectResponse(url=(settings.FRONTEND_URL or "http://localhost:5173") + "/login", status_code=302)
+    resp = RedirectResponse(url=_frontend_base_url() + "/login", status_code=302)
     resp.delete_cookie(settings.SESSION_COOKIE_NAME, **_make_cookie_opts())
     return resp

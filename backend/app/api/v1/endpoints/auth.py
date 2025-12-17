@@ -53,11 +53,12 @@ async def line_authorize():
         raise HTTPException(status_code=500, detail="LINE Login settings are missing")
 
     state = secrets.token_urlsafe(24)
+    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI.strip()
 
     params = {
         "response_type": "code",
         "client_id": settings.LINE_LOGIN_CHANNEL_ID,
-        "redirect_uri": settings.LINE_LOGIN_REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "state": state,
         "scope": "profile openid",
     }
@@ -75,6 +76,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
     saved_state = request.cookies.get("line_login_state")
+    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI.strip()
 
     if not code or not state or not saved_state or state != saved_state:
         # 次の試行で詰まらないよう、先に消す
@@ -87,7 +89,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": settings.LINE_LOGIN_REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "client_id": settings.LINE_LOGIN_CHANNEL_ID,
         "client_secret": settings.LINE_LOGIN_CHANNEL_SECRET,
     }
@@ -99,7 +101,10 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         token_json = token_res.json()
         access_token = token_json.get("access_token")
         if not access_token:
-            raise HTTPException(status_code=400, detail="No access_token returned")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Token exchange failed: {token_res.text} (redirect_uri={redirect_uri!r})"
+            )
 
         # LINE profile 取得
         prof_res = await client.get(

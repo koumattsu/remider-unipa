@@ -25,6 +25,16 @@ def _make_cookie_opts():
         "samesite": settings.SESSION_COOKIE_SAMESITE,
     }
 
+def _make_oauth_state_cookie_opts():
+    # LINE -> backend の「トップレベル遷移」で確実に返ってくる設定
+    # SESSION_COOKIE_* とは分ける（ここがポイント）
+    return {
+        "httponly": True,
+        "secure": True,     # Render本番は https 前提
+        "samesite": "lax",  # OAuth state は Lax が安定
+        "path": "/",        # 念のため明示
+    }
+
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.model_validate(current_user)
@@ -49,8 +59,7 @@ async def line_authorize():
     resp = RedirectResponse(url=redirect_url, status_code=302)
 
     # state をcookieに保存（CSRF対策）
-    cookie_opts = _make_cookie_opts()
-    resp.set_cookie("line_login_state", state, max_age=600, **cookie_opts)
+    resp.set_cookie("line_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
     return resp
 
 @router.get("/line/callback")
@@ -60,7 +69,10 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     saved_state = request.cookies.get("line_login_state")
 
     if not code or not state or not saved_state or state != saved_state:
-        raise HTTPException(status_code=400, detail="Invalid state or code")
+        # 次の試行で詰まらないよう、先に消す
+        resp = RedirectResponse(url=(settings.FRONTEND_URL or "http://localhost:5173") + "/login", status_code=302)
+        resp.delete_cookie("line_login_state", path="/")
+        return resp
 
     # code -> access_token
     token_url = "https://api.line.me/oauth2/v2.1/token"
@@ -121,8 +133,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     cookie_opts = _make_cookie_opts()
     resp.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **cookie_opts)
     # state cookie消す
-    cookie_opts = _make_cookie_opts()
-    resp.delete_cookie("line_login_state", **cookie_opts)
+    resp.delete_cookie("line_login_state",  path="/")
     return resp
 
 @router.post("/logout")

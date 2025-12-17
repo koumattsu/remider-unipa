@@ -7,15 +7,12 @@ from pydantic import field_validator
 
 class Settings(BaseSettings):
     """アプリケーション設定"""
-    
     # アプリケーション基本設定
     APP_NAME: str = "UniPA Reminder App"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-    
     # データベース設定
     DATABASE_URL: str = "sqlite:///./unipa_reminder.db"
-    
     # CORS設定（環境変数ではカンマ区切り文字列、またはJSON配列として指定可能）
     CORS_ORIGINS: Union[str, list[str]] = "http://localhost:5173,http://localhost:3000"
     
@@ -69,3 +66,21 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+@field_validator("LINE_LOGIN_REDIRECT_URI", mode="before")
+@classmethod
+def normalize_line_redirect_uri(cls, v: str) -> str:
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        return str(v)
+
+    uri = v.strip()
+
+        # たまに貼り付けで混ざるやつを除去（ここが効く）
+    uri = uri.replace("\r", "").replace("\n", "")
+
+        # 環境変数にダブルクォート付きで入れてしまったケース対策
+    if len(uri) >= 2 and ((uri[0] == '"' and uri[-1] == '"') or (uri[0] == "'" and uri[-1] == "'")):
+        uri = uri[1:-1].strip()
+
+    return uri

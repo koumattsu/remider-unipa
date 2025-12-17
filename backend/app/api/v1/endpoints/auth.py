@@ -53,7 +53,7 @@ async def line_authorize():
         raise HTTPException(status_code=500, detail="LINE Login settings are missing")
 
     state = secrets.token_urlsafe(24)
-    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI.strip()
+    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI
 
     params = {
         "response_type": "code",
@@ -76,7 +76,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
     saved_state = request.cookies.get("line_login_state")
-    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI.strip()
+    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI
 
     if not code or not state or not saved_state or state != saved_state:
         # 次の試行で詰まらないよう、先に消す

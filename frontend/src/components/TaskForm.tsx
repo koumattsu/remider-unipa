@@ -133,27 +133,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadli
                 onChange={(e) => setDeadlineDate(e.target.value)}
                 required
                 className="glass-field"
-              />
-
-              {/* 未選択時だけ中央にアイコン（文字はCSSで透明化済み） */}
-              {!deadlineDate && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    pointerEvents: 'none',
-                    fontSize: '1.15rem',
-                    color: 'rgba(255,255,255,.55)',
-                  }}
-                >
-                  📅
-                </div>
-              )}
+              />    
             </div>
-
             {/* 時 */}
             <select
               value={deadlineHour}

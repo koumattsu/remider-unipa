@@ -160,3 +160,21 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   opacity: .55;
   cursor: not-allowed;
 }
+
+/* date input をアイコン前提のレイアウトに */
+input[type="date"].glass-field {
+  position: relative;
+  text-align: center;              /* 日付文字も中央寄せ */
+  padding-left: 2.5rem;            /* 左右に余白を作る */
+  padding-right: 2.5rem;
+}
+
+/* 本物のカレンダーアイコンを中央寄りに */
+input[type="date"].glass-field::-webkit-calendar-picker-indicator {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  filter: invert(1);
+  opacity: 0.75;
+  cursor: pointer;
+}

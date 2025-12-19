@@ -74,58 +74,62 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
 
 
   return (
-    <div style={{ marginBottom: '2rem', padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px' }}>
-      <h2 style={{ marginTop: 0 }}>課題を追加</h2>
+    <div className="glass-strong glass-card" style={{ marginBottom: '2rem' }}>
+      <h2 className="glass-title">課題を追加</h2>
+
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            タイトル *
-          </label>
+          <label className="glass-label">タイトル *</label>
           <input
             type="text"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
-            style={{ width: '100%', padding: '0.5rem', fontSize: '1rem' }}
-          />
-        </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            内容
-          </label>
-          <input
-            type="text"
-            value={formData.course_name}
-            onChange={(e) => setFormData({ ...formData, course_name: e.target.value })}
-            // 必須ではないので required は付けない
-            style={{ width: '100%', padding: '0.5rem', fontSize: '1rem' }}
+            className="glass-field"
+            placeholder="例：レポート提出"
           />
         </div>
 
-        
         <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-            締切日時 *
-          </label>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {/* 日付：カレンダー入力（枠全体クリック＋中央にカレンダーアイコン） */}
+          <label className="glass-label">内容</label>
+          <input
+            type="text"
+            value={formData.course_name}
+            onChange={(e) =>
+              setFormData({ ...formData, course_name: e.target.value })
+            }
+            className="glass-field"
+            placeholder="例：〇〇講義 / 第3回"
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label className="glass-label">メモ</label>
+          <textarea
+            value={formData.memo ?? ''}
+            onChange={(e) => setFormData({ ...formData, memo: e.target.value })}
+            className="glass-field"
+            placeholder="補足があれば"
+            rows={3}
+            style={{ resize: 'vertical' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label className="glass-label">締切日時 *</label>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {/* 日付 */}
             <div style={{ position: 'relative', flex: 1 }}>
               <input
                 type="date"
                 value={deadlineDate}
                 onChange={(e) => setDeadlineDate(e.target.value)}
                 required
-                style={{
-                  width: '100%',
-                  padding: '0.5rem',
-                  fontSize: '1rem',
-                  // 未選択のときは文字色を透明にして「年/月/日」を消す
-                  color: deadlineDate ? '#000' : 'transparent',
-                  // 枠全体がクリック可能
-                  boxSizing: 'border-box',
-                }}
+                className="glass-field"
               />
-              {/* 未選択のときだけ中央にカレンダーアイコンを表示 */}
+
+              {/* 未選択時だけ中央にアイコン（文字はCSSで透明化済み） */}
               {!deadlineDate && (
                 <div
                   style={{
@@ -134,9 +138,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    pointerEvents: 'none', // これでクリックは全部input側に行く
-                    fontSize: '1.2rem',
-                    color: '#666',
+                    pointerEvents: 'none',
+                    fontSize: '1.15rem',
+                    color: 'rgba(255,255,255,.55)',
                   }}
                 >
                   📅
@@ -144,14 +148,15 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
               )}
             </div>
 
-            {/* 時刻：時（1〜24）＋ 分（00 / 30） */}
+            {/* 時 */}
             <select
               value={deadlineHour}
               onChange={(e) => setDeadlineHour(e.target.value)}
-              style={{ width: '110px', padding: '0.5rem', fontSize: '1rem' }}
+              className="glass-field"
+              style={{ width: 130 }}
             >
               {Array.from({ length: 24 }, (_, i) => {
-                const h = i + 1; // 1〜24
+                const h = i + 1;
                 const label = `${String(h).padStart(2, '0')}:00`;
                 return (
                   <option key={h} value={h.toString()}>
@@ -161,40 +166,28 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
               })}
             </select>
 
+            {/* 分 */}
             <select
               value={deadlineMinute}
               onChange={(e) => setDeadlineMinute(e.target.value)}
-              style={{ width: '90px', padding: '0.5rem', fontSize: '1rem' }}
+              className="glass-field"
+              style={{ width: 90 }}
             >
               <option value="00">00</option>
               <option value="30">30</option>
             </select>
           </div>
 
-          <p style={{ marginTop: '0.25rem', fontSize: '0.85rem', color: '#666' }}>
+          <p className="glass-help">
             ※0時締切の課題は、日付を1日前にして「24:00」で登録してください。
-            （例：12/1 の 0:00 締切 → 11/30 の 24:00 として登録）
+            （例：12/1 の 0:00 締切 → 11/30 の 24:00）
           </p>
-
         </div>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            padding: '0.75rem 1.5rem',
-            fontSize: '1rem',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting ? '作成中...' : '課題を追加'}
         </button>
       </form>
     </div>
   );
 };
-

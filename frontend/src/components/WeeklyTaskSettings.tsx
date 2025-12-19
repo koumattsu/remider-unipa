@@ -126,11 +126,15 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
 
   return (
     <div
+      className="glass"
       style={{
-        border: '1px solid #e5e7eb',
-        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,.10)',
+        borderRadius: 16,
         padding: '1rem',
-        backgroundColor: '#fafafa',
+        background: 'rgba(255,255,255,.06)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        color: 'rgba(255,255,255,.88)',
       }}
     >
       <h2 style={{ marginBottom: '0.75rem', fontSize: '1rem', fontWeight: 600 }}>
@@ -146,13 +150,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             type="text"
             value={form.title}
             onChange={(e) => handleChange('title', e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.4rem 0.6rem',
-              borderRadius: 6,
-              border: '1px solid #d1d5db',
-              fontSize: '0.9rem',
-            }}
+            className="glass-field"
+            style={{ fontSize: '0.9rem' }}
           />
         </div>
 
@@ -164,13 +163,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             type="text"
             value={form.course_name}
             onChange={(e) => handleChange('course_name', e.target.value)}
-            style={{
-              width: '100%',
-              padding: '0.4rem 0.6rem',
-              borderRadius: 6,
-              border: '1px solid #d1d5db',
-              fontSize: '0.9rem',
-            }}
+            className="glass-field"
+            style={{ fontSize: '0.9rem' }}
           />
         </div>
 
@@ -181,15 +175,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
           <textarea
             value={form.memo}
             onChange={(e) => handleChange('memo', e.target.value)}
-            rows={3}
-            style={{
-              width: '100%',
-              padding: '0.4rem 0.6rem',
-              borderRadius: 6,
-              border: '1px solid #d1d5db',
-              fontSize: '0.9rem',
-              resize: 'vertical',
-            }}
+            className="glass-field"
+            style={{ minHeight: 80, fontSize: '0.9rem' }}
           />
         </div>
 
@@ -200,12 +187,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             <select
               value={form.weekday}
               onChange={(e) => handleChange('weekday', Number(e.target.value))}
-              style={{
-                padding: '0.3rem 0.5rem',
-                borderRadius: 6,
-                border: '1px solid #d1d5db',
-                fontSize: '0.85rem',
-              }}
+              className="glass-field"
+              style={{ width: 110, fontSize: '0.85rem' }}
             >
               {weekdayLabels.map((label, idx) => (
                 <option key={idx} value={idx}>

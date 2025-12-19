@@ -409,6 +409,7 @@ export const Dashboard: React.FC = () => {
         maxWidth: '420px',
         margin: '0 auto',
         padding: '0.9rem 1rem calc(5.2rem + env(safe-area-inset-bottom))',
+        minHeight: '100dvh',
       }}
     >
 
@@ -569,7 +570,7 @@ export const Dashboard: React.FC = () => {
               gap: '0.5rem',
             }}
           >
-            <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>メニュー</div>
+            <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'rgba(255,255,255,.88)' }}>メニュー</div>
 
             <MenuItem
               label="課題を追加"
@@ -600,8 +601,9 @@ export const Dashboard: React.FC = () => {
                   padding: '0.4rem 0.8rem',
                   fontSize: '0.85rem',
                   borderRadius: '4px',
-                  border: '1px solid #ccc',
-                  backgroundColor: '#f8f8f8',
+                  background: 'rgba(255,255,255,.10)',
+                  border: '1px solid rgba(255,255,255,.14)',
+                  color: 'rgba(255,255,255,.88)',
                   cursor: 'pointer',
                 }}
               >
@@ -665,9 +667,10 @@ const MenuItem: React.FC<MenuItemProps> = ({ label, onClick }) => (
       textAlign: 'left',
       border: 'none',
       background: 'none',
-      padding: '0.5rem 0.2rem',
-      fontSize: '0.9rem',
+      padding: '0.65rem 0.4rem',
+      fontSize: '0.95rem',
       cursor: 'pointer',
+      color: 'rgba(255,255,255,.82)',
     }}
   >
     {label}

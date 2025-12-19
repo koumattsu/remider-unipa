@@ -10,11 +10,11 @@
   --accent: #5BE7FF;
 }
 
-html, body {
+html, body, #root {
   height: 100%;
 }
 
-body {
+html, body, #root {
   margin: 0;
   color: var(--txt);
   background:
@@ -42,4 +42,118 @@ body {
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   box-shadow: 0 16px 44px rgba(0,0,0,.45);
+}
+
+.glass-field{
+  width: 100%;
+  padding: .55rem .75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.08);
+  color: rgba(255,255,255,.92);
+  outline: none;
+}
+
+.glass-field::placeholder{
+  color: rgba(255,255,255,.45);
+}
+
+.glass-field:focus{
+  border-color: rgba(91,231,255,.55);
+  box-shadow: 0 0 0 3px rgba(91,231,255,.12);
+}
+
+/* ===== Form / Field (glass unified) ===== */
+
+.glass-card {
+  border-radius: 18px;
+  padding: 1.25rem;
+}
+
+.glass-title {
+  margin: 0 0 0.9rem 0;
+  font-size: 1.05rem;
+  letter-spacing: .08em;
+  color: var(--txt);
+}
+
+.glass-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--txt);
+}
+
+.glass-help {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.glass-field {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--bd);
+  background: rgba(255,255,255,.08);
+  color: var(--txt);
+  outline: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.glass-field::placeholder {
+  color: rgba(255,255,255,.45);
+}
+
+.glass-field:focus {
+  border-color: rgba(91,231,255,.55);
+  box-shadow: 0 0 0 3px rgba(91,231,255,.15);
+}
+
+/* selectの矢印がOSで白すぎ/黒すぎ問題を減らす */
+select.glass-field {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* date入力が「未選択のとき変な文字/色」になるのをCSSで制御 */
+input[type="date"].glass-field {
+  position: relative;
+}
+
+/* Chrome/Safari: 日付の編集文字色 */
+input[type="date"].glass-field::-webkit-datetime-edit {
+  color: var(--txt);
+}
+
+/* 未選択（required & empty）なら日付文字を透明にして“白い変な表示”を消す */
+input[type="date"].glass-field:invalid::-webkit-datetime-edit {
+  color: transparent;
+}
+
+/* カレンダーアイコンを暗背景に合わせる */
+input[type="date"].glass-field::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: .75;
+}
+
+/* ボタン */
+.btn-primary {
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(91,231,255,.35);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(91,231,255,.28), rgba(140,90,255,.18));
+  color: rgba(255,255,255,.92);
+  font-weight: 800;
+  letter-spacing: .06em;
+  cursor: pointer;
+  box-shadow: 0 18px 50px rgba(0,0,0,.35);
+}
+
+.btn-primary:disabled {
+  opacity: .55;
+  cursor: not-allowed;
 }

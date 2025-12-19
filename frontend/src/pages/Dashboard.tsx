@@ -13,6 +13,36 @@ import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
+const TASKS_CACHE_KEY = 'unipa_tasks_cache_v1';
+const WEEKLY_CACHE_KEY = 'unipa_weekly_templates_cache_v1';
+
+type CachedPayload<T> = { savedAt: number; data: T };
+
+const loadCache = <T,>(key: string): CachedPayload<T> | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedPayload<T>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!('data' in parsed)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const saveCache = <T,>(key: string, data: T) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ savedAt: Date.now(), data } satisfies CachedPayload<T>)
+    );
+  } catch {
+    // localStorage容量などで失敗してもアプリは動かす
+  }
+};
 
 type TaskNotificationOptions = {
   morning: boolean;
@@ -102,9 +132,21 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
 type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings';
 
 export const Dashboard: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [weeklyTemplates, setWeeklyTemplates] = useState<WeeklyTask[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
+    return cached?.data ?? [];
+  });
+
+  const [weeklyTemplates, setWeeklyTemplates] = useState<WeeklyTask[]>(() => {
+    const cached = loadCache<WeeklyTask[]>(WEEKLY_CACHE_KEY);
+    return cached?.data ?? [];
+  });
+
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
+    return cached ? false : true;
+  });
+
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [addDefaultDeadlineDate, setAddDefaultDeadlineDate] = useState<string | undefined>(undefined);
@@ -156,24 +198,21 @@ export const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
+    // まずはキャッシュで描画済み（isLoadingもfalseになってる想定）
+    // 裏で最新化
     (async () => {
-      // 1) 毎週タスクを実タスク化（向こう7日分）
       try {
         await weeklyTasksApi.materialize();
       } catch (e) {
         console.error('weekly materialize 失敗:', e);
-        // 失敗しても tasks は出したいので続行
       }
 
-      // 2) 実タスクを取得
-      await loadTasks();
-
-      // 3) weeklyテンプレやoverrideもロード
+      // ここからは silent で（画面をブロックしない）
+      await loadTasks({ silent: true });
       await loadWeeklyTemplates();
       await loadTaskNotificationOverrides();
     })();
   }, []);
-
 
   const loadTaskNotificationOverrides = async () => {
     try {
@@ -209,16 +248,21 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const loadTasks = async () => {
+  const loadTasks = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const data = await tasksApi.getAll();
       setTasks(data);
+      saveCache(TASKS_CACHE_KEY, data);
     } catch (error) {
       console.error('課題の取得に失敗しました:', error);
-      alert('課題の取得に失敗しました');
+      // キャッシュがあるなら alert しない（UX優先）
+      const hasCache = !!loadCache<Task[]>(TASKS_CACHE_KEY);
+      if (!hasCache) alert('課題の取得に失敗しました');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -226,6 +270,7 @@ export const Dashboard: React.FC = () => {
     try {
       const data = await weeklyTasksApi.getAll();
       setWeeklyTemplates(data);
+      saveCache(WEEKLY_CACHE_KEY, data);
     } catch (error) {
       console.error('毎週タスクの取得に失敗しました:', error);
     }

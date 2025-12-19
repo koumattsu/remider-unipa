@@ -203,13 +203,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             <select
               value={form.time_hour}
               onChange={(e) => handleChange('time_hour', Number(e.target.value))}
-              style={{
-                padding: '0.3rem 0.5rem',
-                borderRadius: 6,
-                border: '1px solid #d1d5db',
-                fontSize: '0.85rem',
-                marginRight: 4,
-              }}
+              className="glass-field"
+              style={{ width: 80, fontSize: '0.85rem', marginRight: 4 }}
             >
               {Array.from({ length: 24 }).map((_, idx) => {
                 const h = idx + 1; // 1〜24
@@ -223,16 +218,9 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             :
             <select
               value={form.time_minute}
-              onChange={(e) =>
-                handleChange('time_minute', Number(e.target.value))
-              }
-              style={{
-                padding: '0.3rem 0.5rem',
-                borderRadius: 6,
-                border: '1px solid #d1d5db',
-                fontSize: '0.85rem',
-                marginLeft: 4,
-              }}
+              onChange={(e) => handleChange('time_minute', Number(e.target.value))}
+              className="glass-field"
+              style={{ width: 80, fontSize: '0.85rem', marginLeft: 4 }}
             >
               {[0, 30].map((m) => (
                 <option key={m} value={m}>
@@ -276,8 +264,9 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
                 padding: '0.45rem 0.9rem',
                 fontSize: '0.9rem',
                 borderRadius: 6,
-                border: '1px solid #d1d5db',
-                backgroundColor: '#fff',
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,.25)',
+                color: 'rgba(255,255,255,.75)',
                 cursor: 'pointer',
               }}
             >
@@ -290,9 +279,9 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
       {/* 一覧 */}
       <div
         style={{
-          marginTop: '0.5rem',
-          borderTop: '1px solid #e5e7eb',
+          marginTop: '0.75rem',
           paddingTop: '0.75rem',
+          borderTop: '1px solid rgba(255,255,255,.12)',
         }}
       >
         <table
@@ -303,7 +292,7 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
           }}
         >
           <thead>
-            <tr style={{ backgroundColor: '#f9fafb' }}>
+            <tr style={{ backgroundColor: 'rgba(255,255,255,.06)' }}>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>曜日</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>時刻</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>タイトル</th>
@@ -327,7 +316,7 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
                 : tpl.time_hour ?? 0;
 
               return (
-                <tr key={tpl.id} style={{ borderTop: '1px solid #e5e7eb' }}>
+                <tr key={tpl.id} style={{ borderTop: '1px solid rgba(255,255,255,.10)' }}>
                   <td style={{ padding: '0.4rem' }}>
                     {weekdayLabels[weekdayIndex]}
                   </td>
@@ -347,8 +336,10 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
                         padding: '0.25rem 0.6rem',
                         fontSize: '0.8rem',
                         borderRadius: 4,
-                        border: '1px solid #d1d5db',
-                        backgroundColor: '#fff',
+                        background: 'rgba(255,255,255,.10)',
+                        border: '1px solid rgba(255,255,255,.18)',
+                        color: 'rgba(255,255,255,.9)',
+                        backdropFilter: 'blur(6px)',
                         marginRight: 4,
                         cursor: 'pointer',
                       }}

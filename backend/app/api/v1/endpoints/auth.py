@@ -39,7 +39,7 @@ def _make_oauth_state_cookie_opts():
     return {
         "httponly": True,
         "secure": True,     # Render本番は https 前提
-        "samesite": "lax",  # OAuth state は Lax が安定
+        "samesite": "none",  # OAuth state は Lax が安定
         "path": "/",        # 念のため明示
     }
 
@@ -80,7 +80,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 
     if not code or not state or not saved_state or state != saved_state:
         # 次の試行で詰まらないよう、先に消す
-        resp = RedirectResponse(url=_frontend_base_url() + "/login", status_code=302)
+        resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
         resp.delete_cookie("line_login_state", path="/")
         return resp
 
@@ -140,7 +140,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     # セッションcookie発行（user_id を署名して入れる）
     session_token = _serializer().dumps({"user_id": user.id})
 
-    redirect_to = _frontend_base_url() + "/dashboard"
+    redirect_to = _frontend_base_url() + "/#/dashboard"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     cookie_opts = _make_cookie_opts()
@@ -151,6 +151,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 async def logout():
-    resp = RedirectResponse(url=_frontend_base_url() + "/login", status_code=302)
+    resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
     resp.delete_cookie(settings.SESSION_COOKIE_NAME, **_make_cookie_opts())
     return resp

@@ -1,24 +1,17 @@
 # backend/app/main.py
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
 from app.db.base import Base, engine
 
 def create_tables_if_needed() -> None:
-    """
-    ローカル(SQLite)開発ではテーブルを自動作成してOK。
-    本番(PostgreSQL)では起動時 create_all は事故の元なので実行しない。
-    """
     db_url = settings.DATABASE_URL or ""
     if db_url.startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
 
 def get_application() -> FastAPI:
-    # SQLiteのときだけ作成
     create_tables_if_needed()
 
     app = FastAPI(
@@ -27,8 +20,13 @@ def get_application() -> FastAPI:
         version="0.1.0",
     )
 
-    # config.py の CORS_ORIGINS をそのまま使う（validatorでlist化される）
+    # ✅ config.py の validator で list[str] になってる前提
     origins = settings.CORS_ORIGINS
+
+    # 念のため FRONTEND_URL も許可に入れておく（入ってなければ追加）
+    frontend_origin = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    if frontend_origin and frontend_origin not in origins:
+        origins = [*origins, frontend_origin]
 
     app.add_middleware(
         CORSMiddleware,
@@ -50,6 +48,5 @@ def get_application() -> FastAPI:
         return {"status": "ok"}
 
     return app
-
 
 app = get_application()

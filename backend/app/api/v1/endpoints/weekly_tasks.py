@@ -4,12 +4,11 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import Body
 from sqlalchemy import and_
 from app.models.task import Task
-from app.api.v1.endpoints.tasks import get_user_from_line_id
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
-from app.api.v1.endpoints.tasks import get_user_from_line_id
+from app.core.security import get_current_user
 from app.models.user import User
 from app.models.weekly_task import WeeklyTask
 from app.schemas.weekly_task import (
@@ -49,7 +48,7 @@ def normalize_weekly_time(
 @router.get("/", response_model=List[WeeklyTaskResponse])
 def list_weekly_tasks(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     ログインユーザーの毎週タスクテンプレ一覧を取得
@@ -66,7 +65,7 @@ def list_weekly_tasks(
 def create_weekly_task(
     body: WeeklyTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     毎週タスクテンプレを新規作成
@@ -99,7 +98,7 @@ from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 @router.post("/materialize")
 def materialize_weekly_tasks_to_real_tasks(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     向こう7日分の weekly_tasks を tasks に実体化する（存在してたら作らない）
@@ -113,7 +112,7 @@ def update_weekly_task(
     weekly_task_id: int,
     body: WeeklyTaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     毎週タスクテンプレを更新
@@ -168,7 +167,7 @@ def update_weekly_task(
 def delete_weekly_task(
     weekly_task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     毎週タスクテンプレを削除

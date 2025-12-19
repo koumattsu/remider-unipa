@@ -11,7 +11,8 @@ from app.schemas.task_notification_override import (
     TaskNotificationOverrideRead,
     TaskNotificationOverrideUpdate,
 )
-from app.api.v1.endpoints.tasks import get_user_from_line_id
+from app.core.security import get_current_user
+
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ router = APIRouter()
 )
 def list_task_notification_overrides(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     このユーザーの task_notification_overrides を一覧で取得
@@ -47,7 +48,7 @@ def list_task_notification_overrides(
 def get_task_notification_override(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     このユーザー & この task_id 用の override を1件だけ取得
@@ -71,7 +72,7 @@ def upsert_task_notification_override(
     task_id: int,
     payload: TaskNotificationOverrideUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     このタスク専用の通知設定を upsert する

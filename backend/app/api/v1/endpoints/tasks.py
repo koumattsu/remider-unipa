@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.exc import IntegrityError
 import traceback
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -20,37 +20,6 @@ from app.services.moodle_client import parse_moodle_timeline_html
 
 router = APIRouter()
 
-# LINEユーザーIDベースでユーザーを取得 or 作成する依存関数
-def get_user_from_line_id(
-    x_line_user_id: str = Header(..., alias="X-Line-User-Id"),
-    db: Session = Depends(get_db),
-) -> User:
-    # ★追加：空白・改行対策
-    x_line_user_id = (x_line_user_id or "").strip()
-
-    if not x_line_user_id:
-        raise HTTPException(status_code=400, detail="X-Line-User-Id is required")
-    """
-    フロントから送られてくる X-Line-User-Id を元に User を取得 or 作成する。
-    - 既存のユーザーがいればそれを返す
-    - いなければ display_name 仮値で新規作成（後から上書き可能）
-    """
-    user = db.query(User).filter(User.line_user_id == x_line_user_id).first()
-    if user:
-        return user
-
-    # 初回アクセス時は仮のユーザーを作成
-    user = User(
-        line_user_id=x_line_user_id,
-        display_name="LINE User",  # 後でWebhookなどで上書きしてもOK
-        university=None,
-        plan="free",
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
 @router.get("/", response_model=List[TaskResponse])
 async def get_tasks(
     start_date: Optional[datetime] = Query(None, description="開始日時（フィルタ）"),
@@ -59,7 +28,7 @@ async def get_tasks(
     skip: int = Query(0, ge=0, description="スキップ件数"),
     limit: int = Query(100, ge=1, le=1000, description="最大取得件数"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """課題一覧を取得"""
     filters = [Task.user_id == current_user.id]
@@ -86,7 +55,7 @@ async def get_tasks(
 async def create_task(
     task_data: TaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
     ):
     """課題を新規作成"""
     task = Task(
@@ -104,7 +73,7 @@ async def update_task(
     task_id: int,
     task_data: TaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """課題を更新"""
     task = (
@@ -152,7 +121,7 @@ async def update_task(
 async def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     task = (
         db.query(Task)
@@ -191,7 +160,7 @@ async def delete_task(
 def import_moodle_html(
     body: MoodleHtmlImportRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_user_from_line_id),
+    current_user: User = Depends(get_current_user),
 ):
     """
     MoodleのタイムラインHTMLを受け取って、tasksテーブルに保存するAPI。

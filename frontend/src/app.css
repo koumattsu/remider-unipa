@@ -178,3 +178,14 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   opacity: 0.75;
   cursor: pointer;
 }
+/* ===== date: right mode (今日タスクなどデフォルト日付ありの時) ===== */
+input[type="date"].glass-field.date-right {
+  text-align: left;
+  padding-left: 0.75rem;
+  padding-right: 2.5rem; /* 右側アイコン分 */
+}
+input[type="date"].glass-field.date-right::-webkit-calendar-picker-indicator {
+  left: auto;
+  right: 0.75rem;
+  transform: none;
+}

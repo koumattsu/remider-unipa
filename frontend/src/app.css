@@ -1,0 +1,45 @@
+/* frontend/src/app.css */
+:root{
+  --bg0:#070A12;
+  --bg1:#0B1024;
+  --card: rgba(255,255,255,.06);
+  --card2: rgba(255,255,255,.09);
+  --bd: rgba(255,255,255,.10);
+  --txt: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.62);
+  --accent: #5BE7FF;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--txt);
+  background:
+    radial-gradient(1200px 700px at 20% -10%, rgba(91,231,255,.22), transparent 60%),
+    radial-gradient(900px 600px at 90% 10%, rgba(140,90,255,.20), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  font-family: ui-sans-serif, system-ui, -apple-system, "SF Pro Display", "SF Pro Text", Segoe UI, Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+
+.glass {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+.glass-strong {
+  background: var(--card2);
+  border: 1px solid var(--bd);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 16px 44px rgba(0,0,0,.45);
+}

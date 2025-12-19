@@ -297,7 +297,35 @@ const saveTaskNotificationOptions = (
   };
 
   if (tasks.length === 0) {
-    return <p style={{ color: '#666' }}>課題がありません</p>;
+    return (
+      <div
+        className="glass"
+        style={{
+          borderRadius: 18,
+          padding: '1.1rem 1rem',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 9999,
+            margin: '0 auto 0.6rem',
+            background:
+              'radial-gradient(circle at 30% 30%, rgba(91,231,255,.35), rgba(255,255,255,.06))',
+            border: '1px solid rgba(255,255,255,.12)',
+            boxShadow: '0 10px 30px rgba(0,0,0,.35)',
+          }}
+        />
+        <div style={{ fontWeight: 700, letterSpacing: '0.02em' }}>
+          今日の課題はゼロ
+        </div>
+        <div style={{ marginTop: 6, fontSize: '0.85rem', color: 'var(--muted)' }}>
+          追加するか、週次タスクを materialize してみよう
+        </div>
+      </div>
+    );
   }
 
   // ✅ TaskList.tsx の buildDeadlineFromParts をこれにする（最小）
@@ -511,15 +539,14 @@ const saveTaskNotificationOptions = (
                         {/* ギアメニュー */}
                         {menuTaskId === task.id && (
                           <div
+                            className="glass-strong"
                             style={{
                               position: 'absolute',
                               top: '110%',
                               right: 0,
                               minWidth: 120,
                               borderRadius: 10,
-                              backgroundColor: '#ffffff',
-                              boxShadow: '0 12px 30px rgba(15,23,42,0.28)',
-                              border: '1px solid #e5e7eb',
+                              boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
                               zIndex: 40,
                               overflow: 'hidden',
                             }}
@@ -537,7 +564,8 @@ const saveTaskNotificationOptions = (
                                 fontSize: '0.85rem',
                                 textAlign: 'left',
                                 border: 'none',
-                                background: 'white',
+                                background: 'transparent',
+                                color: 'rgba(255,255,255,.9)',
                                 cursor: 'pointer',
                               }}
                             >
@@ -556,7 +584,7 @@ const saveTaskNotificationOptions = (
                                 padding: '0.5rem 0.8rem',
                                 fontSize: '0.85rem',
                                 textAlign: 'left',
-                                borderTop: '1px solid #e5e7eb',
+                                borderTop: '1px solid rgba(255,255,255,.12)',
                                 borderBottom: 'none',
                                 borderLeft: 'none',
                                 borderRight: 'none',
@@ -646,12 +674,12 @@ const saveTaskNotificationOptions = (
                 key={task.id}
                 style={{
                   borderRadius: 18,
-                  padding: '0.75rem 0.9rem',
-                  background: 'rgba(255,255,255,0.82)',
+                  padding: '0.85rem 0.95rem',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.10)',
                   backdropFilter: 'blur(16px)',
                   WebkitBackdropFilter: 'blur(16px)',
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  boxShadow: '0 10px 30px rgba(15,23,42,0.18)',
+                  boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
                 }}
               >
                 {/* 1行目: チェックボックス + タイトル + ✏️ */}
@@ -782,7 +810,7 @@ const saveTaskNotificationOptions = (
                     display: 'flex',
                     alignItems: 'center',
                     fontSize: '0.8rem',
-                    color: '#4b5563',
+                    color: 'rgba(255,255,255,.62)',
                     marginBottom: '0.4rem',
                   }}
                 >
@@ -804,7 +832,7 @@ const saveTaskNotificationOptions = (
                     <span
                       style={{
                         fontSize: '0.8rem',
-                        color: '#4b5563',
+                        color: 'rgba(255,255,255,.62)',
                         marginRight: 4,
                       }}
                     >
@@ -819,8 +847,9 @@ const saveTaskNotificationOptions = (
                         padding: '0.2rem 0.5rem',
                         fontSize: '0.8rem',
                         borderRadius: 9999,
-                        border: '1px solid #cbd5e1',
-                        backgroundColor: '#f8fafc',
+                        border: '1px solid rgba(255,255,255,.12)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: 'rgba(255,255,255,.92)',
                       }}
                     >
                       <option value="todo">未</option>
@@ -832,7 +861,7 @@ const saveTaskNotificationOptions = (
                     style={{ display: 'flex', alignItems: 'center', gap: 6 }}
                   >
                     <span
-                      style={{ fontSize: '0.8rem', color: '#4b5563' }}
+                      style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}
                     >
                       通知
                     </span>
@@ -850,7 +879,7 @@ const saveTaskNotificationOptions = (
                   <div
                     style={{
                       fontSize: '0.8rem',
-                      color: '#4b5563',
+                      color: 'rgba(255,255,255,.62)',
                       marginBottom: 2,
                     }}
                   >
@@ -898,12 +927,12 @@ const saveTaskNotificationOptions = (
             }}
           >
             <div
+              className="glass-strong"
               style={{
                 width: 'min(480px, 92vw)',
                 borderRadius: 24,
-                backgroundColor: '#fff',
                 padding: '1.2rem 1rem 1rem',
-                boxShadow: '0 20px 60px rgba(15,23,42,0.45)',
+                boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
               }}
             >
               <div
@@ -911,7 +940,7 @@ const saveTaskNotificationOptions = (
                   fontSize: '0.9rem',
                   fontWeight: 600,
                   marginBottom: '0.75rem',
-                  color: '#0f172a',
+                  color: 'rgba(255,255,255,.92)',
                 }}
               >
                 タスク詳細を編集
@@ -934,13 +963,15 @@ const saveTaskNotificationOptions = (
                   style={{
                     padding: '0.5rem 0.9rem',
                     borderRadius: 9999,
-                    border: '1px solid #cbd5e1',
                     fontSize: '0.9rem',
+                    color: 'rgba(255,255,255,.92)',
+                    background: 'rgba(255,255,255,.06)',
+                    border: '1px solid rgba(255,255,255,.12)',
                   }}
                 />
               </label>
 
-                            <label
+              <label
                 style={{
                   fontSize: '0.85rem',
                   display: 'flex',
@@ -966,8 +997,10 @@ const saveTaskNotificationOptions = (
                     style={{
                       padding: '0.45rem 0.7rem',
                       borderRadius: 9999,
-                      border: '1px solid #cbd5e1',
                       fontSize: '0.9rem',
+                      color: 'rgba(255,255,255,.92)',
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.12)',
                     }}
                   />
 
@@ -978,8 +1011,10 @@ const saveTaskNotificationOptions = (
                     style={{
                       padding: '0.45rem 0.7rem',
                       borderRadius: 9999,
-                      border: '1px solid #cbd5e1',
                       fontSize: '0.9rem',
+                      color: 'rgba(255,255,255,.92)',
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.12)',
                     }}
                   >
                     {Array.from({ length: 23 }, (_, i) => {
@@ -1003,8 +1038,10 @@ const saveTaskNotificationOptions = (
                     style={{
                       padding: '0.45rem 0.7rem',
                       borderRadius: 9999,
-                      border: '1px solid #cbd5e1',
                       fontSize: '0.9rem',
+                      color: 'rgba(255,255,255,.92)',
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.12)',
                     }}
                   >
                     <option value="00">00</option>
@@ -1103,12 +1140,12 @@ const saveTaskNotificationOptions = (
           onClick={closeNotificationModal}
         >
           <div
+            className="glass-strong"
             style={{
               width: 'min(460px, 92vw)',
               borderRadius: 24,
-              backgroundColor: '#fff',
               padding: '1.2rem 1rem 1rem',
-              boxShadow: '0 20px 60px rgba(15,23,42,0.45)',
+              boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1117,16 +1154,15 @@ const saveTaskNotificationOptions = (
                 fontSize: '0.9rem',
                 fontWeight: 600,
                 marginBottom: '0.5rem',
-                color: '#0f172a',
+                color: 'rgba(255,255,255,.92)',
               }}
             >
               「{notificationModalTask.title || 'タイトル未設定'}」の通知タイミング
             </div>
-
             <p
               style={{
                 fontSize: '0.8rem',
-                color: '#6b7280',
+                color: 'rgba(255,255,255,.62)',
                 marginBottom: '0.75rem',
                 lineHeight: 1.5,
               }}
@@ -1173,7 +1209,7 @@ const saveTaskNotificationOptions = (
                     marginTop: '0.4rem',
                     marginBottom: '0.6rem',
                     fontSize: '0.75rem',
-                    color: '#64748b', // 薄めのグレー
+                    color: 'rgba(255,255,255,.62)',
                   }}
                 >
                   ※ 半角数字のみ入力可
@@ -1203,13 +1239,13 @@ const saveTaskNotificationOptions = (
                       width: '80px',
                       padding: '0.4rem 0.6rem',
                       borderRadius: 9999,
-                      border: '1px solid #cbd5e1',
+                      color: 'rgba(255,255,255,.92)',
+                      background: 'rgba(255,255,255,.06)',
+                      border: '1px solid rgba(255,255,255,.12)',
                       fontSize: '0.9rem',
                     }}
                   />
-
-                  <span style={{ fontSize: '0.85rem' }}>時間前</span>
-
+                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,.82)' }}>時間前</span>
                   <button
                     type="button"
                     onClick={() => handleNotificationOffsetRemove(index)}
@@ -1259,8 +1295,9 @@ const saveTaskNotificationOptions = (
                 style={{
                   padding: '0.4rem 1rem',
                   borderRadius: 9999,
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#fff',
+                  border: '1px solid rgba(255,255,255,.14)',
+                  background: 'rgba(255,255,255,.06)',
+                  color: 'rgba(255,255,255,.90)',
                   fontSize: '0.85rem',
                   cursor: 'pointer',
                 }}
@@ -1324,7 +1361,7 @@ const saveTaskNotificationOptions = (
 
 
 
-      <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#6b7280' }}>
+      <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'rgba(255,255,255,.62)'}}>
         ※「毎週タスク」はテンプレートから自動生成されます。授業がない週など、この週だけ削除したい場合は左端で選択して「選択した課題を削除」を押してください。
       </p>
     </div>

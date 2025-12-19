@@ -406,53 +406,63 @@ export const Dashboard: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '1200px',
+        maxWidth: '420px',
         margin: '0 auto',
-        padding: '0.75rem 1rem 4.5rem',
+        padding: '0.9rem 1rem calc(5.2rem + env(safe-area-inset-bottom))',
       }}
     >
+
       {/* ヘッダー（左上ハンバーガー） */}
       <header
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '0.75rem',
+          marginBottom: '0.9rem',
         }}
       >
         <button
           onClick={() => setIsMenuOpen(true)}
           aria-label="メニュー"
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: 'none',
-            backgroundColor: '#f0f0f0',
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            background: 'rgba(255,255,255,.07)',
+            border: '1px solid rgba(255,255,255,.10)',
+            backdropFilter: 'blur(18px)',
+            WebkitBackdropFilter: 'blur(18px)',
+            color: 'rgba(255,255,255,.92)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
           }}
         >
-          {/* 三本線 */}
           <div
             style={{
               width: 18,
               height: 2,
-              backgroundColor: '#333',
-              boxShadow: '0 5px 0 #333, 0 -5px 0 #333',
+              backgroundColor: 'rgba(255,255,255,.85)',
+              boxShadow:
+                '0 6px 0 rgba(255,255,255,.85), 0 -6px 0 rgba(255,255,255,.85)',
             }}
           />
         </button>
-        {/* 中央の「UniPA Reminder」は空にする */}
+
         <div
           style={{
-            fontWeight: 600,
-            fontSize: '1rem',
+            fontWeight: 700,
+            fontSize: '0.95rem',
+            letterSpacing: '0.08em',
+            color: 'rgba(255,255,255,.82)',
+            userSelect: 'none',
           }}
-        />
-        <div style={{ width: 32 }} />
+        >
+          UNIPA REMINDER
+        </div>
+
+        <div style={{ width: 36 }} />
       </header>
 
       {renderContent()}
@@ -464,7 +474,7 @@ export const Dashboard: React.FC = () => {
           style={{
             position: 'fixed',
             right: '1.5rem',
-            bottom: '4.8rem',
+            bottom: 'calc(4.8rem + env(safe-area-inset-bottom))',
             width: '56px',
             height: '56px',
             borderRadius: '50%',
@@ -499,16 +509,19 @@ export const Dashboard: React.FC = () => {
           right: 0,
           bottom: 0,
           margin: '0 auto',
-          maxWidth: '1200px',
-          padding: '0.4rem 1rem',
-          backgroundColor: '#ffffff',
-          borderTop: '1px solid #ddd',
+          maxWidth: '420px',
+          padding: '0.55rem 1rem calc(0.55rem + env(safe-area-inset-bottom))',
+          background: 'rgba(10, 12, 18, .72)',
+          borderTop: '1px solid rgba(255,255,255,.10)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           display: 'flex',
           justifyContent: 'space-around',
           alignItems: 'center',
           zIndex: 100,
         }}
       >
+
         <TabButton
           label="全部"
           icon="📋"
@@ -546,7 +559,9 @@ export const Dashboard: React.FC = () => {
             style={{
               width: '70%',
               maxWidth: 260,
-              backgroundColor: '#fff',
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
               padding: '1rem',
               boxShadow: '2px 0 12px rgba(0,0,0,0.2)',
               display: 'flex',
@@ -626,8 +641,8 @@ const TabButton: React.FC<TabButtonProps> = ({
         alignItems: 'center',
         gap: '0.1rem',
         fontSize: '0.8rem',
-        color: active ? '#007bff' : '#666',
-        fontWeight: active ? 600 : 400,
+        color: active ? 'var(--accent)' : 'rgba(255,255,255,.60)',
+        fontWeight: active ? 700 : 500,
         cursor: 'pointer',
       }}
     >

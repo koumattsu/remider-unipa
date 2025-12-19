@@ -1,14 +1,15 @@
 // frontend/src/components/TaskForm.tsx
 
-import { useState } from 'react';
+import { useState, useEffect} from 'react';
 import { TaskCreate } from '../types';
 import { tasksApi } from '../api/tasks';
 
 interface TaskFormProps {
   onTaskCreated: () => void;
+  defaultDeadlineDate?: string; 
 }
 
-export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
+export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadlineDate}) => {
   const [formData, setFormData] = useState<
     Omit<TaskCreate, 'deadline' | 'should_notify'>
   >({
@@ -18,9 +19,14 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated }) => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [deadlineDate, setDeadlineDate] = useState('');   // 例: "2025-11-30"
+  const [deadlineDate, setDeadlineDate] = useState(defaultDeadlineDate ?? ''); 
   const [deadlineHour, setDeadlineHour] = useState('24'); // "1"〜"24"、デフォルト24時
   const [deadlineMinute, setDeadlineMinute] = useState('00'); // "00" or "30"
+
+  // defaultDeadlineDate が変わったら deadlineDate に反映
+  useEffect(() => {
+    setDeadlineDate(defaultDeadlineDate ?? '');
+  }, [defaultDeadlineDate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

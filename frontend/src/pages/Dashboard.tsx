@@ -1,7 +1,7 @@
 // frontend/src/pages/Dashboard.tsx
 
 import { useState, useEffect, useMemo } from 'react';
-import { Task, TaskCreate, WeeklyTask } from '../types';
+import { Task, WeeklyTask } from '../types';
 import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
 import { TaskForm } from '../components/TaskForm';
@@ -107,6 +107,7 @@ export const Dashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [addDefaultDeadlineDate, setAddDefaultDeadlineDate] = useState<string | undefined>(undefined);
 
     // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -260,46 +261,25 @@ export const Dashboard: React.FC = () => {
     [tasks]
   );
 
+  const formatYmd = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   // ➕ 右下のプラスボタンの挙動
   const handleFabClick = async () => {
-    // 「全部」タブで＋を押したら、課題追加画面に飛ばす
     if (activeTab === 'all') {
+      setAddDefaultDeadlineDate(undefined); // ★クリア（従来通り空で追加）
       setActiveTab('add');
       return;
     }
 
-    // 今日タブ：今日のタスクをサクッと追加
     if (activeTab === 'today') {
-      const title = window.prompt('今日のタスクのタイトルを入力してください');
-      if (!title || !title.trim()) {
-        return;
-      }
-
-      const now = new Date();
-      const tomorrow = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate() + 1,
-        0,
-        0,
-        0
-      );
-
-      const payload: TaskCreate= {
-        title: title.trim(),
-        course_name: '',
-        deadline: tomorrow.toISOString(),
-        memo: '',
-        should_notify: true, 
-      };
-
-      try {
-        await tasksApi.create(payload);
-        await loadTasks();
-      } catch (error) {
-        console.error('今日のタスク追加に失敗しました:', error);
-        alert('今日のタスク追加に失敗しました');
-      }
+      setAddDefaultDeadlineDate(formatYmd(new Date())); // ★今日をプリセット
+      setActiveTab('add');
+      return;
     }
   };
 
@@ -384,9 +364,11 @@ export const Dashboard: React.FC = () => {
           <>
             <h1 style={{ marginBottom: '1rem' }}>課題を追加</h1>
             <TaskForm
+              defaultDeadlineDate={addDefaultDeadlineDate}   // ★追加
               onTaskCreated={async () => {
                 await loadTasks();
-                setActiveTab('all'); // 追加完了後に「全部」へ戻る
+                setAddDefaultDeadlineDate(undefined);        // ★作成後クリア（重要）
+                setActiveTab('all');
               }}
             />
           </>
@@ -560,9 +542,10 @@ export const Dashboard: React.FC = () => {
             style={{
               width: '70%',
               maxWidth: 260,
-              backgroundColor: 'rgba(0,0,0,0.55)',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)',
+              background: 'var(--card2)',
+              border: '1px solid var(--bd)',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
               padding: '1rem',
               boxShadow: '2px 0 12px rgba(0,0,0,0.2)',
               display: 'flex',
@@ -575,6 +558,7 @@ export const Dashboard: React.FC = () => {
             <MenuItem
               label="課題を追加"
               onClick={() => {
+                setAddDefaultDeadlineDate(undefined); 
                 setActiveTab('add');
                 setIsMenuOpen(false);
               }}
@@ -665,12 +649,15 @@ const MenuItem: React.FC<MenuItemProps> = ({ label, onClick }) => (
     style={{
       width: '100%',
       textAlign: 'left',
-      border: 'none',
-      background: 'none',
-      padding: '0.65rem 0.4rem',
+      border: '1px solid rgba(255,255,255,.10)',
+      background: 'rgba(255,255,255,.06)',
+      padding: '0.65rem 0.6rem',
       fontSize: '0.95rem',
       cursor: 'pointer',
-      color: 'rgba(255,255,255,.82)',
+      color: 'rgba(255,255,255,.92)',
+      borderRadius: 10,
+      backdropFilter: 'blur(6px)',
+      WebkitBackdropFilter: 'blur(6px)',
     }}
   >
     {label}

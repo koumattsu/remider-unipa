@@ -40,6 +40,18 @@ def deadline_jst_effective(dt: datetime) -> datetime:
 
     return jst_dt
 
+def deadline_label_date_jst(dt: datetime) -> date:
+    """
+    ✅ UIの「24:xx」表記に合わせた“日付ラベル”を返す（瞬間はズラさない）
+    - JST で hour==0（00:xx）は「前日扱い」（= 24:xx 表記）
+    """
+    jst_dt = to_utc(dt).astimezone(JST)
+    label = jst_dt.date()
+    if jst_dt.hour == 0:
+        label = label - timedelta(days=1)
+    return label
+
+
 def is_notification_candidate(
     task: Task,
     weekly_is_active: bool | None,
@@ -67,11 +79,9 @@ def is_notification_candidate(
             return False
 
     # ④ 24:00補正込みで「過去締切」は除外
-    now_jst = now_utc.astimezone(JST)
-    effective_deadline_jst = deadline_jst_effective(task.deadline)
-    if effective_deadline_jst < now_jst:
+    deadline_utc = to_utc(task.deadline)
+    if deadline_utc < now_utc:
         return False
-
     return True
 
 def has_notification_been_sent(
@@ -156,16 +166,14 @@ def get_tasks_due_in_hours(
         if not is_notification_candidate(task, weekly_is_active, now_utc):
             continue
 
-        # ✅ 24:00補正後の締切を基準に diff を計算（将来事故りにくい）
-        effective_deadline_jst = deadline_jst_effective(task.deadline)
-        effective_deadline_utc = effective_deadline_jst.astimezone(timezone.utc)
-        diff_hours = (effective_deadline_utc - now_utc).total_seconds() / 3600.0
+        deadline_utc = to_utc(task.deadline)
+        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
 
         print(
             "  task:", task.title,
-            "deadline(JST):", effective_deadline_jst,
+            "deadline_utc:", deadline_utc,
+            "deadline_jst:", deadline_utc.astimezone(JST),
             "diff_hours:", diff_hours,
-            "is_done:", task.is_done,
         )
 
         # --- 🔔 タスクごとの通知オーバーライド取得 ---
@@ -232,7 +240,8 @@ def get_tasks_due_today_morning(
 
         effective_deadline_jst = deadline_jst_effective(task.deadline)
 
-        if start_jst <= effective_deadline_jst <= end_jst:
+        label_date = deadline_label_date_jst(task.deadline)
+        if label_date == today_jst:
             if not has_notification_been_sent(db, user_id, task.id, 0):
                 result.append(task)
     return result

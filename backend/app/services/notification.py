@@ -175,7 +175,7 @@ def get_tasks_due_today_morning(
 
     now_utc = datetime.now(timezone.utc)
     today_jst = now_utc.astimezone(JST).date()
-
+    now_jst = now_utc.astimezone(JST)
     start_jst = datetime.combine(today_jst, time(0, 0, 0, tzinfo=JST))
     end_jst = datetime.combine(today_jst, time(23, 59, 59, tzinfo=JST))
 
@@ -199,10 +199,18 @@ def get_tasks_due_today_morning(
     result: List[Task] = []
 
     for task in candidates:
-        deadline_jst = deadline_jst_effective(task.deadline)
-        if start_jst <= deadline_jst <= end_jst:
-            if not has_notification_been_sent(db, user_id, task.id, 0):
-                print("   → [morning] notify:", task.id, task.title, "deadline_jst_effective:", deadline_jst, "raw_deadline:", to_utc(task.deadline).astimezone(JST), "weekly_task_id:", task.weekly_task_id)
-                result.append(task)
+        deadline_jst = to_utc(task.deadline).astimezone(JST)
 
+        # ✅ 24:00補正（0:00締切は「前日24:00」とみなす）
+        effective_deadline = deadline_jst
+        if effective_deadline.hour == 0 and effective_deadline.minute == 0:
+            effective_deadline = effective_deadline - timedelta(days=1)
+
+        # ✅ 期限が過去なら朝通知に出さない（これが今回のバグの止血）
+        if effective_deadline < now_jst:
+            continue
+
+        if start_jst <= effective_deadline <= end_jst:
+            if not has_notification_been_sent(db, user_id, task.id, 0):
+                result.append(task)
     return result

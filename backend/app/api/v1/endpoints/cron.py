@@ -296,7 +296,6 @@ async def debug_users(db: Session = Depends(get_db)):
     line_user_id を持っているかどうかを中心に見る。
     """
     users = db.query(User).all()
-
     result = []
     for u in users:
         result.append(
@@ -308,12 +307,10 @@ async def debug_users(db: Session = Depends(get_db)):
                 "plan": getattr(u, "plan", None),
             }
         )
-
     return {
         "count": len(result),
         "users": result,
     }
-
 
 @router.post("/debug-register-user")
 async def debug_register_user(
@@ -328,7 +325,6 @@ async def debug_register_user(
     ※ display_name / university / plan にデフォルトを入れて、
       NOT NULL 制約で落ちないようにしている。
     """
-
     try:
         if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
             return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}

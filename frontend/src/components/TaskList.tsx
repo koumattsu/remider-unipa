@@ -321,17 +321,21 @@ const saveTaskNotificationOptions = (
     setSelectedIds(allSelected ? [] : tasks.map((t) => t.id));
   };
 
+  
   const formatDeadline = (dateString: string) => {
     const date = new Date(dateString);
     const hours = date.getHours();
     const minutes = date.getMinutes();
 
-    if (hours === 0 && minutes === 0) {
+    // ✅ 0時台は「前日 24:MM」表記に寄せる（24:30 も対応）
+    if (hours === 0) {
       const prev = new Date(date);
       prev.setDate(prev.getDate() - 1);
+
       const month = String(prev.getMonth() + 1).padStart(2, '0');
       const day = String(prev.getDate()).padStart(2, '0');
-      return `${month}/${day} 24:00`;
+      const m = String(minutes).padStart(2, '0');
+      return `${month}/${day} 24:${m}`;
     }
 
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -412,13 +416,15 @@ const saveTaskNotificationOptions = (
   const selectedCount = selectedIds.length;
 
     // 共通: 編集モーダルを開く
+  
   const openEditModal = (task: Task) => {
     const d = new Date(task.deadline);
     let baseDate = new Date(d);
     let hour = d.getHours();
     const minute = d.getMinutes();
 
-    if (hour === 0 && minute === 0) {
+    // ✅ 0時台は「前日 24:MM」に逆変換してモーダルへ入れる
+    if (hour === 0) {
       baseDate.setDate(baseDate.getDate() - 1);
       hour = 24;
     }
@@ -434,6 +440,7 @@ const saveTaskNotificationOptions = (
     setEditHour(pad(hour));
     setEditMinute(pad(minute));
   };
+
 
   return (
     <div>

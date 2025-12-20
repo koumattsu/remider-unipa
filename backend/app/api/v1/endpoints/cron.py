@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 from fastapi import APIRouter, Depends
+import re
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.user import User
@@ -19,7 +20,6 @@ from app.services.line_client import (
     send_daily_digest,
 )
 from app.services.weekly_materialize import materialize_weekly_tasks_for_user
-import re
 
 router = APIRouter()
 
@@ -135,13 +135,16 @@ async def run_daily_job(db: Session = Depends(get_db)):
         .filter(User.line_user_id.isnot(None))
         .all()
     )
+    import re
+    VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
     for user in users:
         user_id = user.id
         line_user_id = user.line_user_id
         if not line_user_id:
             continue
-
+        if not (isinstance(line_user_id, str) and VALID_LINE_UID.fullmatch(line_user_id)):
+            continue
         results["users_targeted"] += 1
 
         # 通知設定取得
@@ -321,6 +324,8 @@ async def debug_register_user(
     """
 
     try:
+        if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
+            return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}
         # 既存ユーザー検索
         user = (
             db.query(User)

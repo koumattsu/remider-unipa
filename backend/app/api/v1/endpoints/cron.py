@@ -135,7 +135,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
         .filter(User.line_user_id.isnot(None))
         .all()
     )
-    import re
     VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
     for user in users:
@@ -324,6 +323,8 @@ async def debug_register_user(
     """
 
     try:
+        if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
+            return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}
         if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
             return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}
         # 既存ユーザー検索

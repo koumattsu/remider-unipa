@@ -27,9 +27,19 @@ def to_utc(dt: datetime) -> datetime:
         return dt.replace(tzinfo=JST).astimezone(timezone.utc)
     return dt.astimezone(timezone.utc)
 
-# ================================
-# 共通ヘルパー
-# ================================
+def deadline_jst_effective(dt: datetime) -> datetime:
+    """
+    フロントの 24:00 ロジックと揃える補正。
+    JST で 00:00:00 の締切は「前日扱い」にする。
+    """
+    deadline_utc = to_utc(dt)
+    jst_dt = deadline_utc.astimezone(JST)
+
+    if jst_dt.hour == 0 and jst_dt.minute == 0 and jst_dt.second == 0:
+        return jst_dt - timedelta(days=1)
+
+    return jst_dt
+
 
 def has_notification_been_sent(
     db: Session,
@@ -116,8 +126,7 @@ def get_tasks_due_in_hours(
 
     for task in candidates:
         deadline_utc = to_utc(task.deadline)
-        deadline_jst = deadline_utc.astimezone(JST)
-
+        deadline_jst = deadline_jst_effective(task.deadline)
         diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
 
         print(
@@ -187,14 +196,13 @@ def get_tasks_due_today_morning(
         )
         .all()
     )
-
     result: List[Task] = []
 
     for task in candidates:
-        deadline_jst = to_utc(task.deadline).astimezone(JST)
-
+        deadline_jst = deadline_jst_effective(task.deadline)
         if start_jst <= deadline_jst <= end_jst:
             if not has_notification_been_sent(db, user_id, task.id, 0):
+                print("   → [morning] notify:", task.id, task.title, "deadline_jst_effective:", deadline_jst, "raw_deadline:", to_utc(task.deadline).astimezone(JST), "weekly_task_id:", task.weekly_task_id)
                 result.append(task)
 
     return result

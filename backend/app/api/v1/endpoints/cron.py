@@ -225,29 +225,59 @@ async def debug_send(db: Session = Depends(get_db)):
     )
 
     results = []
+    ok = 0
+    ng = 0
+
+    # テスト用メッセージ（固定）
+    msg = "🔧 デバッグ通知テスト\nUNIPAリマインダーのLINE送信テストです。"
 
     for user in users:
-        if not user.line_user_id:
+        line_user_id = user.line_user_id
+        if not line_user_id:
+            ng += 1
+            results.append({
+                "user_id": user.id,
+                "status": "skipped",
+                "reason": "line_user_id is empty",
+            })
             continue
 
-        # テスト用メッセージ
-        msg = "🔧 デバッグ通知テスト\nUNIPAリマインダーのLINE送信テストです。"
+        # フォーマット不正はスキップ（line_clientも同様にwarnしてreturnするが、結果に残す）
+        if not (isinstance(line_user_id, str) and line_user_id.startswith("U")):
+            ng += 1
+            results.append({
+                "user_id": user.id,
+                "line_user_id": line_user_id,
+                "status": "skipped",
+                "reason": "invalid line_user_id format (must start with 'U')",
+            })
+            continue
 
-        # 実際に1件送信
-        await send_simple_text(user.line_user_id, msg)
-
-        results.append({
-            "user_id": user.id,
-            "line_user_id": user.line_user_id,
-            "status": "sent"
-        })
+        try:
+            await send_simple_text(line_user_id, msg)
+            ok += 1
+            results.append({
+                "user_id": user.id,
+                "line_user_id": line_user_id,
+                "status": "sent",
+            })
+        except Exception as e:
+            ng += 1
+            # line_client.py は RuntimeError に status/body を入れて投げてくれてるので repr(e) で十分追える
+            results.append({
+                "user_id": user.id,
+                "line_user_id": line_user_id,
+                "status": "error",
+                "error": repr(e),
+            })
 
     return {
         "message": "debug-send executed",
+        "sent_ok": ok,
+        "sent_ng": ng,
         "count": len(results),
         "results": results,
     }
-
 
 @router.get("/debug-users")
 async def debug_users(db: Session = Depends(get_db)):

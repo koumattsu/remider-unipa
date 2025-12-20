@@ -236,3 +236,54 @@ def get_tasks_due_today_morning(
             if not has_notification_been_sent(db, user_id, task.id, 0):
                 result.append(task)
     return result
+
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
+@dataclass
+class NotificationCandidates:
+    due_in_hours: Dict[int, List[Task]]   # offset_hours -> tasks
+    morning: List[Task]                   # 朝通知タスク
+    debug: Dict[str, int]                 # 数だけ（ログ用）
+
+def collect_notification_candidates(
+    db: Session,
+    user_id: int,
+    offsets_hours: List[int],
+) -> NotificationCandidates:
+    """
+    ✅ 通知対象の判定を集約して返す（送信はしない）
+    - offsets_hours: 例 [3,6] など
+    - due_in_hours は offsetごとに Task の配列を返す
+    - morning は朝通知の配列を返す
+    """
+    normalized_offsets: List[int] = []
+    for x in offsets_hours or []:
+        try:
+            h = int(x)
+        except (TypeError, ValueError):
+            continue
+        if h > 0:
+            normalized_offsets.append(h)
+
+    due_map: Dict[int, List[Task]] = {}
+    total_due = 0
+
+    for h in normalized_offsets:
+        tasks = get_tasks_due_in_hours(db, user_id=user_id, hours=h)
+        # get_tasks_due_in_hours は「そのoffsetの窓に入った」taskを返す設計なので、
+        # ここでは h キーに寄せて格納する（overrideがある場合は今後改善余地あり）
+        due_map[h] = tasks
+        total_due += len(tasks)
+
+    morning_tasks = get_tasks_due_today_morning(db, user_id=user_id)
+
+    return NotificationCandidates(
+        due_in_hours=due_map,
+        morning=morning_tasks,
+        debug={
+            "offsets_count": len(normalized_offsets),
+            "due_total": total_due,
+            "morning_total": len(morning_tasks),
+        },
+    )

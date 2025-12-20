@@ -13,6 +13,7 @@ from app.services.notification import (
     get_tasks_due_in_hours,
     get_tasks_due_today_morning,
     mark_notification_as_sent,
+    collect_notification_candidates,
 )
 from app.services.line_client import (
     send_deadline_reminder,
@@ -152,6 +153,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
         materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
+        # ✅ 通知対象判定をここで一括集約（将来の核）
+        cands = collect_notification_candidates(
+            db,
+            user_id=user_id,
+            offsets_hours=setting.reminder_offsets_hours or [],
+        )
+
         # ---------- ① 「○時間前」通知 ----------
         offsets = setting.reminder_offsets_hours or []
 
@@ -164,7 +172,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if hours <= 0:
                 continue
 
-            tasks_3h = get_tasks_due_in_hours(db, user_id=user_id, hours=hours)
+            tasks_3h = cands.due_in_hours.get(hours, [])
             if not tasks_3h:
                 continue
 
@@ -191,8 +199,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
         # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
         if setting.enable_morning_notification:
-            tasks_today = get_tasks_due_today_morning(db, user_id=user_id)
-
+            tasks_today = cands.morning
             if tasks_today:
                 # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
                 try:
@@ -323,8 +330,6 @@ async def debug_register_user(
     """
 
     try:
-        if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
-            return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}
         if not re.fullmatch(r"U[0-9a-f]{32}", line_user_id):
             return {"created": False, "error": "invalid line_user_id format (expected U + 32 hex chars)"}
         # 既存ユーザー検索

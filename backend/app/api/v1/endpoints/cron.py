@@ -19,6 +19,7 @@ from app.services.line_client import (
     send_daily_digest,
 )
 from app.services.weekly_materialize import materialize_weekly_tasks_for_user
+import re
 
 router = APIRouter()
 
@@ -243,16 +244,15 @@ async def debug_send(db: Session = Depends(get_db)):
             continue
 
         # フォーマット不正はスキップ（line_clientも同様にwarnしてreturnするが、結果に残す）
-        if not (isinstance(line_user_id, str) and line_user_id.startswith("U")):
+        if not (isinstance(line_user_id, str) and re.fullmatch(r"U[0-9a-f]{32}", line_user_id)):
             ng += 1
             results.append({
                 "user_id": user.id,
                 "line_user_id": line_user_id,
                 "status": "skipped",
-                "reason": "invalid line_user_id format (must start with 'U')",
+                "reason": "invalid line_user_id format (expected U + 32 hex chars)",
             })
             continue
-
         try:
             await send_simple_text(line_user_id, msg)
             ok += 1

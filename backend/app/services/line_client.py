@@ -6,6 +6,7 @@ import httpx
 from app.models.task import Task
 from app.core.config import settings
 import secrets
+import uuid
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
@@ -113,8 +114,7 @@ async def _push_text_message(line_user_id: str, text: str) -> None:
 
     text = _safe_line_text(text)
 
-    # ✅ request を追えるように trace_id を付ける
-    trace_id = secrets.token_hex(4)
+    trace_id = str(uuid.uuid4())
 
     print("[LINE DEBUG]", "trace_id=", trace_id, "to=", line_user_id)
     print("[LINE DEBUG]", "trace_id=", trace_id, "text length =", len(text))

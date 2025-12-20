@@ -12,6 +12,8 @@ type TaskNotificationOptions = {
 interface TodayTaskListProps {
   tasks: Task[];
   onTaskUpdated: () => void;
+  onTaskPatched?: (taskId: number, patch: Partial<Task>) => void;
+  onTasksRemoved?: (ids: number[]) => void;
   // 親コンポーネント（Dashboard）と共有する通知ON/OFF状態
   notifyOverrides: Record<number, boolean>;
   onNotifyChange: (taskId: number, value: boolean) => void;
@@ -25,6 +27,8 @@ interface TodayTaskListProps {
 export const TodayTaskList: React.FC<TodayTaskListProps> = ({
   tasks,
   onTaskUpdated,
+  onTaskPatched,
+  onTasksRemoved,
   notifyOverrides,
   onNotifyChange,
   taskNotificationOverrides,
@@ -52,6 +56,8 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
         <TaskList
           tasks={tasks}
           onTaskUpdated={onTaskUpdated}
+          onTaskPatched={onTaskPatched}
+          onTasksRemoved={onTasksRemoved}
           notifyOverrides={notifyOverrides}
           onNotifyChange={onNotifyChange}
           taskNotificationOverrides={taskNotificationOverrides}

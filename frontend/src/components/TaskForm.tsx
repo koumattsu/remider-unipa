@@ -72,6 +72,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
         deadline: deadlineStr,
         is_done: false,
         should_notify: true,
+        auto_notify_disabled_by_done: false,
         weekly_task_id: null,
       };
       onTaskAddedLocal?.(tempTask);

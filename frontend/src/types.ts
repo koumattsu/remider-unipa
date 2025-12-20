@@ -8,6 +8,7 @@ export interface Task {
   memo?: string | null;
   is_done: boolean;
   should_notify: boolean | null;
+  auto_notify_disabled_by_done: boolean; // ← 追加（バックエンドTaskResponseに合わせる）
   weekly_task_id?: number | null;
 }
 

@@ -215,18 +215,51 @@ const saveTaskNotificationOptions = (
   };
 
   const handleToggleDone = async (task: Task, newIsDone: boolean) => {
-    const prev = Boolean(task.is_done);
-    onTaskPatched?.(task.id, { is_done: newIsDone });
+    const prevDone = Boolean(task.is_done);
+    const prevNotify = Boolean(task.should_notify);
+    const prevAuto = Boolean(task.auto_notify_disabled_by_done);
+    // ✅ バックエンド設計と同じ “次の表示” をフロントでも作る（即反映）
+    let nextNotify = prevNotify;
+    let nextAuto = prevAuto;
+    if (newIsDone === true) {
+      if (prevNotify === true) {
+        nextNotify = false;
+        nextAuto = true;  // 完了OFF扱い
+      } else {
+        nextNotify = false; // 既にOFF（手動OFFの可能性）
+        nextAuto = false;  // 完了OFF扱いにしない
+      }
+    } else {
+      // 未完了に戻す：完了OFFだった分だけ復帰
+      if (prevAuto === true) {
+        nextNotify = true;
+        nextAuto = false;
+      } else {
+        // 手動OFFなら復帰させない
+        nextNotify = prevNotify;
+        nextAuto = prevAuto;
+      }
+    }
+    onTaskPatched?.(task.id, {
+      is_done: newIsDone,
+      should_notify: nextNotify,
+      auto_notify_disabled_by_done: nextAuto,
+    });
     // 仮タスクはフロントだけで完結（API叩かない）
     if (isVirtualTask(task)) return;
     try {
       await tasksApi.update(task.id, {
         is_done: newIsDone,
-        // ✅ should_notify は送らない（通知のON/OFFはバック側ロジック or 通知トグルだけ）
+        should_notify: nextNotify,
       });
     } catch (error) {
       console.error('課題の更新に失敗しました:', error);
-      onTaskPatched?.(task.id, { is_done: prev }); // rollback
+      // rollback（進捗・通知・auto全部戻す）
+      onTaskPatched?.(task.id, {
+        is_done: prevDone,
+        should_notify: prevNotify,
+        auto_notify_disabled_by_done: prevAuto,
+      });
       alert('課題の更新に失敗しました');
     }
   };
@@ -238,12 +271,13 @@ const saveTaskNotificationOptions = (
       return;
     }
     const prev = Boolean(task.should_notify);
-    onTaskPatched?.(task.id, { should_notify: newValue });
+    const prevAuto = Boolean(task.auto_notify_disabled_by_done);
+    onTaskPatched?.(task.id, { should_notify: newValue, auto_notify_disabled_by_done: false });
     try {
       await tasksApi.update(task.id, { should_notify: newValue });
     } catch (error) {
       console.error('通知設定の更新に失敗しました:', error);
-      onTaskPatched?.(task.id, { should_notify: prev }); // rollback
+      onTaskPatched?.(task.id, { should_notify: prev, auto_notify_disabled_by_done: prevAuto }); // rollback
       alert('通知設定の更新に失敗しました');
     }
   };

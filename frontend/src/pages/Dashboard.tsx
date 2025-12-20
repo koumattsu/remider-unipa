@@ -381,6 +381,8 @@ export const Dashboard: React.FC = () => {
             <TodayTaskList
               tasks={todayTasks}
               onTaskUpdated={loadTasks}
+              onTaskPatched={patchTaskLocal}
+              onTasksRemoved={removeTasksLocal}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
               // ★ 追加

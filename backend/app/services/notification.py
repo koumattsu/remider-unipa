@@ -2,13 +2,12 @@
 
 from datetime import datetime, timedelta, date, time, timezone
 from typing import List
-
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-
 from app.models.task import Task
 from app.models.task_notification_log import TaskNotificationLog
 from app.models.task_notification_override import TaskNotificationOverride
+from app.models.weekly_task import WeeklyTask
 
 JST = timezone(timedelta(hours=9))
 
@@ -96,12 +95,18 @@ def get_tasks_due_in_hours(
 
     candidates = (
         db.query(Task)
+        .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
             Task.is_done == False,  # noqa: E712
             or_(
                 Task.should_notify == True,
                 Task.should_notify.is_(None),
+            ),
+            # ✅ weekly由来ならテンプレが生きてるものだけ通知（幽霊通知の止血）
+            or_(
+                Task.weekly_task_id.is_(None),   # 通常タスク
+                WeeklyTask.is_active == True,    # weekly由来でも active のみ
             ),
         )
         .all()
@@ -167,12 +172,17 @@ def get_tasks_due_today_morning(
 
     candidates = (
         db.query(Task)
+        .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
             Task.is_done == False,  # noqa: E712
             or_(
                 Task.should_notify == True,
                 Task.should_notify.is_(None),
+            ),
+            or_(
+            Task.weekly_task_id.is_(None),
+            WeeklyTask.is_active == True,
             ),
         )
         .all()

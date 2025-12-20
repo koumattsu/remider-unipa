@@ -1,9 +1,7 @@
 # app/services/task_sync.py
 from sqlalchemy.orm import Session
-
 from app.models.task import Task
 from app.services.unipa_client import UnipaClient
-
 
 def sync_unipa_tasks(
     db: Session,
@@ -32,7 +30,6 @@ def sync_unipa_tasks(
             )
             .first()
         )
-
         if existing:
             # 既存ならメモだけ更新（必要に応じて拡張）
             existing.memo = t.memo
@@ -47,6 +44,5 @@ def sync_unipa_tasks(
             )
             db.add(new_task)
             created_count += 1
-
     db.commit()
     return created_count

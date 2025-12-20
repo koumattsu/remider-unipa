@@ -40,6 +40,39 @@ def deadline_jst_effective(dt: datetime) -> datetime:
 
     return jst_dt
 
+def is_notification_candidate(
+    task: Task,
+    weekly_is_active: bool | None,
+    now_utc: datetime,
+) -> bool:
+    """
+    ✅ 通知対象の共通判定（集約）
+
+    - 完了タスクは除外
+    - should_notify が False なら除外（None は True 扱い）
+    - weekly由来ならテンプレが active のときだけ（幽霊通知止血）
+    - 24:00補正込みの締切が「過去」なら除外
+    """
+    # ① 完了は除外
+    if task.is_done:
+        return False
+
+    # ② should_notify は None を True 扱いにする
+    if task.should_notify is False:
+        return False
+
+    # ③ weekly由来なら active のときだけ
+    if task.weekly_task_id is not None:
+        if weekly_is_active is not True:
+            return False
+
+    # ④ 24:00補正込みで「過去締切」は除外
+    now_jst = now_utc.astimezone(JST)
+    effective_deadline_jst = deadline_jst_effective(task.deadline)
+    if effective_deadline_jst < now_jst:
+        return False
+
+    return True
 
 def has_notification_been_sent(
     db: Session,
@@ -104,7 +137,7 @@ def get_tasks_due_in_hours(
     print("  target hours:", hours)
 
     candidates = (
-        db.query(Task)
+        db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
@@ -113,25 +146,24 @@ def get_tasks_due_in_hours(
                 Task.should_notify == True,
                 Task.should_notify.is_(None),
             ),
-            # ✅ weekly由来ならテンプレが生きてるものだけ通知（幽霊通知の止血）
-            or_(
-                Task.weekly_task_id.is_(None),   # 通常タスク
-                WeeklyTask.is_active == True,    # weekly由来でも active のみ
-            ),
         )
         .all()
     )
 
     result: List[Task] = []
 
-    for task in candidates:
-        deadline_utc = to_utc(task.deadline)
-        deadline_jst = deadline_jst_effective(task.deadline)
-        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
+    for task, weekly_is_active in candidates:
+        if not is_notification_candidate(task, weekly_is_active, now_utc):
+            continue
+
+        # ✅ 24:00補正後の締切を基準に diff を計算（将来事故りにくい）
+        effective_deadline_jst = deadline_jst_effective(task.deadline)
+        effective_deadline_utc = effective_deadline_jst.astimezone(timezone.utc)
+        diff_hours = (effective_deadline_utc - now_utc).total_seconds() / 3600.0
 
         print(
             "  task:", task.title,
-            "deadline(JST):", deadline_jst,
+            "deadline(JST):", effective_deadline_jst,
             "diff_hours:", diff_hours,
             "is_done:", task.is_done,
         )
@@ -180,7 +212,7 @@ def get_tasks_due_today_morning(
     end_jst = datetime.combine(today_jst, time(23, 59, 59, tzinfo=JST))
 
     candidates = (
-        db.query(Task)
+        db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
@@ -189,28 +221,18 @@ def get_tasks_due_today_morning(
                 Task.should_notify == True,
                 Task.should_notify.is_(None),
             ),
-            or_(
-            Task.weekly_task_id.is_(None),
-            WeeklyTask.is_active == True,
-            ),
         )
         .all()
     )
     result: List[Task] = []
 
-    for task in candidates:
-        deadline_jst = to_utc(task.deadline).astimezone(JST)
-
-        # ✅ 24:00補正（0:00締切は「前日24:00」とみなす）
-        effective_deadline = deadline_jst
-        if effective_deadline.hour == 0 and effective_deadline.minute == 0:
-            effective_deadline = effective_deadline - timedelta(days=1)
-
-        # ✅ 期限が過去なら朝通知に出さない（これが今回のバグの止血）
-        if effective_deadline < now_jst:
+    for task, weekly_is_active in candidates:
+        if not is_notification_candidate(task, weekly_is_active, now_utc):
             continue
 
-        if start_jst <= effective_deadline <= end_jst:
+        effective_deadline_jst = deadline_jst_effective(task.deadline)
+
+        if start_jst <= effective_deadline_jst <= end_jst:
             if not has_notification_been_sent(db, user_id, task.id, 0):
                 result.append(task)
     return result

@@ -1,15 +1,23 @@
 # backend/app/services/line_client.py
 
 from __future__ import annotations
-
 from typing import List
 import os
 import httpx
-
 from app.models.task import Task
 from app.core.config import settings
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+
+MAX_LINE_TEXT = 4500  # LINEの上限(5000)より少し余裕
+
+def _safe_line_text(text: str) -> str:
+    if not text:
+        return ""
+    if len(text) > MAX_LINE_TEXT:
+        return text[:MAX_LINE_TEXT] + "\n…（省略）"
+    return text
+
 
 # ============================================
 # アクセストークン取得（settings or env）
@@ -54,7 +62,7 @@ def _build_daily_digest_message(tasks: List[Task]) -> str:
 # ============================================
 # メッセージ生成（朝のダイジェスト）
 # ============================================
-def _build_daily_digest_message(tasks: List[Task]) -> str:
+def _build_morning_digest_message(tasks: List[Task]) -> str:
     # 今日締切がゼロ件のとき
     if not tasks:
         return "🌅 今日締切の課題はありません。\n余裕のある一日にしよう✨"
@@ -88,8 +96,6 @@ def _build_deadline_message(tasks, hours: int) -> str:
 
     return "\n".join(lines)
 
-
-
 # ============================================
 # 実際の LINE送信（Push API）
 # ============================================
@@ -100,6 +106,15 @@ async def _push_text_message(line_user_id: str, text: str) -> None:
         print("[LINE通知: ダミー出力] →", line_user_id)
         print(text)
         return
+    
+    if not line_user_id or not line_user_id.startswith("U"):
+        print("[LINE WARN] invalid line_user_id:", line_user_id)
+        return
+
+    text = _safe_line_text(text)
+    
+    print("[LINE DEBUG] to =", line_user_id)
+    print("[LINE DEBUG] text length =", len(text))
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -139,12 +154,11 @@ async def send_deadline_reminder(
     text = _build_deadline_message(tasks, hours)
     await _push_text_message(line_user_id, text)
 
-
 # ============================================
 # 外部向け: 朝8時通知
 # ============================================
 async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
-    text = _build_daily_digest_message(tasks)
+    text = _build_morning_digest_message(tasks)
     await _push_text_message(line_user_id, text)
 
 

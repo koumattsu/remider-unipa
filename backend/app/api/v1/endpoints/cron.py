@@ -1,5 +1,4 @@
 # backend/app/api/v1/endpoints/cron.py
-
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 from fastapi import APIRouter, Depends
@@ -107,7 +106,6 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
     """
@@ -167,15 +165,19 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if not tasks_3h:
                 continue
 
-            # 3時間前などのまとめ通知
-            await send_deadline_reminder(
-                line_user_id=line_user_id,
-                tasks=tasks_3h,
-                hours=hours,
-            )
+            # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
+            try:
+                await send_deadline_reminder(
+                    line_user_id=line_user_id,
+                    tasks=tasks_3h,
+                    hours=hours,
+                )
+            except Exception as e:
+                print("[CRON] send_deadline_reminder failed:", str(e))
+                continue
 
+            # ✅ 成功したときだけログを残す
             for task in tasks_3h:
-                # offset=hours でログ（3, 24, 1 など）
                 mark_notification_as_sent(db, user_id, task.id, hours)
 
             if hours == 3:
@@ -189,11 +191,15 @@ async def run_daily_job(db: Session = Depends(get_db)):
             tasks_today = get_tasks_due_today_morning(db, user_id=user_id)
 
             if tasks_today:
-                # 当日タスクのダイジェスト（1日1回だけ送られるイメージ）
-                await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
+                # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
+                try:
+                    await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
+                except Exception as e:
+                    print("[CRON] send_daily_digest failed:", str(e))
+                    continue
 
+                # ✅ 成功したときだけログを残す
                 for task in tasks_today:
-                    # offset=0 を「当日朝送った」ログとして扱う
                     mark_notification_as_sent(db, user_id, task.id, 0)
 
                 results["morning"] += len(tasks_today)
@@ -201,6 +207,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
 
     return {"notified": notified, "detail": results}
+
 
 
 # ここから下の debug 系は、君の元コードそのまま残してOK

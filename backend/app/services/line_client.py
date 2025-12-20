@@ -1,5 +1,5 @@
 # backend/app/services/line_client.py
-
+import secrets
 from __future__ import annotations
 from typing import List
 import os
@@ -17,7 +17,6 @@ def _safe_line_text(text: str) -> str:
     if len(text) > MAX_LINE_TEXT:
         return text[:MAX_LINE_TEXT] + "\n…（省略）"
     return text
-
 
 # ============================================
 # アクセストークン取得（settings or env）
@@ -99,6 +98,7 @@ def _build_deadline_message(tasks, hours: int) -> str:
 # ============================================
 # 実際の LINE送信（Push API）
 # ============================================
+
 async def _push_text_message(line_user_id: str, text: str) -> None:
     access_token = _get_line_access_token()
 
@@ -106,39 +106,45 @@ async def _push_text_message(line_user_id: str, text: str) -> None:
         print("[LINE通知: ダミー出力] →", line_user_id)
         print(text)
         return
-    
+
     if not line_user_id or not line_user_id.startswith("U"):
         print("[LINE WARN] invalid line_user_id:", line_user_id)
         return
 
     text = _safe_line_text(text)
-    
-    print("[LINE DEBUG] to =", line_user_id)
-    print("[LINE DEBUG] text length =", len(text))
+
+    # ✅ request を追えるように trace_id を付ける
+    trace_id = secrets.token_hex(4)
+
+    print("[LINE DEBUG]", "trace_id=", trace_id, "to=", line_user_id)
+    print("[LINE DEBUG]", "trace_id=", trace_id, "text length =", len(text))
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
+        # ✅ これがあると追いやすい（なくてもOK）
+        "X-Line-Retry-Key": trace_id,
     }
 
     body = {
         "to": line_user_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": text,
-            }
-        ],
+        "messages": [{"type": "text", "text": text}],
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(LINE_PUSH_URL, headers=headers, json=body)
 
     if resp.status_code >= 400:
-        print("[LINE ERROR]", resp.status_code, resp.text)
-    else:
-        print("[LINE PUSH OK]", resp.status_code)
+        req_id = resp.headers.get("x-line-request-id")
+        print("[LINE ERROR]", "trace_id=", trace_id, "status=", resp.status_code)
+        print("[LINE ERROR]", "trace_id=", trace_id, "body=", resp.text)
+        print("[LINE ERROR]", "trace_id=", trace_id, "x-line-request-id=", req_id)
+        # ✅ cron 側で「失敗ならログ保存しない」にできるよう例外を投げる
+        raise RuntimeError(
+            f"LINE push failed status={resp.status_code} x-line-request-id={req_id} body={resp.text}"
+        )
 
+    print("[LINE PUSH OK]", "trace_id=", trace_id, "status=", resp.status_code)
 
 # ============================================
 # 外部向け: ◯時間前通知

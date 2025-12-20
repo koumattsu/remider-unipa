@@ -1,11 +1,11 @@
 # backend/app/services/line_client.py
-import secrets
 from __future__ import annotations
 from typing import List
 import os
 import httpx
 from app.models.task import Task
 from app.core.config import settings
+import secrets
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 

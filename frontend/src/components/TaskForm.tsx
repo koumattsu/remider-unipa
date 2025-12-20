@@ -1,15 +1,24 @@
 // frontend/src/components/TaskForm.tsx
 
 import { useState, useEffect} from 'react';
-import { TaskCreate } from '../types';
+import { Task, TaskCreate } from '../types';
 import { tasksApi } from '../api/tasks';
 
 interface TaskFormProps {
   onTaskCreated: () => void;
-  defaultDeadlineDate?: string; 
+  defaultDeadlineDate?: string;
+  onTaskAddedLocal?: (task: Task) => void;
+  onTaskReplacedLocal?: (tempId: number, realTask: Task) => void;
+  onTaskCreateFailedLocal?: (tempId: number) => void;
 }
 
-export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadlineDate}) => {
+export const TaskForm: React.FC<TaskFormProps> = ({
+  onTaskCreated,
+  defaultDeadlineDate,
+  onTaskAddedLocal,
+  onTaskReplacedLocal,
+  onTaskCreateFailedLocal,
+}) => {
   const [formData, setFormData] = useState<
     Omit<TaskCreate, 'deadline' | 'should_notify'>
   >({
@@ -32,6 +41,8 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadli
     e.preventDefault();
     setIsSubmitting(true);
 
+    let tempId: number | null = null;
+
     try {
       if (!deadlineDate) {
         alert('締切日を選択してください');
@@ -52,15 +63,28 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadli
 
       // サーバーにはUTCで送る（例: 2025-12-14T14:00:00.000Z）
       const deadlineStr = dateObj.toISOString();
-
-      await tasksApi.create({
-        ...formData,
+      tempId = -Date.now();
+      const tempTask: Task = {
+        id: tempId,
         title: formData.title.trim(),
         course_name: formData.course_name?.trim() || '',
         memo: formData.memo?.trim() || '',
         deadline: deadlineStr,
+        is_done: false,
+        should_notify: true,
+        weekly_task_id: null,
+      };
+      onTaskAddedLocal?.(tempTask);
+
+      // ✅ ② API成功で仮→実に置換
+      const real = await tasksApi.create({
+        title: tempTask.title,
+        course_name: tempTask.course_name,
+        memo: tempTask.memo,
+        deadline: tempTask.deadline,
         should_notify: true,
       });
+      onTaskReplacedLocal?.(tempId, real);
 
       // reset
       setFormData({ title: '', course_name: '', memo: '' });
@@ -70,6 +94,11 @@ export const TaskForm: React.FC<TaskFormProps> = ({ onTaskCreated, defaultDeadli
       onTaskCreated();
     } catch (error) {
       console.error('課題の作成に失敗しました:', error);
+      if (tempId !== null) onTaskCreateFailedLocal?.(tempId);
+      // ✅ ③ rollback（仮タスク削除）
+      // tempId がスコープに必要なので、上の tempId/tempTask を try の外に出してもOK
+      // ここでは「tempIdが存在する場合だけ」削除できるようにする
+      // -> 下の “小さい仕上げ” を見て
       alert('課題の作成に失敗しました');
     } finally {
       setIsSubmitting(false);

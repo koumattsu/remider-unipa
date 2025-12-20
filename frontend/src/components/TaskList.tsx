@@ -11,6 +11,8 @@ const isVirtualTask = (task: Task) => task.id < 0;
 interface TaskListProps {
   tasks: Task[];
   onTaskUpdated: () => void;
+  onTaskPatched?: (taskId: number, patch: Partial<Task>) => void;
+  onTasksRemoved?: (ids: number[]) => void;
   notifyOverrides?: Record<number, boolean>;
   onNotifyChange?: (taskId: number, value: boolean) => void;
   taskNotificationOverrides?: Record<number, TaskNotificationOptions>;
@@ -79,6 +81,8 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
 export const TaskList: React.FC<TaskListProps> = ({
   tasks,
   onTaskUpdated,
+  onTaskPatched,
+  onTasksRemoved,
   notifyOverrides,
   onNotifyChange,
   taskNotificationOverrides,
@@ -211,14 +215,18 @@ const saveTaskNotificationOptions = (
   };
 
   const handleToggleDone = async (task: Task, newIsDone: boolean) => {
+    const prev = Boolean(task.is_done);
+    onTaskPatched?.(task.id, { is_done: newIsDone });
+    // 仮タスクはフロントだけで完結（API叩かない）
+    if (isVirtualTask(task)) return;
     try {
       await tasksApi.update(task.id, {
         is_done: newIsDone,
         // ✅ should_notify は送らない（通知のON/OFFはバック側ロジック or 通知トグルだけ）
       });
-      onTaskUpdated();
     } catch (error) {
       console.error('課題の更新に失敗しました:', error);
+      onTaskPatched?.(task.id, { is_done: prev }); // rollback
       alert('課題の更新に失敗しました');
     }
   };
@@ -229,13 +237,13 @@ const saveTaskNotificationOptions = (
       onNotifyChange?.(task.id, newValue);
       return;
     }
-
-    // 実タスク(id>0) → DB更新
+    const prev = Boolean(task.should_notify);
+    onTaskPatched?.(task.id, { should_notify: newValue });
     try {
       await tasksApi.update(task.id, { should_notify: newValue });
-      onTaskUpdated();
     } catch (error) {
       console.error('通知設定の更新に失敗しました:', error);
+      onTaskPatched?.(task.id, { should_notify: prev }); // rollback
       alert('通知設定の更新に失敗しました');
     }
   };
@@ -248,11 +256,14 @@ const saveTaskNotificationOptions = (
 
     try {
       setIsBulkDeleting(true);
+      // 先にローカルから消す（即反映）
+      onTasksRemoved?.(realIds);
       await Promise.all(realIds.map((id) => tasksApi.delete(id)));
       setSelectedIds([]);
-      onTaskUpdated();
     } catch (error) {
       console.error('課題の一括削除に失敗しました:', error);
+      // 失敗したらサーバーから復元
+      onTaskUpdated();
       alert('課題の一括削除に失敗しました');
     } finally {
       setIsBulkDeleting(false);
@@ -497,10 +508,13 @@ const saveTaskNotificationOptions = (
                         onSave={async (v) => {
                           const trimmed = v.trim();
                           if (!trimmed || trimmed === task.title) return;
+                          const prev = task.title;
+                          onTaskPatched?.(task.id, { title: trimmed });
+                            if (isVirtualTask(task)) return;
                           try {
                             await tasksApi.update(task.id, { title: trimmed });
-                            onTaskUpdated();
                           } catch {
+                            onTaskPatched?.(task.id, { title: prev }); // rollback
                             alert('タイトルの更新に失敗しました');
                           }
                         }}
@@ -624,10 +638,14 @@ const saveTaskNotificationOptions = (
                         onSave={async (v) => {
                           const trimmed = v.trim();
                           if (trimmed === baseMemo) return;
+                          const prev = task.memo ?? '';
+                          onTaskPatched?.(task.id, { memo: trimmed });
+                            if (isVirtualTask(task)) return;
                           try {
                             await tasksApi.update(task.id, { memo: trimmed });
-                            onTaskUpdated();
-                          } catch {
+                          } catch (e) {
+                            console.error('内容の更新に失敗しました:', e);
+                            onTaskPatched?.(task.id, { memo: prev }); // ← これで prev を使う
                             alert('内容の更新に失敗しました');
                           }
                         }}
@@ -891,10 +909,13 @@ const saveTaskNotificationOptions = (
                     onSave={async (v) => {
                       const trimmed = v.trim();
                       if (trimmed === baseMemo) return;
+                      const prev = task.memo ?? '';
+                      onTaskPatched?.(task.id, { memo: trimmed });
+                      if (isVirtualTask(task)) return;
                       try {
                         await tasksApi.update(task.id, { memo: trimmed });
-                        onTaskUpdated();
                       } catch {
+                        onTaskPatched?.(task.id, { memo: prev }); // rollback
                         alert('内容の更新に失敗しました');
                       }
                     }}
@@ -1090,23 +1111,27 @@ const saveTaskNotificationOptions = (
                       alert('締切の形式が不正です');
                       return;
                     }
-
+                    const prevTitle = t.title;
+                    const prevDeadline = t.deadline;
                     try {
                       const payload: TaskUpdate = {
                         title: editTitle.trim(),
                         deadline: deadlineStr,
                       };
+                      // 楽観反映（先に見た目更新）
+                      onTaskPatched?.(t.id, { title: payload.title, deadline: payload.deadline });
+                        if (isVirtualTask(t)) {
+                          setEditingTaskId(null);
+                          return;
+                        }
                       await tasksApi.update(t.id, payload);
-
                       setEditingTaskId(null);
-                      onTaskUpdated();
                     } catch (e) {
                       console.error('タスクの更新に失敗しました:', e);
+                      onTaskPatched?.(t.id, { title: prevTitle, deadline: prevDeadline }); // rollback
                       alert('タスクの更新に失敗しました');
                     }
                   }}
-
-
                   style={{
                     padding: '0.4rem 1.1rem',
                     borderRadius: 9999,

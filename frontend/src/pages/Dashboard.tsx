@@ -137,6 +137,42 @@ export const Dashboard: React.FC = () => {
     return cached?.data ?? [];
   });
 
+  // ✅ ローカル即反映（state + cache 同期）
+  const patchTaskLocal = (taskId: number, patch: Partial<Task>) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t));
+      saveCache(TASKS_CACHE_KEY, next);
+      return next;
+    });
+  };
+
+  // ✅ 追加：仮タスクも含めて先にUIに足す
+  const addTaskLocal = (task: Task) => {
+    setTasks((prev) => {
+      const next = [task, ...prev]; // 先頭に追加（見た目: 即出る）
+      saveCache(TASKS_CACHE_KEY, next);
+      return next;
+    });
+  };
+
+  // ✅ 追加：仮IDのタスクを、サーバから返った実タスクで置換
+  const replaceTaskLocal = (tempId: number, realTask: Task) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === tempId ? realTask : t));
+      saveCache(TASKS_CACHE_KEY, next);
+      return next;
+    });
+  };
+
+  const removeTasksLocal = (ids: number[]) => {
+    const idSet = new Set(ids);
+    setTasks((prev) => {
+      const next = prev.filter((t) => !idSet.has(t.id));
+      saveCache(TASKS_CACHE_KEY, next);
+      return next;
+    });
+  };
+
   const [weeklyTemplates, setWeeklyTemplates] = useState<WeeklyTask[]>(() => {
     const cached = loadCache<WeeklyTask[]>(WEEKLY_CACHE_KEY);
     return cached?.data ?? [];
@@ -360,6 +396,8 @@ export const Dashboard: React.FC = () => {
             <TaskList
               tasks={allTasksWithWeekly}
               onTaskUpdated={loadTasks}
+              onTaskPatched={patchTaskLocal}
+              onTasksRemoved={removeTasksLocal}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
               taskNotificationOverrides={taskNotifyOptions}
@@ -409,9 +447,11 @@ export const Dashboard: React.FC = () => {
           <>
             <h1 style={{ marginBottom: '1rem' }}>課題を追加</h1>
             <TaskForm
-              defaultDeadlineDate={addDefaultDeadlineDate}   // ★追加
+              defaultDeadlineDate={addDefaultDeadlineDate}
+              onTaskAddedLocal={addTaskLocal}
+              onTaskReplacedLocal={replaceTaskLocal}
+              onTaskCreateFailedLocal={(tempId) => removeTasksLocal([tempId])}
               onTaskCreated={async () => {
-                await loadTasks();
                 setAddDefaultDeadlineDate(undefined);        // ★作成後クリア（重要）
                 setActiveTab('all');
               }}

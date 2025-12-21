@@ -8,7 +8,9 @@ from app.models.task import Task
 from app.models.task_notification_log import TaskNotificationLog
 from app.models.task_notification_override import TaskNotificationOverride
 from app.models.weekly_task import WeeklyTask
+import logging
 
+logger = logging.getLogger(__name__)
 JST = timezone(timedelta(hours=9))
 
 # ================================
@@ -177,11 +179,25 @@ def get_tasks_due_in_offsets(
         )
 
         # override があればそれを優先、なければグローバル offsets
-        effective_offsets = None
-        if override and override.reminder_offsets_hours is not None:
-            effective_offsets = override.reminder_offsets_hours
-        else:
-            effective_offsets = normalized
+        #
+        # ✅ M&A前提の仕様（三値）
+        # - reminder_offsets_hours is None: 継承（グローバル offsets）
+        # - reminder_offsets_hours == []: 通知OFF
+        # - reminder_offsets_hours == [..]: カスタム
+        effective_offsets = normalized
+        override_mode = "inherit"
+
+        if override:
+            ro = override.reminder_offsets_hours
+            if ro is None:
+                effective_offsets = normalized
+                override_mode = "inherit"
+            elif isinstance(ro, list) and len(ro) == 0:
+                effective_offsets = []
+                override_mode = "disabled"
+            else:
+                effective_offsets = ro
+                override_mode = "custom"
 
         for offset in effective_offsets or []:
             try:
@@ -192,14 +208,25 @@ def get_tasks_due_in_offsets(
                 continue
 
             if (h - 0.5) <= diff_hours <= (h + 0.5):
-                if not has_notification_been_sent(
-                    db,
-                    user_id,
-                    task.id,
-                    deadline_utc,
-                    h,
-                ):
-                    due_map[h].append(task)
+                if override_mode == "disabled":
+                    logger.info(
+                        "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
+                        user_id, task.id, deadline_utc.isoformat(), diff_hours
+                    )
+                    continue
+
+                if has_notification_been_sent(db, user_id, task.id, deadline_utc, h):
+                    logger.info(
+                        "[due-skip] already_sent user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
+                        user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
+                    )
+                    continue
+
+                logger.info(
+                    "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
+                    user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
+                )
+                due_map[h].append(task)
     return dict(due_map)
 
 

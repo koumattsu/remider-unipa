@@ -1,7 +1,7 @@
 # backend/app/core/security.py
 
 from typing import Optional
-from fastapi import Request, HTTPException, status, Depends
+from fastapi import Request, Response, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from itsdangerous import URLSafeSerializer, BadSignature
 from app.db.session import get_db
@@ -15,6 +15,7 @@ serializer = URLSafeSerializer(
 
 async def get_current_user(
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> User:
     session_cookie = request.cookies.get(settings.SESSION_COOKIE_NAME)
@@ -36,13 +37,30 @@ async def get_current_user(
                     raise HTTPException(status_code=401, detail="ユーザーが存在しません")
                 return user
 
-            # 🟡 互換：旧方式 user_id が入ってるcookieも一応読める
-            user_id = data.get("user_id")
-            if user_id is None:
-                raise HTTPException(status_code=401, detail="無効なセッションです")
-            user_id = int(user_id)
+            # ❌ 旧方式 user_id cookie は移行の事故原因なので受け付けない
+            #    HttpOnly cookie なのでサーバ側で確実に削除して再ログインさせる
+            if "user_id" in data:
+                response.delete_cookie(
+                    key=settings.SESSION_COOKIE_NAME,
+                    path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+                    domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
+                    samesite=settings.SESSION_COOKIE_SAMESITE,
+                    secure=settings.SESSION_COOKIE_SECURE,
+                )
+                raise HTTPException(
+                    status_code=401,
+                    detail="レガシーセッション（user_id形式）です。再ログインしてください。",
+                )
+            raise HTTPException(status_code=401, detail="無効なセッションです")
 
         except (BadSignature, ValueError, TypeError):
+            response.delete_cookie(
+                key=settings.SESSION_COOKIE_NAME,
+                path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+                domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
+                samesite=settings.SESSION_COOKIE_SAMESITE,
+                secure=settings.SESSION_COOKIE_SECURE,
+            )
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
     else:
@@ -55,11 +73,12 @@ async def get_current_user(
         else:
             raise HTTPException(status_code=401, detail="認証が必要です")
 
-    # 旧方式 fallback（互換）
+    # DUMMY_AUTH のみ user_id を許可（本番では DUMMY_AUTH_ENABLED=false で封じる）
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=401, detail="ユーザーが存在しません")
     return user
+
 
 def require_auth(func):
     """認証が必要なエンドポイント用デコレータ（簡易版）"""

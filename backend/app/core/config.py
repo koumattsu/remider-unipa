@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     LINE_CHANNEL_ACCESS_TOKEN: Optional[str] = None
     LINE_CHANNEL_SECRET: Optional[str] = None
 
-    DUMMY_AUTH_ENABLED: bool = True
+    # ✅ 安全側デフォルト（本番事故を防ぐ）
+    # ローカルで使うなら .env で DUMMY_AUTH_ENABLED=true を明示
+    DUMMY_AUTH_ENABLED: bool = False
     DUMMY_USER_ID: int = 1
 
     LINE_LOGIN_CHANNEL_ID: str = ""
@@ -53,6 +55,9 @@ class Settings(BaseSettings):
     SESSION_SECRET: str = ""
 
     SESSION_COOKIE_NAME: str = "unipa_session"
+    # ✅ cookie属性を一箇所に集約（auth/securityで必ずこれを使う）
+    SESSION_COOKIE_PATH: str = "/"
+    SESSION_COOKIE_DOMAIN: Optional[str] = None
     ENV: str = "development"
 
     @property

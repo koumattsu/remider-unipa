@@ -27,19 +27,26 @@ def _serializer():
     return URLSafeSerializer(settings.SESSION_SECRET, salt="unipa-session")
 
 def _make_cookie_opts():
-    return {
+    opts = {
         "httponly": True,
         "secure": settings.SESSION_COOKIE_SECURE,
         "samesite": settings.SESSION_COOKIE_SAMESITE,
+        "path": settings.SESSION_COOKIE_PATH,
     }
+    if settings.SESSION_COOKIE_DOMAIN:
+        opts["domain"] = settings.SESSION_COOKIE_DOMAIN
+    return opts
+
 
 def _make_oauth_state_cookie_opts():
     # LINE -> backend の「トップレベル遷移」で確実に返ってくる設定
     # SESSION_COOKIE_* とは分ける（ここがポイント）
     return {
         "httponly": True,
-        "secure": True,     # Render本番は https 前提
-        "samesite": "none",  # OAuth state は Lax が安定
+        # dev(http://localhost) でも動くよう固定しない
+        "secure": settings.SESSION_COOKIE_SECURE,
+        # OAuth callback はトップレベルGETなので Lax が最も安定
+        "samesite": "lax",
         "path": "/",        # 念のため明示
     }
 
@@ -151,6 +158,13 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 @router.post("/logout")
 async def logout():
     resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
-    resp.delete_cookie(settings.SESSION_COOKIE_NAME, path="/")
+    # set_cookie と完全に同じ属性で消す（消え残り防止）
+    cookie_opts = _make_cookie_opts()
+    resp.delete_cookie(
+        settings.SESSION_COOKIE_NAME,
+        path=cookie_opts.get("path", "/"),
+        domain=cookie_opts.get("domain"),
+        samesite=cookie_opts.get("samesite"),
+        secure=cookie_opts.get("secure"),
+    )
     return resp
-

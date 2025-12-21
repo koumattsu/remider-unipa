@@ -146,6 +146,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
     for user in users:
         user_id = user.id
         line_user_id = user.line_user_id
+        # ★ 本番運用: 親(user_id=5)は完全無視。俺(user_id=2)だけ通知対象
+        if user_id != 2:
+            continue
         if not line_user_id:
             continue
         if not (isinstance(line_user_id, str) and VALID_LINE_UID.fullmatch(line_user_id)):

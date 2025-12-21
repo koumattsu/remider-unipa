@@ -157,12 +157,19 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
         materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
+        # ★ デバッグ：daily が本当にどの offsets を使っているか
+        offsets_hours = setting.reminder_offsets_hours or []
+
+        print("[daily] user_id=", user_id, "offsets_hours=", offsets_hours)
+
         # ✅ 通知対象判定をここで一括集約（将来の核）
         cands = collect_notification_candidates(
             db,
             user_id=user_id,
             offsets_hours=setting.reminder_offsets_hours or [],
         )
+
+        print("[daily] user_id=", user_id, "cands.debug=", cands.debug, "due_keys=", list(cands.due_in_hours.keys()))
 
         # ---------- ① 「○時間前」通知 ----------
         offsets = setting.reminder_offsets_hours or []
@@ -204,6 +211,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             else:
                 key = f"offset_{hours}"
                 results[key] = results.get(key, 0) + len(tasks_3h)
+      
 
         # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
         if setting.enable_morning_notification and is_morning_window:

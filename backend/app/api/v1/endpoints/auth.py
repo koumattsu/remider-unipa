@@ -137,8 +137,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         user.display_name = display_name
         db.commit()
 
-    # セッションcookie発行（user_id を署名して入れる）
-    session_token = _serializer().dumps({"user_id": user.id})
+    session_token = _serializer().dumps({"line_user_id": line_user_id})
 
     redirect_to = _frontend_base_url() + "/#/dashboard"
     resp = RedirectResponse(url=redirect_to, status_code=302)
@@ -152,5 +151,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 @router.post("/logout")
 async def logout():
     resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
-    resp.delete_cookie(settings.SESSION_COOKIE_NAME, **_make_cookie_opts())
+    resp.delete_cookie(settings.SESSION_COOKIE_NAME, path="/")
     return resp
+

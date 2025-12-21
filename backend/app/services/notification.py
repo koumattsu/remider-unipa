@@ -1,7 +1,7 @@
 # app/services/notification.py
 
 from datetime import datetime, timedelta, date, time, timezone
-from typing import List
+from typing import List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from app.models.task import Task

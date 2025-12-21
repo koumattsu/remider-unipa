@@ -1,7 +1,7 @@
 # backend/app/api/v1/endpoints/cron.py
 from datetime import datetime, timedelta, timezone, time
 from typing import Dict
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 import re
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -352,6 +352,35 @@ async def debug_users(db: Session = Depends(get_db)):
         "count": len(result),
         "users": result,
     }
+
+@router.get("/debug-task")
+async def debug_task(
+    task_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+):
+    """
+    デバッグ用:
+    tasks API が認証必須でも、DB上の task を確認できる観測点。
+    通知が来ない時に「task の user_id / deadline / should_notify」を確定する。
+    """
+    t = db.query(Task).filter(Task.id == task_id).first()
+    if not t:
+        return {"found": False, "task_id": task_id}
+
+    return {
+        "found": True,
+        "task": {
+            "id": t.id,
+            "user_id": getattr(t, "user_id", None),
+            "title": getattr(t, "title", None),
+            "course_name": getattr(t, "course_name", None),
+            "deadline": str(getattr(t, "deadline", None)),
+            "should_notify": getattr(t, "should_notify", None),
+            "is_done": getattr(t, "is_done", None),
+            "auto_notify_disabled_by_done": getattr(t, "auto_notify_disabled_by_done", None),
+        },
+    }
+
 
 @router.post("/debug-register-user")
 async def debug_register_user(

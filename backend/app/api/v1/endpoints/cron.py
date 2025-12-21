@@ -126,6 +126,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
     is_morning_window = time(5, 0) <= now_jst.time() <= time(10, 0)
 
     print("=== run_daily_job ===")
+    print("[daily] build=2025-12-21-a")
     print("  now_utc:", now_utc)
     print("  now_jst:", now_jst)
 
@@ -158,21 +159,40 @@ async def run_daily_job(db: Session = Depends(get_db)):
         materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
         # ★ デバッグ：daily が本当にどの offsets を使っているか
-        offsets_hours = setting.reminder_offsets_hours or []
+        raw_offsets = setting.reminder_offsets_hours
+        offsets_hours = raw_offsets or []
 
-        print("[daily] user_id=", user_id, "offsets_hours=", offsets_hours)
+        normalized_offsets: list[int] = []
+        for x in offsets_hours:
+            try:
+                normalized_offsets.append(int(x))
+            except (TypeError, ValueError):
+                pass
+
+        print("[daily] user_id=", user_id,
+            "raw_offsets=", raw_offsets,
+            "offsets_hours=", offsets_hours,
+            "normalized_offsets=", normalized_offsets,
+            "enable_morning=", setting.enable_morning_notification,
+            "digest_time=", setting.daily_digest_time)
 
         # ✅ 通知対象判定をここで一括集約（将来の核）
         cands = collect_notification_candidates(
             db,
             user_id=user_id,
-            offsets_hours=setting.reminder_offsets_hours or [],
+            offsets_hours=offsets_hours,   # ← ★ ここを統一（調査の一貫性）
         )
 
-        print("[daily] user_id=", user_id, "cands.debug=", cands.debug, "due_keys=", list(cands.due_in_hours.keys()))
+        print("[daily] user_id=", user_id,
+            "cands.debug=", cands.debug,
+            "due_keys=", list(cands.due_in_hours.keys()),
+            "morning_count=", len(cands.morning))
+
+        for h in normalized_offsets:
+            print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
 
         # ---------- ① 「○時間前」通知 ----------
-        offsets = setting.reminder_offsets_hours or []
+        offsets = offsets_hours
 
         for offset in offsets:
             try:

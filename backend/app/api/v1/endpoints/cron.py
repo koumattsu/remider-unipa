@@ -1,5 +1,5 @@
 # backend/app/api/v1/endpoints/cron.py
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 from typing import Dict
 from fastapi import APIRouter, Depends
 import re
@@ -121,6 +121,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
     now_utc = datetime.now(timezone.utc)
     now_jst = now_utc.astimezone(JST)
 
+    # ✅ 朝通知を送っていい時間帯（JST）
+    is_morning_window = time(5, 0) <= now_jst.time() <= time(10, 0)
+
     print("=== run_daily_job ===")
     print("  now_utc:", now_utc)
     print("  now_jst:", now_jst)
@@ -198,7 +201,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 results[key] = results.get(key, 0) + len(tasks_3h)
 
         # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
-        if setting.enable_morning_notification:
+        if setting.enable_morning_notification and is_morning_window:
             tasks_today = cands.morning
             if tasks_today:
                 # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）

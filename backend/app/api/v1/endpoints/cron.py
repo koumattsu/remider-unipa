@@ -384,6 +384,33 @@ async def debug_task(
         },
     }
 
+@router.get("/debug-tasks-recent")
+async def debug_tasks_recent(
+    user_id: int = 2,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+):
+    qs = (
+        db.query(Task)
+        .filter(Task.user_id == user_id)
+        .order_by(Task.deadline.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "user_id": user_id,
+        "count": len(qs),
+        "tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "deadline": str(t.deadline),
+                "should_notify": t.should_notify,
+                "is_done": t.is_done,
+            }
+            for t in qs
+        ],
+    }
 
 @router.post("/debug-register-user")
 async def debug_register_user(

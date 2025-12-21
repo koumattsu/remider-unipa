@@ -14,6 +14,7 @@ from app.services.notification import (
     get_tasks_due_today_morning,
     mark_notification_as_sent,
     collect_notification_candidates,
+    to_utc,
 )
 from app.services.line_client import (
     send_deadline_reminder,
@@ -190,10 +191,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 print("[CRON] send_deadline_reminder failed:", str(e))
                 continue
 
-            # ✅ 成功したときだけログを残す
             for task in tasks_3h:
-                mark_notification_as_sent(db, user_id, task.id, hours)
-
+                mark_notification_as_sent(
+                    db,
+                    user_id,
+                    task.id,
+                    to_utc(task.deadline),
+                    hours,
+                )
             if hours == 3:
                 results["three_hours_before"] += len(tasks_3h)
             else:
@@ -211,9 +216,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     print("[CRON] send_daily_digest failed:", str(e))
                     continue
 
-                # ✅ 成功したときだけログを残す
                 for task in tasks_today:
-                    mark_notification_as_sent(db, user_id, task.id, 0)
+                    mark_notification_as_sent(
+                        db,
+                        user_id,
+                        task.id,
+                        to_utc(task.deadline),
+                        0,
+                    )
 
                 results["morning"] += len(tasks_today)
 

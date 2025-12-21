@@ -12,27 +12,30 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 
+
 class TaskNotificationLog(Base):
     """
     タスクごとの通知履歴を残すテーブル。
 
-    - 同じ user_id + task_id + offset_hours の組み合わせには
-      一度しか通知を送らないようにするためのログ。
+    ✅ 幽霊通知対策：
+    - 同じ user_id + task_id + deadline + offset_hours の組み合わせには
+      一度しか通知を送らない。
     """
-    
+
     __tablename__ = "task_notification_logs"
     __table_args__ = (
-        # 同じユーザー・同じタスク・同じオフセット（何時間前）は一度だけ
         UniqueConstraint(
             "user_id",
             "task_id",
+            "deadline",
             "offset_hours",
-            name="uq_task_notification_user_task_offset",
+            name="uq_task_notification_user_task_deadline_offset",
         ),
         Index(
-            "ix_task_notif_user_task_offset",
+            "ix_task_notif_user_task_deadline_offset",
             "user_id",
             "task_id",
+            "deadline",
             "offset_hours",
         ),
     )
@@ -52,8 +55,11 @@ class TaskNotificationLog(Base):
         index=True,
     )
 
+    # ✅ どの締切(deadline)に対する通知か（UTCで保存）
+    # 最初は既存データ互換のため nullable=True にしておく（後で NOT NULL に締める）
+    deadline = Column(DateTime(timezone=True), nullable=True, index=True)
+
     # 何時間前の通知か
-    # 例: 24, 3, 1, 0（当日朝）, など
     offset_hours = Column(Integer, nullable=False)
 
     # いつ送ったか
@@ -63,6 +69,5 @@ class TaskNotificationLog(Base):
         nullable=False,
     )
 
-    # リレーション
     user = relationship("User", back_populates="notification_logs")
     task = relationship("Task", back_populates="notification_logs")

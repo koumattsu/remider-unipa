@@ -88,6 +88,7 @@ def has_notification_been_sent(
     db: Session,
     user_id: int,
     task_id: int,
+    deadline_utc: datetime,
     offset_hours: int,
 ) -> bool:
     return (
@@ -95,30 +96,111 @@ def has_notification_been_sent(
         .filter(
             TaskNotificationLog.user_id == user_id,
             TaskNotificationLog.task_id == task_id,
+            TaskNotificationLog.deadline == deadline_utc,
             TaskNotificationLog.offset_hours == offset_hours,
         )
         .first()
         is not None
     )
 
-
 def mark_notification_as_sent(
     db: Session,
     user_id: int,
     task_id: int,
+    deadline_utc: datetime,
     offset_hours: int,
 ) -> None:
-    """
-    ✅ 通知ログは UTC で保存する
-    """
     log = TaskNotificationLog(
         user_id=user_id,
         task_id=task_id,
+        deadline=deadline_utc,  # ✅ 追加
         offset_hours=offset_hours,
-        sent_at=datetime.now(timezone.utc),  # ← ★ UTCに変更
+        sent_at=datetime.now(timezone.utc),
     )
     db.add(log)
     db.commit()
+
+
+from collections import defaultdict
+from typing import DefaultDict
+
+def get_tasks_due_in_offsets(
+    db: Session,
+    user_id: int,
+    offsets: List[int],
+) -> Dict[int, List[Task]]:
+    """
+    ✅ 1回のDB取得 + 1回の走査で、offsetごとの通知対象を返す
+    - overrides.reminder_offsets_hours があればそれを優先
+    - overrides が無ければ引数 offsets を採用
+    """
+    now_utc = datetime.now(timezone.utc)
+
+    # offsets を正規化
+    normalized: List[int] = []
+    for x in offsets or []:
+        try:
+            h = int(x)
+        except (TypeError, ValueError):
+            continue
+        if h > 0:
+            normalized.append(h)
+
+    due_map: DefaultDict[int, List[Task]] = defaultdict(list)
+    if not normalized:
+        return dict(due_map)
+
+    # candidates を一括取得（weekly active だけ join）
+    candidates = (
+        db.query(Task, WeeklyTask.is_active)
+        .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
+        .filter(Task.user_id == user_id)
+        .all()
+    )
+
+    for task, weekly_is_active in candidates:
+        # ✅ 通知対象の共通判定（唯一の真実に寄せる）
+        if not is_notification_candidate(task, weekly_is_active, now_utc):
+            continue
+
+        deadline_utc = to_utc(task.deadline)
+        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
+
+        # override の取得（※ここはまだ1件ずつ。次の最適化でJOINに変えられる）
+        override = (
+            db.query(TaskNotificationOverride)
+            .filter(
+                TaskNotificationOverride.user_id == user_id,
+                TaskNotificationOverride.task_id == task.id,
+            )
+            .first()
+        )
+
+        # override があればそれを優先、なければグローバル offsets
+        effective_offsets = None
+        if override and override.reminder_offsets_hours is not None:
+            effective_offsets = override.reminder_offsets_hours
+        else:
+            effective_offsets = normalized
+
+        for offset in effective_offsets or []:
+            try:
+                h = int(offset)
+            except (TypeError, ValueError):
+                continue
+            if h <= 0:
+                continue
+
+            if (h - 0.5) <= diff_hours <= (h + 0.5):
+                if not has_notification_been_sent(
+                    db,
+                    user_id,
+                    task.id,
+                    deadline_utc,
+                    h,
+                ):
+                    due_map[h].append(task)
+    return dict(due_map)
 
 
 # ================================
@@ -131,74 +213,16 @@ def get_tasks_due_in_hours(
     hours: int,
 ) -> List[Task]:
     """
-    【例】3時間前通知用（毎時実行前提）
-
-    - 内部はUTCで計算
-    - 表示・ログだけJSTに変換
-    - is_done = False
-    - まだその hours の通知が送られていないものだけ
+    互換用ラッパー。
+    実際の通知判定は get_tasks_due_in_offsets に一本化する。
     """
-
-    now_utc = datetime.now(timezone.utc)
-
-    print("=== get_tasks_due_in_hours debug ===")
-    print("  now_utc:", now_utc)
-    print("  now_jst:", now_utc.astimezone(JST))
-    print("  target hours:", hours)
-
-    candidates = (
-        db.query(Task, WeeklyTask.is_active)
-        .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
-        .filter(
-            Task.user_id == user_id,
-            Task.is_done == False,  # noqa: E712
-            or_(
-                Task.should_notify == True,
-                Task.should_notify.is_(None),
-            ),
-        )
-        .all()
+    due_map = get_tasks_due_in_offsets(
+        db,
+        user_id=user_id,
+        offsets=[hours],
     )
+    return due_map.get(hours, [])
 
-    result: List[Task] = []
-
-    for task, weekly_is_active in candidates:
-        if not is_notification_candidate(task, weekly_is_active, now_utc):
-            continue
-
-        deadline_utc = to_utc(task.deadline)
-        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
-
-        print(
-            "  task:", task.title,
-            "deadline_utc:", deadline_utc,
-            "deadline_jst:", deadline_utc.astimezone(JST),
-            "diff_hours:", diff_hours,
-        )
-
-        # --- 🔔 タスクごとの通知オーバーライド取得 ---
-        override = (
-            db.query(TaskNotificationOverride)
-            .filter(
-                TaskNotificationOverride.user_id == user_id,
-                TaskNotificationOverride.task_id == task.id,
-            )
-            .first()
-        )
-
-        if override and override.reminder_offsets_hours is not None:
-            effective_offsets = override.reminder_offsets_hours
-        else:
-            effective_offsets = [hours]
-
-        for offset in effective_offsets:
-            if (offset - 0.5) <= diff_hours <= (offset + 0.5):
-                if not has_notification_been_sent(db, user_id, task.id, offset):
-                    print("   → このタスクが通知対象！", task.title, f"({offset}時間前)")
-                    result.append(task)
-
-    print("=== get_tasks_due_in_hours result count:", len(result), "===\n")
-    return result
 
 
 # ================================
@@ -241,9 +265,18 @@ def get_tasks_due_today_morning(
         effective_deadline_jst = deadline_jst_effective(task.deadline)
 
         label_date = deadline_label_date_jst(task.deadline)
+        deadline_utc = to_utc(task.deadline)
+
         if label_date == today_jst:
-            if not has_notification_been_sent(db, user_id, task.id, 0):
+            if not has_notification_been_sent(
+                db,
+                user_id,
+                task.id,
+                deadline_utc,
+                0,
+            ):
                 result.append(task)
+
     return result
 
 from dataclasses import dataclass
@@ -260,12 +293,7 @@ def collect_notification_candidates(
     user_id: int,
     offsets_hours: List[int],
 ) -> NotificationCandidates:
-    """
-    ✅ 通知対象の判定を集約して返す（送信はしない）
-    - offsets_hours: 例 [3,6] など
-    - due_in_hours は offsetごとに Task の配列を返す
-    - morning は朝通知の配列を返す
-    """
+    # offsets を正規化
     normalized_offsets: List[int] = []
     for x in offsets_hours or []:
         try:
@@ -275,15 +303,14 @@ def collect_notification_candidates(
         if h > 0:
             normalized_offsets.append(h)
 
-    due_map: Dict[int, List[Task]] = {}
-    total_due = 0
+    # ✅ ここが変更点：1回の走査で offset → tasks を作る
+    due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
+        db,
+        user_id=user_id,
+        offsets=normalized_offsets,
+    )
 
-    for h in normalized_offsets:
-        tasks = get_tasks_due_in_hours(db, user_id=user_id, hours=h)
-        # get_tasks_due_in_hours は「そのoffsetの窓に入った」taskを返す設計なので、
-        # ここでは h キーに寄せて格納する（overrideがある場合は今後改善余地あり）
-        due_map[h] = tasks
-        total_due += len(tasks)
+    total_due = sum(len(v) for v in due_map.values())
 
     morning_tasks = get_tasks_due_today_morning(db, user_id=user_id)
 

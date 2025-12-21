@@ -10,6 +10,7 @@ from itsdangerous import URLSafeSerializer
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.user import User
+from app.models.notification_setting import NotificationSetting  # ✅ 追加（パスは実ファイルに合わせて）
 from app.schemas.user import UserResponse
 from app.core.config import settings
 
@@ -140,8 +141,23 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     else:
-        # 表示名更新したいなら
         user.display_name = display_name
+        db.commit()
+
+    # ✅ NotificationSetting を必ず1行持たせる（欠損自動修復）
+    ns = (
+        db.query(NotificationSetting)
+        .filter(NotificationSetting.user_id == user.id)
+        .first()
+    )
+    if not ns:
+        ns = NotificationSetting(
+            user_id=user.id,
+            reminder_offsets_hours=[3],
+            daily_digest_time="08:00",
+            enable_morning_notification=True,
+        )
+        db.add(ns)
         db.commit()
 
     session_token = _serializer().dumps({"line_user_id": line_user_id})

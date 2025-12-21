@@ -3,7 +3,6 @@ from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
-
 class NotificationSetting(Base):
     __tablename__ = "notification_settings"
     
@@ -20,7 +19,7 @@ class NotificationSetting(Base):
     reminder_offsets_hours = Column(
         JSON,
         nullable=False,
-        default=list,
+        default=lambda: [3],
     )
 
     # 朝通知の時刻（デフォルト 08:00）

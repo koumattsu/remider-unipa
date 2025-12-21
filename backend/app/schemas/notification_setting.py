@@ -2,7 +2,6 @@
 from pydantic import BaseModel, Field
 from typing import List
 
-
 class NotificationSettingBase(BaseModel):
     # デフォルトは 3時間前のみ
     reminder_offsets_hours: List[int] = Field(
@@ -19,14 +18,11 @@ class NotificationSettingBase(BaseModel):
         description="朝のダイジェスト通知を送るかどうか",
     )
 
-
 class NotificationSettingCreate(NotificationSettingBase):
     pass
 
-
 class NotificationSettingUpdate(NotificationSettingBase):
     pass
-
 
 class NotificationSettingResponse(NotificationSettingBase):
     id: int

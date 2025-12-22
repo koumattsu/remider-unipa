@@ -44,8 +44,6 @@ async def get_current_user(
                     key=settings.SESSION_COOKIE_NAME,
                     path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
                     domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
-                    samesite=settings.SESSION_COOKIE_SAMESITE,
-                    secure=settings.SESSION_COOKIE_SECURE,
                 )
                 raise HTTPException(
                     status_code=401,

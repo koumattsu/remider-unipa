@@ -9,6 +9,7 @@ from app.models.task_notification_log import TaskNotificationLog
 from app.models.task_notification_override import TaskNotificationOverride
 from app.models.weekly_task import WeeklyTask
 import logging
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 JST = timezone(timedelta(hours=9))
@@ -158,6 +159,18 @@ def get_tasks_due_in_offsets(
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(Task.user_id == user_id)
         .all()
+    )
+
+    # ✅ TZ観測（3時間前が拾えない原因を“事実”で潰す）
+    # candidates は (Task, weekly_is_active) のタプルなので [0][0] が Task
+    logger.info(
+        "[TZ DEBUG] user_id=%s now_utc=%s now_jst=%s sample_deadline=%s candidates=%s offsets=%s",
+        user_id,
+        now_utc.isoformat(),
+        now_utc.astimezone(ZoneInfo("Asia/Tokyo")).isoformat(),
+        (to_utc(candidates[0][0].deadline).isoformat() if candidates else "NONE"),
+        len(candidates),
+        offsets,
     )
 
     for task, weekly_is_active in candidates:

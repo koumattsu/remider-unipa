@@ -174,13 +174,23 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 @router.post("/logout")
 async def logout():
     resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
-    # set_cookie と完全に同じ属性で消す（消え残り防止）
-    cookie_opts = _make_cookie_opts()
+
+    # ① host-only cookie を消す
     resp.delete_cookie(
-        settings.SESSION_COOKIE_NAME,
-        path=cookie_opts.get("path", "/"),
-        domain=cookie_opts.get("domain"),
-        samesite=cookie_opts.get("samesite"),
-        secure=cookie_opts.get("secure"),
+        key=settings.SESSION_COOKIE_NAME,
+        path=settings.SESSION_COOKIE_PATH,
     )
+
+    # ② domain 付き cookie を消す（過去互換）
+    if settings.SESSION_COOKIE_DOMAIN:
+        resp.delete_cookie(
+            key=settings.SESSION_COOKIE_NAME,
+            path=settings.SESSION_COOKIE_PATH,
+            domain=settings.SESSION_COOKIE_DOMAIN,
+        )
+
     return resp
+
+@router.get("/logout")
+async def logout_get():
+    return await logout()

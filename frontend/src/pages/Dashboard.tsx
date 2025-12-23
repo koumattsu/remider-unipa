@@ -11,6 +11,7 @@ import { TodayTaskList } from '../components/TodayTaskList';
 import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
+import { isTodayTaskJst } from '../utils/taskTime';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
 const TASKS_CACHE_KEY = 'unipa_tasks_cache_v1';
@@ -314,30 +315,9 @@ export const Dashboard: React.FC = () => {
 
   const allTasksWithWeekly: Task[] = useMemo(() => tasks, [tasks]);
 
-  // ✅ JST 1:00〜24:30 を「今日」とみなす
-  const isTodayTask = (deadlineIso: string) => {
-    const deadline = new Date(deadlineIso);
-    const now = new Date();
-    // JST 기준으로 비교하기 위해 offset 보정
-    const toJst = (d: Date) => new Date(d.getTime() + 9 * 60 * 60 * 1000);
-    const d = toJst(deadline);
-    const n = toJst(now);
-
-    // 0:00〜0:59 は「前日扱い」
-    if (d.getHours() < 1) {
-      d.setDate(d.getDate() - 1);
-    }
-
-    return (
-      d.getFullYear() === n.getFullYear() &&
-      d.getMonth() === n.getMonth() &&
-      d.getDate() === n.getDate()
-    );
-  };
-
   const todayTasks = useMemo(() => {
     return tasks
-      .filter((t) => isTodayTask(t.deadline))
+      .filter((t) => isTodayTaskJst(t.deadline))
       .sort((a, b) => {
         // 未完 → 完了
         if (a.is_done !== b.is_done) {

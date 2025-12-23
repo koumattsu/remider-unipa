@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
+import { getAllTasksByViewMode } from '../utils/taskTime';
 
 // Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
 const isVirtualTask = (task: Task) => task.id < 0;
@@ -95,33 +96,10 @@ export const TaskList: React.FC<TaskListProps> = ({
   type AllViewMode = 'active' | 'overdue' | 'incomplete';
   const [viewMode, setViewMode] = useState<AllViewMode>('active');
 
+  const isOverdueView = viewMode === 'overdue';
+
   const filteredTasks = useMemo(() => {
-    const now = new Date();
-    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    return tasks.filter((t) => {
-      const deadline = new Date(t.deadline);
-      const completedAt = t.completed_at ? new Date(t.completed_at) : null;
-
-      if (viewMode === 'overdue') {
-        return deadline < now && t.is_done === false;
-      }
-
-      if (viewMode === 'incomplete') {
-        return deadline >= now && t.is_done === false;
-      }
-
-      // === 管理中（default）===
-      if (deadline >= now) return true;
-
-      if (deadline >= dayAgo && deadline < now) {
-        if (!t.is_done) return true;
-        if (t.is_done && completedAt && completedAt > deadline) return true;
-        return false; // 締切前に完了していた
-      }
-
-      return false;
-    });
+    return getAllTasksByViewMode(tasks, viewMode);
   }, [tasks, viewMode]);
 
   // 🔔 タスク個別の通知設定（フロント限定で保持）
@@ -294,6 +272,7 @@ const saveTaskNotificationOptions = (
       // rollback（進捗・通知・auto全部戻す）
       onTaskPatched?.(task.id, {
         is_done: prevDone,
+        completed_at: task.completed_at ?? null,
         should_notify: prevNotify,
         auto_notify_disabled_by_done: prevAuto,
       });
@@ -637,7 +616,7 @@ const saveTaskNotificationOptions = (
                         }}
                       >
                         <span>
-                          {viewMode === 'overdue' && '⚠️ '}
+                          {isOverdueView && '⚠️ '}
                           {formatDeadline(task.deadline)}
                         </span>
                         {/* ⚙️ アイコンは仮タスクも含めて全タスクに表示 */}
@@ -720,7 +699,6 @@ const saveTaskNotificationOptions = (
                         )}
                       </div>
                     </td>
-
 
                     <td style={{ padding: '0.5rem' }}>
                       <select
@@ -940,10 +918,15 @@ const saveTaskNotificationOptions = (
                     marginBottom: '0.4rem',
                   }}
                 >
-                  <span style={{ marginRight: '0.35rem' }}>🕒</span>
-                  <span>{formatDeadline(task.deadline)}</span>
-                </div>
+                  <span style={{ marginRight: '0.35rem' }}>
+                    {isOverdueView ? '⚠️' : '🕒'}
+                  </span>
 
+                  <span style={{ fontWeight: viewMode === 'overdue' ? 700 : 400 }}>
+                    {formatDeadline(task.deadline)}
+                  </span>
+                </div>
+                
                 {/* 3行目: 進捗 + 通知 */}
                 <div
                   style={{

@@ -4,7 +4,7 @@ import type { Task } from '../types';
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
-export const toJst = (d: Date) => new Date(d.getTime() + JST_OFFSET_MS);
+const toJst = (d: Date) => new Date(d.getTime() + JST_OFFSET_MS);
 
 /**
  * ✅ 「今日」= JSTで 1:00〜24:30 の感覚
@@ -30,7 +30,7 @@ export const isTodayTaskJst = (deadlineIso: string, now = new Date()) => {
  *    - 未完は表示
  *    - 完了は「締切後に完了」(completed_at > deadline) のみ表示
  */
-export const isActiveManaged = (t: Task, now = new Date()) => {
+const isActiveManaged = (t: Task, now = new Date()) => {
   const deadline = new Date(t.deadline);
   if (deadline >= now) return true;
 
@@ -46,7 +46,7 @@ export const isActiveManaged = (t: Task, now = new Date()) => {
 export const isOverdueIncomplete = (t: Task, now = new Date()) =>
   new Date(t.deadline) < now && t.is_done === false;
 
-export const isInDeadlineIncomplete = (t: Task, now = new Date()) =>
+const isInDeadlineIncomplete = (t: Task, now = new Date()) =>
   new Date(t.deadline) >= now && t.is_done === false;
 
 export type AllViewMode = 'active' | 'overdue' | 'incomplete';

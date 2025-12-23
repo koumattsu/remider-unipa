@@ -445,10 +445,11 @@ const saveTaskNotificationOptions = (
     return base.toISOString();
   };
 
-
-  const sortedTasks = [...filteredTasks].sort(
-    (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
-  );
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort(
+      (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+    );
+  }, [filteredTasks]);
 
   const selectedCount = selectedIds.length;
 
@@ -478,20 +479,35 @@ const saveTaskNotificationOptions = (
     setEditMinute(pad(minute));
   };
 
-
   return (
     <div>
       {/* 全部タスク：表示切替 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
-        <button type="button" onClick={() => setViewMode('active')}>
-          管理中
-        </button>
-        <button type="button" onClick={() => setViewMode('overdue')}>
-          期限切れ未完了
-        </button>
-        <button type="button" onClick={() => setViewMode('incomplete')}>
-          締切内の未完了
-        </button>
+        {([
+          { key: 'active', label: '管理中' },
+          { key: 'overdue', label: '期限切れ未完了' },
+          { key: 'incomplete', label: '締切内の未完了' },
+        ] as const).map((v) => {
+          const active = viewMode === v.key;
+          return (
+            <button
+              key={v.key}
+              type="button"
+              onClick={() => setViewMode(v.key)}
+              style={{
+                padding: '0.35rem 0.8rem',
+                fontSize: '0.85rem',
+                borderRadius: 9999,
+                border: active ? '1px solid #3b82f6' : '1px solid #d1d5db',
+                background: active ? '#3b82f6' : '#fff',
+                color: active ? '#fff' : '#374151',
+                cursor: 'pointer',
+              }}
+            >
+              {v.label}
+            </button>
+          );
+        })}
       </div>
       {/* 上部：一括削除ボタン */}
       <div
@@ -620,8 +636,10 @@ const saveTaskNotificationOptions = (
                           gap: 4,
                         }}
                       >
-                        <span>{formatDeadline(task.deadline)}</span>
-
+                        <span>
+                          {viewMode === 'overdue' && '⚠️ '}
+                          {formatDeadline(task.deadline)}
+                        </span>
                         {/* ⚙️ アイコンは仮タスクも含めて全タスクに表示 */}
                         <button
                           type="button"
@@ -1020,7 +1038,7 @@ const saveTaskNotificationOptions = (
         </div>
       )}
 
-    {/* 編集モーダル（カードのサイズを変えずに編集できるようにする） */}
+      {/* 編集モーダル（カードのサイズを変えずに編集できるようにする） */}
       {editingTaskId !== null && (() => {
         const t = tasks.find((task) => task.id === editingTaskId);
         if (!t) return null;

@@ -59,6 +59,8 @@ class Task(Base):
         cascade="all, delete-orphan",
     )
 
+    outcome_logs = relationship("TaskOutcomeLog", back_populates="task")
+
     notification_override = relationship(
         "TaskNotificationOverride",
         back_populates="task",

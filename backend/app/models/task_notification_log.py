@@ -15,7 +15,6 @@ from app.db.base import Base
 class TaskNotificationLog(Base):
     """
     タスクごとの通知履歴を残すテーブル。
-
     ✅ 幽霊通知対策：
     - 同じ user_id + task_id + deadline + offset_hours の組み合わせには
       一度しか通知を送らない。

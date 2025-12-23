@@ -1,10 +1,7 @@
 # backend/app/api/v1/api.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate
-from app.api.v1.endpoints import weekly_tasks  
-from app.api.v1.endpoints import task_notification_override
-
+from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes
 api_router = APIRouter()
 
 # 既存ルーター
@@ -13,6 +10,7 @@ api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(cron.router, prefix="/cron", tags=["cron"])
 api_router.include_router(admin_migrate.router,prefix="/admin",tags=["admin"],)
+api_router.include_router(outcomes.router, prefix="/outcomes", tags=["outcomes"])
 
 # 毎週タスク用ルーター
 api_router.include_router(

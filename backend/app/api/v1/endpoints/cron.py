@@ -1,14 +1,17 @@
 # backend/app/api/v1/endpoints/cron.py
+
 from datetime import datetime, timedelta, timezone, time
 from typing import Dict
 from fastapi import APIRouter, Depends, Query
 import re
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
 from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting  # ★ 追加
+from app.models.task_outcome_log import TaskOutcomeLog
 from app.services.notification import (
     get_tasks_due_in_hours,
     get_tasks_due_today_morning,
@@ -158,6 +161,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
         materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
+        # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
+        evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
+
         # ★ デバッグ：daily が本当にどの offsets を使っているか
         raw_offsets = setting.reminder_offsets_hours
         offsets_hours = raw_offsets or []
@@ -259,7 +265,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
     return {"notified": notified, "detail": results}
 
-
+    
 
 # ここから下の debug 系は、君の元コードそのまま残してOK
 @router.post("/debug-send")
@@ -463,3 +469,65 @@ async def debug_register_user(
             "created": False,
             "error": str(e),
         }
+
+def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
+    """
+    user_id の tasks について、
+    deadline <= now_utc かつ (user_id, task_id, deadline) の OutcomeLog が無いものを評価して保存する。
+
+    outcome 定義（設計合意）:
+    - completed_at があり completed_at <= deadline → done
+    - それ以外 → missed
+
+    戻り値: 今回追加したログ件数
+    """
+    # ① 締切到達済みタスク（deadlineはtimezone aware想定）
+    due_tasks = (
+        db.query(Task)
+        .filter(Task.user_id == user_id)
+        .filter(Task.deadline.isnot(None))
+        .filter(Task.deadline <= now_utc)
+        .all()
+    )
+    if not due_tasks:
+        return 0
+
+    created = 0
+
+    for t in due_tasks:
+        deadline = t.deadline
+
+        # ② すでに評価済み（同じ締切に対して二重保存しない）
+        exists = (
+            db.query(TaskOutcomeLog.id)
+            .filter(
+                and_(
+                    TaskOutcomeLog.user_id == user_id,
+                    TaskOutcomeLog.task_id == t.id,
+                    TaskOutcomeLog.deadline == deadline,
+                )
+            )
+            .first()
+        )
+        if exists:
+            continue
+
+        # ③ outcome 判定（completed_at が deadline までにあれば done）
+        completed_at = t.completed_at
+        outcome = "done" if (completed_at is not None and completed_at <= deadline) else "missed"
+
+        db.add(
+            TaskOutcomeLog(
+                user_id=user_id,
+                task_id=t.id,
+                deadline=deadline,      # tasks.deadline をコピーして固定
+                outcome=outcome,
+                evaluated_at=now_utc,   # cron実行時刻（UTC）
+            )
+        )
+        created += 1
+
+    if created:
+        db.commit()
+
+    return created

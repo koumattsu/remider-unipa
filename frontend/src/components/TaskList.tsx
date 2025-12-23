@@ -424,12 +424,6 @@ const saveTaskNotificationOptions = (
     return base.toISOString();
   };
 
-  const sortedTasks = useMemo(() => {
-    return [...filteredTasks].sort(
-      (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
-    );
-  }, [filteredTasks]);
-
   const selectedCount = selectedIds.length;
 
     // 共通: 編集モーダルを開く
@@ -547,8 +541,8 @@ const saveTaskNotificationOptions = (
                     type="checkbox"
                     onChange={toggleSelectAll}
                     checked={
-                      sortedTasks.length > 0 &&
-                      sortedTasks.every((t) => selectedIds.includes(t.id))
+                      filteredTasks.length > 0 &&
+                      filteredTasks.every((t) => selectedIds.includes(t.id))
                     }
                   />
                 </th>
@@ -560,7 +554,7 @@ const saveTaskNotificationOptions = (
               </tr>
             </thead>
             <tbody>
-              {sortedTasks.map((task) => {
+              {filteredTasks.map((task) => {
                 const isSelected = selectedIds.includes(task.id);
 
                 const isDone = Boolean(task.is_done);
@@ -762,7 +756,7 @@ const saveTaskNotificationOptions = (
             gap: '0.75rem',
           }}
         >
-          {sortedTasks.map((task) => {
+          {filteredTasks.map((task) => {
             const isSelected = selectedIds.includes(task.id);
 
             const isDone = Boolean(task.is_done);

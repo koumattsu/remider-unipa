@@ -273,11 +273,15 @@ const saveTaskNotificationOptions = (
         nextAuto = prevAuto;
       }
     }
+    const nowIso = new Date().toISOString();
+
     onTaskPatched?.(task.id, {
       is_done: newIsDone,
+      completed_at: newIsDone ? (task.completed_at ?? nowIso) : null,
       should_notify: nextNotify,
       auto_notify_disabled_by_done: nextAuto,
     });
+
     // 仮タスクはフロントだけで完結（API叩かない）
     if (isVirtualTask(task)) return;
     try {

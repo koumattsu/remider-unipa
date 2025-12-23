@@ -1,7 +1,7 @@
 # backend/app/api/v1/endpoints/tasks.py
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy.exc import IntegrityError
 import traceback
@@ -103,7 +103,7 @@ async def update_task(
     if "is_done" in update_data:
         if update_data["is_done"] is True and prev_is_done is False:
             # ✅ 完了日時を記録（締切前に完了してたか/締切後に完了したか判定に使う）
-            task.completed_at = datetime.now(task.deadline.tzinfo) if task.deadline and task.deadline.tzinfo else datetime.utcnow()
+            task.completed_at = datetime.now(timezone.utc)
             # ✅ 完了にした瞬間に「通知がONだった」場合だけ、完了OFF扱いにする
             if task.should_notify is True:
                 task.should_notify = False

@@ -27,7 +27,7 @@ class TaskNotificationLog(Base):
         UniqueConstraint(
             "user_id",
             "task_id",
-            "deadline",
+            "deadline_at_send",
             "offset_hours",
             name="uq_task_notification_user_task_deadline_offset",
         ),
@@ -55,9 +55,12 @@ class TaskNotificationLog(Base):
         index=True,
     )
 
-    # ✅ どの締切(deadline)に対する通知か（UTCで保存）
-    # 最初は既存データ互換のため nullable=True にしておく（後で NOT NULL に締める）
-    deadline = Column(DateTime(timezone=True), nullable=True, index=True)
+    deadline_at_send = Column(
+        DateTime(timezone=True),
+        nullable=True,  # 既存データ互換
+        index=True,
+        comment="deadline at the moment notification was sent (UTC)",
+    )
 
     # 何時間前の通知か
     offset_hours = Column(Integer, nullable=False)

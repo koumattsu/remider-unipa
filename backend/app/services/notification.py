@@ -99,7 +99,7 @@ def has_notification_been_sent(
         .filter(
             TaskNotificationLog.user_id == user_id,
             TaskNotificationLog.task_id == task_id,
-            TaskNotificationLog.deadline == deadline_utc,
+            TaskNotificationLog.deadline_at_send == deadline_utc,
             TaskNotificationLog.offset_hours == offset_hours,
         )
         .first()
@@ -116,7 +116,7 @@ def mark_notification_as_sent(
     log = TaskNotificationLog(
         user_id=user_id,
         task_id=task_id,
-        deadline=deadline_utc,  # ✅ 追加
+        deadline_at_send=deadline_utc,  # ✅ 追加
         offset_hours=offset_hours,
         sent_at=datetime.now(timezone.utc),
     )

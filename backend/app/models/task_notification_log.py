@@ -12,7 +12,6 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 
-
 class TaskNotificationLog(Base):
     """
     タスクごとの通知履歴を残すテーブル。
@@ -32,10 +31,10 @@ class TaskNotificationLog(Base):
             name="uq_task_notification_user_task_deadline_offset",
         ),
         Index(
-            "ix_task_notif_user_task_deadline_offset",
+            "ix_task_notif_user_task_deadline_at_send_offset",
             "user_id",
             "task_id",
-            "deadline",
+            "deadline_at_send",
             "offset_hours",
         ),
     )

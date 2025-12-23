@@ -314,33 +314,39 @@ export const Dashboard: React.FC = () => {
 
   const allTasksWithWeekly: Task[] = useMemo(() => tasks, [tasks]);
 
-  // 🔍 24:00 ロジックを考慮した「今日のタスク」判定
-  const isTodayTask = (deadline: string) => {
-    const raw = new Date(deadline);
-    const effective = new Date(raw);
+  // ✅ JST 1:00〜24:30 を「今日」とみなす
+  const isTodayTask = (deadlineIso: string) => {
+    const deadline = new Date(deadlineIso);
+    const now = new Date();
+    // JST 기준으로 비교하기 위해 offset 보정
+    const toJst = (d: Date) => new Date(d.getTime() + 9 * 60 * 60 * 1000);
+    const d = toJst(deadline);
+    const n = toJst(now);
 
-    if (effective.getHours() === 0 && effective.getMinutes() === 0) {
-      effective.setDate(effective.getDate() - 1);
+    // 0:00〜0:59 は「前日扱い」
+    if (d.getHours() < 1) {
+      d.setDate(d.getDate() - 1);
     }
 
-    const now = new Date();
-
-    const toYMD = (date: Date) => ({
-      y: date.getFullYear(),
-      m: date.getMonth(),
-      d: date.getDate(),
-    });
-
-    const dY = toYMD(effective);
-    const tY = toYMD(now);
-
-    return dY.y === tY.y && dY.m === tY.m && dY.d === tY.d;
+    return (
+      d.getFullYear() === n.getFullYear() &&
+      d.getMonth() === n.getMonth() &&
+      d.getDate() === n.getDate()
+    );
   };
 
-  const todayTasks = useMemo(
-    () => tasks.filter((t) => isTodayTask(t.deadline)),
-    [tasks]
-  );
+  const todayTasks = useMemo(() => {
+    return tasks
+      .filter((t) => isTodayTask(t.deadline))
+      .sort((a, b) => {
+        // 未完 → 完了
+        if (a.is_done !== b.is_done) {
+          return a.is_done ? 1 : -1;
+        }
+        // 同じ状態なら締切順
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      });
+  }, [tasks]);
 
   const formatYmd = (d: Date) => {
     const y = d.getFullYear();

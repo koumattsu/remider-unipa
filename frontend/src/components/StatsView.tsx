@@ -7,7 +7,7 @@ interface StatsViewProps {
   tasks: Task[]; // 互換のため残す（今後 outcomes だけにするなら削除OK）
 }
 
-export const StatsView: React.FC<StatsViewProps> = () => {
+export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [logs, setLogs] = useState<OutcomeLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

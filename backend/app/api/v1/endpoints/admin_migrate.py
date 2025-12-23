@@ -2,12 +2,20 @@
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
 from app.db.session import get_db
+from app.db.base import init_db
 from app.models.user import User
 from app.models.notification_setting import NotificationSetting
 
 router = APIRouter(tags=["admin"])
+
+@router.post("/migrate/create-tables")
+def create_tables():
+    """
+    テーブルが足りない場合に create_all で作成する（1回だけ実行想定）
+    """
+    init_db()
+    return {"status": "ok"}
 
 @router.post("/migrate/notification-settings")
 def migrate_notification_settings(db: Session = Depends(get_db)):

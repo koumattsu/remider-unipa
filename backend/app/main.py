@@ -4,12 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
-from app.db.base import Base, engine
+from app.db.base import init_db
 
 def create_tables_if_needed() -> None:
-    db_url = settings.DATABASE_URL or ""
-    if db_url.startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+    # ✅ 本番(Postgres)でも新規テーブルが増えたら作れるようにする
+    # create_all は既存テーブルには影響せず（なければ作る）なので、最小で安全
+    init_db()
 
 def get_application() -> FastAPI:
     create_tables_if_needed()

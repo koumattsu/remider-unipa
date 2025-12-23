@@ -1,10 +1,9 @@
 // frontend/src/components/TaskList.tsx
 
-import { useMemo, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
-import { getAllTasksByViewMode } from '../utils/taskTime';
 
 // Task.id が負の値のものは「毎週タスク」からフロント側で生成した仮想タスク
 const isVirtualTask = (task: Task) => task.id < 0;
@@ -21,6 +20,7 @@ interface TaskListProps {
     taskId: number,
     value: TaskNotificationOptions
   ) => void;
+  isOverdueView?: boolean;
 }
 
 interface TaskNotificationOptions {
@@ -88,19 +88,10 @@ export const TaskList: React.FC<TaskListProps> = ({
   onNotifyChange,
   taskNotificationOverrides,
   onTaskNotificationOptionsChange,
+  isOverdueView = false,
 }) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-
-  // ===== ここから追加（全部タブの3切替）=====
-  type AllViewMode = 'active' | 'overdue' | 'incomplete';
-  const [viewMode, setViewMode] = useState<AllViewMode>('active');
-
-  const isOverdueView = viewMode === 'overdue';
-
-  const filteredTasks = useMemo(() => {
-    return getAllTasksByViewMode(tasks, viewMode);
-  }, [tasks, viewMode]);
 
   // 🔔 タスク個別の通知設定（フロント限定で保持）
   const [localTaskNotificationOverrides, setLocalTaskNotificationOverrides] =
@@ -454,34 +445,6 @@ const saveTaskNotificationOptions = (
 
   return (
     <div>
-      {/* 全部タスク：表示切替 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
-        {([
-          { key: 'active', label: '管理中' },
-          { key: 'overdue', label: '期限切れ未完了' },
-          { key: 'incomplete', label: '締切内の未完了' },
-        ] as const).map((v) => {
-          const active = viewMode === v.key;
-          return (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => setViewMode(v.key)}
-              style={{
-                padding: '0.35rem 0.8rem',
-                fontSize: '0.85rem',
-                borderRadius: 9999,
-                border: active ? '1px solid #3b82f6' : '1px solid #d1d5db',
-                background: active ? '#3b82f6' : '#fff',
-                color: active ? '#fff' : '#374151',
-                cursor: 'pointer',
-              }}
-            >
-              {v.label}
-            </button>
-          );
-        })}
-      </div>
       {/* 上部：一括削除ボタン */}
       <div
         style={{
@@ -541,8 +504,8 @@ const saveTaskNotificationOptions = (
                     type="checkbox"
                     onChange={toggleSelectAll}
                     checked={
-                      filteredTasks.length > 0 &&
-                      filteredTasks.every((t) => selectedIds.includes(t.id))
+                      tasks.length > 0 &&
+                      tasks.every((t) => selectedIds.includes(t.id))
                     }
                   />
                 </th>
@@ -554,7 +517,7 @@ const saveTaskNotificationOptions = (
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.map((task) => {
+              {tasks.map((task) => {
                 const isSelected = selectedIds.includes(task.id);
 
                 const isDone = Boolean(task.is_done);
@@ -756,7 +719,7 @@ const saveTaskNotificationOptions = (
             gap: '0.75rem',
           }}
         >
-          {filteredTasks.map((task) => {
+          {tasks.map((task) => {
             const isSelected = selectedIds.includes(task.id);
 
             const isDone = Boolean(task.is_done);
@@ -916,7 +879,7 @@ const saveTaskNotificationOptions = (
                     {isOverdueView ? '⚠️' : '🕒'}
                   </span>
 
-                  <span style={{ fontWeight: viewMode === 'overdue' ? 700 : 400 }}>
+                  <span style={{ fontWeight: isOverdueView ? 700 : 400 }}>
                     {formatDeadline(task.deadline)}
                   </span>
                 </div>

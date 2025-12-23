@@ -11,7 +11,7 @@ import { TodayTaskList } from '../components/TodayTaskList';
 import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
-import { isTodayTaskJst } from '../utils/taskTime';
+import { isTodayTaskJst, getAllTasksByViewMode } from '../utils/taskTime';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
 const TASKS_CACHE_KEY = 'unipa_tasks_cache_v1';
@@ -131,6 +131,7 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
 
 // タブ
 type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings';
+type AllViewMode = 'active' | 'overdue' | 'incomplete';
 
 export const Dashboard: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>(() => {
@@ -185,6 +186,7 @@ export const Dashboard: React.FC = () => {
   });
 
   const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const [allViewMode, setAllViewMode] = useState<AllViewMode>('active');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [addDefaultDeadlineDate, setAddDefaultDeadlineDate] = useState<string | undefined>(undefined);
 
@@ -315,6 +317,10 @@ export const Dashboard: React.FC = () => {
 
   const allTasksWithWeekly: Task[] = useMemo(() => tasks, [tasks]);
 
+  const allDisplayTasks = useMemo(() => {
+    return getAllTasksByViewMode(allTasksWithWeekly, allViewMode);
+  }, [allTasksWithWeekly, allViewMode]);
+
   const todayTasks = useMemo(() => {
     return tasks
       .filter((t) => isTodayTaskJst(t.deadline))
@@ -381,8 +387,10 @@ export const Dashboard: React.FC = () => {
       case 'all':
         return (
           <>
+            <AllModeDropdown value={allViewMode} onChange={setAllViewMode} />
             <TaskList
-              tasks={allTasksWithWeekly}
+              tasks={allDisplayTasks}
+              isOverdueView={allViewMode === 'overdue'}
               onTaskUpdated={loadTasks}
               onTaskPatched={patchTaskLocal}
               onTasksRemoved={removeTasksLocal}
@@ -456,6 +464,118 @@ export const Dashboard: React.FC = () => {
       default:
         return null;
     }
+  };
+
+  const ALL_MODE_ITEMS: { key: AllViewMode; label: string; desc: string; icon: string }[] = [
+    { key: 'active', label: '管理中', desc: '期限内 + 期限超過≤24h（未完）', icon: '🟦' },
+    { key: 'overdue', label: '期限切れ未完了', desc: '期限超過（未完）', icon: '⚠️' },
+    { key: 'incomplete', label: '締切内の未完了', desc: '期限内（未完）', icon: '🕒' },
+  ];
+
+  const AllModeDropdown: React.FC<{
+    value: AllViewMode;
+    onChange: (v: AllViewMode) => void;
+  }> = ({ value, onChange }) => {
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+      const onDocClick = () => setOpen(false);
+      if (open) document.addEventListener('click', onDocClick);
+      return () => document.removeEventListener('click', onDocClick);
+    }, [open]);
+
+    const current = ALL_MODE_ITEMS.find((x) => x.key === value)!;
+
+    return (
+      <div style={{ marginBottom: '0.75rem', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => setOpen((p) => !p)}
+          style={{
+            width: '100%',
+            padding: '0.7rem 0.85rem',
+            borderRadius: 18,
+            border: '1px solid rgba(255,255,255,.12)',
+            background:
+              'radial-gradient(circle at 20% 0%, rgba(0,212,255,.22), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+            color: 'rgba(255,255,255,.92)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            cursor: 'pointer',
+          }}
+          aria-label="表示モードを切り替え"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, letterSpacing: '0.02em' }}>
+              <span style={{ marginRight: 8 }}>{current.icon}</span>
+              {current.label}
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,.62)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {current.desc}
+            </div>
+          </div>
+          <div style={{ opacity: 0.9, fontSize: '1.05rem' }}>{open ? '▴' : '▾'}</div>
+        </button>
+
+        {open && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 10px)',
+              left: 0,
+              right: 0,
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,.12)',
+              background: 'rgba(10, 12, 18, .86)',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
+              boxShadow: '0 18px 60px rgba(0,0,0,.55)',
+              overflow: 'hidden',
+              zIndex: 120,
+            }}
+          >
+            {ALL_MODE_ITEMS.map((item) => {
+              const active = item.key === value;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    onChange(item.key);
+                    setOpen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '0.75rem 0.85rem',
+                    border: 'none',
+                    background: active ? 'rgba(0,212,255,.12)' : 'transparent',
+                    color: 'rgba(255,255,255,.92)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 3,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                    <span style={{ marginRight: 8 }}>{item.icon}</span>
+                    {item.label}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,.62)' }}>
+                    {item.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (

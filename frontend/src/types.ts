@@ -7,6 +7,7 @@ export interface Task {
   deadline: string;
   memo?: string | null;
   is_done: boolean;
+  completed_at?: string | null; // ✅ 締切前完了/締切後完了の判定用
   should_notify: boolean | null;
   auto_notify_disabled_by_done: boolean; // ← 追加（バックエンドTaskResponseに合わせる）
   weekly_task_id?: number | null;

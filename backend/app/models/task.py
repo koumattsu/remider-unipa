@@ -32,6 +32,7 @@ class Task(Base):
     deadline = Column(DateTime(timezone=True), nullable=False, index=True)
     memo = Column(Text, nullable=True)
     is_done = Column(Boolean, default=False, nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     should_notify = Column(Boolean, nullable=False, default=True)
     auto_notify_disabled_by_done = Column(Boolean, nullable=False, default=False)
     weekly_task_id = Column(Integer, ForeignKey("weekly_tasks.id"), nullable=True, index=True)

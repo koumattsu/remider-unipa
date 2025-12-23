@@ -51,5 +51,7 @@ class TaskResponse(TaskBase):
     created_at: datetime
     updated_at: datetime
     auto_notify_disabled_by_done: bool
+    # ✅ 完了日時（締切前完了/締切後完了の判定に使う）
+    completed_at: Optional[datetime] = None
     # Pydantic v2 の ORM モード相当
     model_config = ConfigDict(from_attributes=True)

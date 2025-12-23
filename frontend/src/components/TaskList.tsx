@@ -1,6 +1,6 @@
 // frontend/src/components/TaskList.tsx
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
@@ -90,6 +90,39 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // ===== ここから追加（全部タブの3切替）=====
+  type AllViewMode = 'active' | 'overdue' | 'incomplete';
+  const [viewMode, setViewMode] = useState<AllViewMode>('active');
+
+  const filteredTasks = useMemo(() => {
+    const now = new Date();
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    return tasks.filter((t) => {
+      const deadline = new Date(t.deadline);
+      const completedAt = t.completed_at ? new Date(t.completed_at) : null;
+
+      if (viewMode === 'overdue') {
+        return deadline < now && t.is_done === false;
+      }
+
+      if (viewMode === 'incomplete') {
+        return deadline >= now && t.is_done === false;
+      }
+
+      // === 管理中（default）===
+      if (deadline >= now) return true;
+
+      if (deadline >= dayAgo && deadline < now) {
+        if (!t.is_done) return true;
+        if (t.is_done && completedAt && completedAt > deadline) return true;
+        return false; // 締切前に完了していた
+      }
+
+      return false;
+    });
+  }, [tasks, viewMode]);
 
   // 🔔 タスク個別の通知設定（フロント限定で保持）
   const [localTaskNotificationOverrides, setLocalTaskNotificationOverrides] =
@@ -409,7 +442,7 @@ const saveTaskNotificationOptions = (
   };
 
 
-  const sortedTasks = [...tasks].sort(
+  const sortedTasks = [...filteredTasks].sort(
     (a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
   );
 
@@ -444,6 +477,18 @@ const saveTaskNotificationOptions = (
 
   return (
     <div>
+      {/* 全部タスク：表示切替 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem' }}>
+        <button type="button" onClick={() => setViewMode('active')}>
+          管理中
+        </button>
+        <button type="button" onClick={() => setViewMode('overdue')}>
+          期限切れ未完了
+        </button>
+        <button type="button" onClick={() => setViewMode('incomplete')}>
+          締切内の未完了
+        </button>
+      </div>
       {/* 上部：一括削除ボタン */}
       <div
         style={{

@@ -89,6 +89,7 @@ async def update_task(
         )
 
     update_data = task_data.model_dump(exclude_unset=True)
+    prev_is_done = task.is_done
     prev_should_notify = task.should_notify
     prev_auto_flag = task.auto_notify_disabled_by_done
     for field, value in update_data.items():
@@ -100,7 +101,9 @@ async def update_task(
 
     # ✅ 完了操作でOFFになった通知だけ復帰させる
     if "is_done" in update_data:
-        if update_data["is_done"] is True:
+        if update_data["is_done"] is True and prev_is_done is False:
+            # ✅ 完了日時を記録（締切前に完了してたか/締切後に完了したか判定に使う）
+            task.completed_at = datetime.now(task.deadline.tzinfo) if task.deadline and task.deadline.tzinfo else datetime.utcnow()
             # ✅ 完了にした瞬間に「通知がONだった」場合だけ、完了OFF扱いにする
             if task.should_notify is True:
                 task.should_notify = False
@@ -109,7 +112,9 @@ async def update_task(
                 # すでに手動でOFFなら、完了OFF扱いにしない
                 task.auto_notify_disabled_by_done = False
 
-        elif update_data["is_done"] is False:
+        elif update_data["is_done"] is False and prev_is_done is True:
+            # ✅ 未完了に戻したら completed_at は消す（UIの判定が壊れないように）
+            task.completed_at = None
             if task.auto_notify_disabled_by_done:
                 task.should_notify = True
                 task.auto_notify_disabled_by_done = False

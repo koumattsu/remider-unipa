@@ -25,41 +25,33 @@ async def get_current_user(
         try:
             data = serializer.loads(session_cookie)
 
-            # ✅ 新方式：line_user_id を唯一の真実にする
-            line_user_id = data.get("line_user_id")
-            if line_user_id:
-                user = (
-                    db.query(User)
-                    .filter(User.line_user_id == line_user_id)
-                    .first()
-                )
+            # ✅ 新方式：user_id を唯一の真実にする（無料でも成立）
+            user_id = data.get("user_id")
+            if user_id is not None:
+                user = db.query(User).filter(User.id == int(user_id)).first()
                 if not user:
                     raise HTTPException(status_code=401, detail="ユーザーが存在しません")
                 return user
 
-            # ❌ 旧方式 user_id cookie は移行の事故原因なので受け付けない
-            #    HttpOnly cookie なのでサーバ側で確実に削除して再ログインさせる
-            if "user_id" in data:
-                response.delete_cookie(
-                    key=settings.SESSION_COOKIE_NAME,
-                    path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
-                    domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
-                )
-                raise HTTPException(
-                    status_code=401,
-                    detail="レガシーセッション（user_id形式）です。再ログインしてください。",
-                )
+            # 互換：古い/別方式で line_user_id が入ってるなら拾う（移行のため）
+            line_user_id = data.get("line_user_id")
+            if line_user_id:
+                user = db.query(User).filter(User.line_user_id == line_user_id).first()
+                if not user:
+                    raise HTTPException(status_code=401, detail="ユーザーが存在しません")
+                return user
+
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
         except (BadSignature, ValueError, TypeError):
-            response.delete_cookie(
-                key=settings.SESSION_COOKIE_NAME,
-                path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
-                domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
-                samesite=settings.SESSION_COOKIE_SAMESITE,
-                secure=settings.SESSION_COOKIE_SECURE,
-            )
-            raise HTTPException(status_code=401, detail="無効なセッションです")
+                        response.delete_cookie(
+                            key=settings.SESSION_COOKIE_NAME,
+                            path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+                            domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
+                            samesite=settings.SESSION_COOKIE_SAMESITE,
+                            secure=settings.SESSION_COOKIE_SECURE,
+                        )
+                        raise HTTPException(status_code=401, detail="無効なセッションです")
 
     else:
         # 2) Cookieが無い場合のみ、開発用ダミーヘッダー
@@ -76,7 +68,6 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="ユーザーが存在しません")
     return user
-
 
 def require_auth(func):
     """認証が必要なエンドポイント用デコレータ（簡易版）"""

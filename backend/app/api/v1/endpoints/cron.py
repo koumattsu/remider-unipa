@@ -9,6 +9,7 @@ from sqlalchemy import and_
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
+from app.models.in_app_notification import InAppNotification
 from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting  # ★ 追加
 from app.models.task_outcome_log import TaskOutcomeLog
@@ -94,6 +95,62 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
         db.refresh(setting)
 
     return setting
+
+def _format_task_lines(tasks: list[Task]) -> str:
+    # 要件：タイトル/締切/内容（箇条書き）
+    # ここでは body に「箇条書き」を入れる
+    lines: list[str] = []
+    for t in tasks:
+        # deadline は timezone aware 前提
+        dl = t.deadline.astimezone(JST).strftime("%m/%d %H:%M") if t.deadline else "-"
+        title = t.title or "(no title)"
+        course = t.course_name or ""
+        if course:
+            lines.append(f"・{title}（{course} / {dl}）")
+        else:
+            lines.append(f"・{title}（{dl}）")
+    return "\n".join(lines)
+
+
+def _upsert_in_app_notification(
+    db: Session,
+    user_id: int,
+    task: Task,
+    deadline_at_send_utc: datetime,
+    offset_hours: int,
+    kind: str,
+    title: str,
+    body: str,
+    deep_link: str,
+) -> None:
+    """
+    InAppNotification は UniqueConstraint があるので、
+    既存があれば作らない（=ベル重複を防ぐ）
+    """
+    exists = (
+        db.query(InAppNotification.id)
+        .filter(InAppNotification.user_id == user_id)
+        .filter(InAppNotification.task_id == task.id)
+        .filter(InAppNotification.deadline_at_send == deadline_at_send_utc)
+        .filter(InAppNotification.offset_hours == offset_hours)
+        .first()
+    )
+    if exists:
+        return
+
+    db.add(
+        InAppNotification(
+            user_id=user_id,
+            task_id=task.id,
+            deadline_at_send=deadline_at_send_utc,
+            offset_hours=offset_hours,
+            kind=kind,
+            title=title,
+            body=body,
+            deep_link=deep_link,
+        )
+    )
+    # commit は呼び出し側でまとめてやる（cronの性能&一貫性）
 
 @router.post("/debug-migrate-task-auto-notify-flag")
 async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
@@ -205,6 +262,23 @@ async def run_daily_job(db: Session = Depends(get_db)):
             tasks_3h = cands.due_in_hours.get(hours, [])
             if not tasks_3h:
                 continue
+
+            # ✅ まずベル通知を作る（無料の最低保証）
+            for task in tasks_3h:
+                deadline_at_send = to_utc(task.deadline)
+                dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                _upsert_in_app_notification(
+                    db=db,
+                    user_id=user_id,
+                    task=task,
+                    deadline_at_send_utc=deadline_at_send,
+                    offset_hours=hours,
+                    kind="task_reminder",
+                    title=f"締切まで残り約{hours}時間",
+                    body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                    deep_link="/#/dashboard",  # ✅ 今のルーティングに合わせる（Todayは後で）
+                )
+
             # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
             try:
                 if user.plan != "free" and line_user_id:
@@ -242,6 +316,22 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
         if setting.enable_morning_notification and is_morning_window:
             tasks_today = cands.morning
+            # ✅ 朝ダイジェストもベルに残す（無料の最低保証）
+            for task in tasks_today:
+                deadline_at_send = to_utc(task.deadline)
+                dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                _upsert_in_app_notification(
+                    db=db,
+                    user_id=user_id,
+                    task=task,
+                    deadline_at_send_utc=deadline_at_send,
+                    offset_hours=0,
+                    kind="morning_digest",
+                    title="今日締切の課題まとめ",
+                    body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                    deep_link="/#/dashboard",
+                )
+
             if tasks_today:
                 # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
                 try:
@@ -258,11 +348,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         to_utc(task.deadline),
                         0,
                     )
-
                 results["morning"] += len(tasks_today)
-
+        db.commit()
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
-
     return {"notified": notified, "detail": results}
 
     

@@ -77,6 +77,10 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
     # 万が一どれか空なら補正しておく
     updated = False
 
+    if setting.enable_webpush is None:
+        setting.enable_webpush = False
+        updated = True
+
     if not setting.reminder_offsets_hours:
         setting.reminder_offsets_hours = [3]
         updated = True
@@ -276,7 +280,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     kind="task_reminder",
                     title=f"締切まで残り約{hours}時間",
                     body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                    deep_link="/#/dashboard",  # ✅ 今のルーティングに合わせる（Todayは後で）
+                    deep_link="/#/dashboard?tab=today",
                 )
 
             # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
@@ -329,16 +333,20 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     kind="morning_digest",
                     title="今日締切の課題まとめ",
                     body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                    deep_link="/#/dashboard",
+                    deep_link="/#/dashboard?tab=today",
                 )
 
             if tasks_today:
-                # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
-                try:
-                    await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
-                except Exception as e:
-                    print("[CRON] send_daily_digest failed:", str(e))
-                    continue
+                # ✅ 有料のみ LINE 送信
+                if user.plan != "free" and line_user_id:
+                    try:
+                        await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
+                    except Exception as e:
+                        print("[CRON] send_daily_digest failed:", str(e))
+                        continue
+                else:
+                    # free はベル/WebPush（将来）だけ
+                    pass
 
                 for task in tasks_today:
                     mark_notification_as_sent(
@@ -352,8 +360,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
         db.commit()
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
     return {"notified": notified, "detail": results}
-
-    
 
 # ここから下の debug 系は、君の元コードそのまま残してOK
 @router.post("/debug-send")

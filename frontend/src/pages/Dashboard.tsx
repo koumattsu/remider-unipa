@@ -1,6 +1,7 @@
 // frontend/src/pages/Dashboard.tsx
 
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Task, WeeklyTask } from '../types';
 import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
@@ -187,6 +188,8 @@ export const Dashboard: React.FC = () => {
     return cached ? false : true;
   });
 
+  const location = useLocation();
+
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [allViewMode, setAllViewMode] = useState<AllViewMode>('active');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -258,6 +261,17 @@ export const Dashboard: React.FC = () => {
       await loadTaskNotificationOverrides();
     })();
   }, []);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const tab = sp.get('tab');
+
+    // 許可リスト（壊れない）
+    const allowed: TabKey[] = ['today', 'all', 'stats', 'weekly', 'add', 'settings', 'notifications'];
+    if (tab && allowed.includes(tab as TabKey)) {
+      setActiveTab(tab as TabKey);
+    }
+  }, [location.search]);
 
   // 🔔 notifications タブを開いたら通知一覧を取得
   useEffect(() => {
@@ -461,6 +475,11 @@ export const Dashboard: React.FC = () => {
               {notifs.map((n) => (
                 <div
                   key={n.id}
+                  onClick={() => {
+                    // deep_link は "/#/dashboard?tab=today" 形式
+                    // HashRouterなので hash を直接いじるのが最小diffで確実
+                    window.location.hash = n.deep_link.replace('/#', '#');
+                  }}
                   style={{
                     borderRadius: '1rem',
                     border: '1px solid rgba(255,255,255,.12)',
@@ -480,9 +499,11 @@ export const Dashboard: React.FC = () => {
                         {new Date(n.created_at).toLocaleString()}
                       </div>
                     </div>
-
                     <button
-                      onClick={() => handleDismissNotif(n.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDismissNotif(n.id);
+                      }}
                       style={{
                         height: '2.25rem',
                         padding: '0 0.75rem',

@@ -2,11 +2,14 @@
 
 import axios, { AxiosError } from 'axios';
 
-const baseURL =
+const rawBase =
   import.meta.env.VITE_API_BASE_URL ||
   (import.meta.env.DEV
-    ? 'http://127.0.0.1:8000/api/v1'
-    : 'https://unipa-reminder-backend.onrender.com/api/v1');
+    ? 'http://127.0.0.1:8000'
+    : 'https://unipa-reminder-backend.onrender.com');
+
+// ✅ 末尾の / を落としてから /api/v1 を付与（壊れにくい）
+const baseURL = `${String(rawBase).replace(/\/+$/, '')}/api/v1`;
 
 const apiClient = axios.create({
   baseURL,

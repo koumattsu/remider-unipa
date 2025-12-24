@@ -27,10 +27,11 @@ export const Login: React.FC = () => {
 
   const startLineLogin = () => {
     const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-    const url = base.endsWith('/api/v1')
-      ? `${base}/auth/line/authorize`
-      : `${base}/api/v1/auth/line/authorize`;
-    window.location.href = url;
+    if (!base) {
+      alert('VITE_API_BASE_URL が未設定です');
+      return;
+    }
+    window.location.href = `${base}/api/v1/auth/line/authorize`;
   };
 
   if (isLoading) {

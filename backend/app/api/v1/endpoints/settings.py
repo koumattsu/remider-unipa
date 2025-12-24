@@ -35,6 +35,7 @@ async def get_notification_setting(
             reminder_offsets_hours=[3],
             daily_digest_time="08:00",
             enable_morning_notification=True,
+            enable_webpush=False,  # ✅明示（将来壊れにくい）
         )
         db.add(setting)
         db.commit()

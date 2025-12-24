@@ -29,6 +29,7 @@ def init_db():
     from app.models.notification_setting import NotificationSetting  # noqa: F401
     from app.models.task_notification_log import TaskNotificationLog  # noqa: F401
     from app.models.task_outcome_log import TaskOutcomeLog  # noqa: F401  # ★今回追加
+    from app.models.in_app_notification import InAppNotification  # noqa: F401  # ★in-app通知
     
     Base.metadata.create_all(bind=engine)
 

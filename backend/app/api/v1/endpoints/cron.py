@@ -139,20 +139,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
         "users_targeted": 0,
     }
 
-    users = (
-        db.query(User)
-        .filter(User.line_user_id.isnot(None))
-        .all()
-    )
+    users = db.query(User).all()
+
     VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
     for user in users:
         user_id = user.id
-        line_user_id = user.line_user_id
-        if not line_user_id:
-            continue
-        if not (isinstance(line_user_id, str) and VALID_LINE_UID.fullmatch(line_user_id)):
-            continue
+        line_user_id = user.line_user_id  # NoneでもOK
         results["users_targeted"] += 1
 
         # 通知設定取得
@@ -212,14 +205,21 @@ async def run_daily_job(db: Session = Depends(get_db)):
             tasks_3h = cands.due_in_hours.get(hours, [])
             if not tasks_3h:
                 continue
-
             # ✅ 送信失敗ならログを残さず次へ（=次回リトライできる）
             try:
-                await send_deadline_reminder(
-                    line_user_id=line_user_id,
-                    tasks=tasks_3h,
-                    hours=hours,
-                )
+                if user.plan != "free" and line_user_id:
+                    try:
+                        await send_deadline_reminder(
+                            line_user_id=line_user_id,
+                            tasks=tasks_3h,
+                            hours=hours,
+                        )
+                    except Exception as e:
+                        print("[CRON] send_deadline_reminder failed:", str(e))
+                        continue
+                else:
+                    # 無料ユーザー or LINEなし → ここでは送らない（後でWebPush/ベル）
+                    pass
             except Exception as e:
                 print("[CRON] send_deadline_reminder failed:", str(e))
                 continue

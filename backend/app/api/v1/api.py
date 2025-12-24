@@ -1,7 +1,8 @@
 # backend/app/api/v1/api.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes, in_app_notifications
+from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes, in_app_notifications, webpush_subscriptions
+
 api_router = APIRouter()
 
 # 既存ルーター
@@ -14,6 +15,13 @@ api_router.include_router(outcomes.router, prefix="/outcomes", tags=["outcomes"]
 api_router.include_router(
     in_app_notifications.router,
     prefix="/notifications",
+    tags=["notifications"],
+)
+
+# Web Push 購読（端末資産）
+api_router.include_router(
+    webpush_subscriptions.router,
+    prefix="/notifications/webpush",
     tags=["notifications"],
 )
 

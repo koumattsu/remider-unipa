@@ -18,7 +18,6 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
-
 def init_db():
     """データベースを初期化（テーブル作成）"""
     # ✅ ここで models を import して Base.metadata に登録させる
@@ -30,6 +29,7 @@ def init_db():
     from app.models.task_notification_log import TaskNotificationLog  # noqa: F401
     from app.models.task_outcome_log import TaskOutcomeLog  # noqa: F401  # ★今回追加
     from app.models.in_app_notification import InAppNotification  # noqa: F401  # ★in-app通知
+    from app.models.webpush_subscription import WebPushSubscription  # noqa: F401
     
     Base.metadata.create_all(bind=engine)
 

@@ -7,8 +7,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "UniPA Reminder App"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-
     DATABASE_URL: str = "sqlite:///./unipa_reminder.db"
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_SUBJECT: str = "mailto:admin@example.com"
 
     # ✅ 本番(frontend on render)もデフォで許可しておく
     #    Renderで環境変数CORS_ORIGINSを入れたらそっちが優先される

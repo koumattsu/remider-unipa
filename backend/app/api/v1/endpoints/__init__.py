@@ -1,0 +1,1 @@
+from . import webpush_subscriptions  # noqa: F401

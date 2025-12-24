@@ -26,12 +26,14 @@ export const Login: React.FC = () => {
   };
 
   const startLineLogin = () => {
-    const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-    if (!base) {
-      alert('VITE_API_BASE_URL が未設定です');
-      return;
-    }
-    window.location.href = `${base}/api/v1/auth/line/authorize`;
+    // apiClient と同じ基準で作る
+    const rawBase = import.meta.env.VITE_API_BASE_URL || '';
+    const base = rawBase.replace(/\/+$/, '');
+
+    // api/v1 は「常にここで1回だけ」
+    const url = `${base}/api/v1/auth/line/authorize`;
+
+    window.location.href = url;
   };
 
   if (isLoading) {

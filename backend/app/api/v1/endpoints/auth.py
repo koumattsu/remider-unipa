@@ -156,11 +156,15 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
             reminder_offsets_hours=[3],
             daily_digest_time="08:00",
             enable_morning_notification=True,
+            enable_webpush=False,
         )
         db.add(ns)
         db.commit()
 
-    session_token = _serializer().dumps({"line_user_id": line_user_id})
+    session_token = _serializer().dumps({
+        "user_id": user.id,          # ✅ 唯一の真実（無料でも成立）
+        "line_user_id": line_user_id # ✅ 互換/監査用（なくてもOK）
+    })
 
     redirect_to = _frontend_base_url() + "/#/dashboard"
     resp = RedirectResponse(url=redirect_to, status_code=302)

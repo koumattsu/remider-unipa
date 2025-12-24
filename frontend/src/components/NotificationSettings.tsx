@@ -1,10 +1,24 @@
 // frontend/src/components/NotificationSettings.tsx
 
 import { useState, useEffect } from 'react';
+import apiClient from '../api/client';
 import { NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
 
 const NOTIFICATION_STORAGE_KEY = 'unipa_notification_settings_v1';
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 type StoredNotificationSettings = {
   enableMorning: boolean;
@@ -88,6 +102,34 @@ export const NotificationSettings: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supported =
+      'serviceWorker' in navigator &&
+      'PushManager' in window &&
+      'Notification' in window;
+
+    setPushSupported(supported);
+
+    (async () => {
+      if (!supported) return;
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+          setPushEnabled(false);
+          return;
+        }
+        const sub = await reg.pushManager.getSubscription();
+        setPushEnabled(!!sub);
+      } catch {
+        setPushEnabled(false);
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -142,6 +184,91 @@ export const NotificationSettings: React.FC = () => {
   const handleAddOffset = () => {
     setOffsets((prev) => [...prev, 1]);
   };
+
+  const enableWebPush = async () => {
+    setPushError(null);
+
+    if (!pushSupported) {
+      setPushError('このブラウザは Web Push に対応していません');
+      return;
+    }
+
+    try {
+      // 1) SW 登録（public/sw.js）
+      const reg = await navigator.serviceWorker.register('/sw.js');
+
+      // 2) 通知許可
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        setPushError('通知が許可されませんでした（ブラウザ設定を確認してください）');
+        return;
+      }
+
+      // 3) VAPID 公開鍵を backend から取得
+      const { data } = await apiClient.get('/notifications/webpush/public-key');
+      const publicKey: string = data?.publicKey;
+      if (!publicKey) {
+        setPushError('VAPID 公開鍵の取得に失敗しました');
+        return;
+      }
+
+      // 4) subscribe
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+
+      const json = sub.toJSON();
+      const endpoint = sub.endpoint;
+      const p256dh = json?.keys?.p256dh;
+      const auth = json?.keys?.auth;
+
+      if (!endpoint || !p256dh || !auth) {
+        setPushError('subscription の形式が不正です');
+        return;
+      }
+
+      // 5) backend に登録（endpoint upsert）
+      await apiClient.post('/notifications/webpush/subscriptions', {
+        endpoint,
+        keys: { p256dh, auth },
+      });
+
+      setPushEnabled(true);
+    } catch (e: any) {
+      setPushError(e?.message ?? 'Web Push の有効化に失敗しました');
+    }
+  };
+
+  const disableWebPush = async () => {
+    setPushError(null);
+
+    if (!pushSupported) return;
+
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) {
+        setPushEnabled(false);
+        return;
+      }
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        setPushEnabled(false);
+        return;
+      }
+
+      // backend 側も削除（by-endpoint を使う）
+      await apiClient.delete('/notifications/webpush/subscriptions/by-endpoint', {
+        data: { endpoint: sub.endpoint },
+      });
+
+      await sub.unsubscribe();
+      setPushEnabled(false);
+    } catch (e: any) {
+      setPushError(e?.message ?? 'Web Push の解除に失敗しました');
+    }
+  };
+
 
   const handleRemoveOffset = (index: number) => {
     setOffsets((prev) => {

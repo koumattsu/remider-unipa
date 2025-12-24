@@ -105,6 +105,7 @@ export const NotificationSettings: React.FC = () => {
   const [pushSupported, setPushSupported] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [pushTestResult, setPushTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     const supported =
@@ -269,7 +270,30 @@ export const NotificationSettings: React.FC = () => {
     }
   };
 
+  const testWebPush = async () => {
+    setPushTestResult(null);
+      setPushError(null);
 
+      try {
+        const res = await apiClient.post('/notifications/webpush/debug-send');
+        const sent = res.data?.sent ?? 0;
+        const failed = res.data?.failed ?? 0;
+        const deactivated = res.data?.deactivated ?? 0;
+        setPushTestResult(
+          `debug-send: sent=${sent}, failed=${failed}, deactivated=${deactivated}`
+        );
+      } catch (e: any) {
+        const status = e?.response?.status;
+        setPushTestResult(null);
+        setPushError(
+          `debug-send failed${status ? ` (${status})` : ''}: ${
+            e?.message ?? 'unknown error'
+          }`
+        );
+      }
+    };
+
+  
   const handleRemoveOffset = (index: number) => {
     setOffsets((prev) => {
       const others = prev.filter((o) => o !== 3);
@@ -499,6 +523,20 @@ export const NotificationSettings: React.FC = () => {
               >
                 通知をオン（この端末）
               </button>
+            )}
+
+            {/* ✅ 追加：即テスト */}
+            <button
+              onClick={testWebPush}
+              disabled={!pushEnabled || permission !== 'granted'}
+            >
+              テスト送信（この端末）
+            </button>
+
+            {pushTestResult && (
+              <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                {pushTestResult}
+              </div>
             )}
 
             {permission !== 'granted' && (

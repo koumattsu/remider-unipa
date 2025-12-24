@@ -474,7 +474,42 @@ export const NotificationSettings: React.FC = () => {
           通知がブロックされています。ブラウザの設定から許可してください。
         </div>
       )}
-        {enableWebpush && (
+
+      {enableWebpush && (
+        <>
+          <hr style={{ margin: '1rem 0' }} />
+
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            <div style={{ fontWeight: 700 }}>Web Push（この端末）</div>
+
+            {!pushSupported && (
+              <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>
+                このブラウザは Web Push に対応していません（iPhone は「ホームに追加」したPWAで有効になることがあります）
+              </div>
+            )}
+
+            {pushError && <div style={{ fontSize: '0.9rem' }}>⚠️ {pushError}</div>}
+
+            {pushEnabled ? (
+              <button onClick={disableWebPush}>通知をオフ（この端末）</button>
+            ) : (
+              <button
+                onClick={enableWebPush}
+                disabled={!pushSupported || permission !== 'granted'}
+              >
+                通知をオン（この端末）
+              </button>
+            )}
+
+            {permission !== 'granted' && (
+              <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                先にブラウザの通知許可を「許可」にしてください（上の「許可する」ボタン）。
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      {enableWebpush && (
           <>
             {/* 朝通知：時間セレクト + トグル */}
             <div

@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from pywebpush import webpush, WebPushException
 
@@ -12,7 +13,6 @@ from app.models.in_app_notification import InAppNotification
 
 logger = logging.getLogger(__name__)
 
-
 class WebPushSender:
     """
     Web Push 配信（配信層）
@@ -21,26 +21,24 @@ class WebPushSender:
     """
 
     @staticmethod
-    def _is_enabled_for_user(db: Session, user_id: int) -> bool:
-        ns = (
-            db.query(NotificationSetting)
-            .filter(NotificationSetting.user_id == user_id)
-            .one_or_none()
-        )
-        return bool(ns and ns.enable_webpush)
+    def _utcnow():
+        return datetime.now(timezone.utc)
 
     @staticmethod
-    def send_for_notification(
+    def _send_payload(
         db: Session,
         *,
         user_id: int,
-        notification: InAppNotification,
-    ) -> None:
+        payload: dict,
+    ) -> dict:
+        """
+        任意payloadをユーザーの全subscriptionへ送る（判定は持たない）
+        戻り値: {sent, failed, deactivated}
+        """
         # ✅ ユーザーの許可（設定）を尊重
         if not WebPushSender._is_enabled_for_user(db, user_id):
-            return
+            return {"sent": 0, "failed": 0, "deactivated": 0}
 
-        # ✅ 端末資産（subscription）を取得
         subs = (
             db.query(WebPushSubscription)
             .filter(
@@ -50,15 +48,16 @@ class WebPushSender:
             .all()
         )
         if not subs:
-            return
+            return {"sent": 0, "failed": 0, "deactivated": 0}
 
-        # ✅ イベント資産（InAppNotification）を配信
-        payload = {
-            "title": notification.title,
-            "body": notification.body,
-            "deep_link": notification.deep_link,
-        }
         payload_json = json.dumps(payload, ensure_ascii=False)
+        now = WebPushSender._utcnow()
+
+        sent = 0
+        failed = 0
+        deactivated = 0
+
+        dirty = False
 
         for sub in subs:
             try:
@@ -71,6 +70,13 @@ class WebPushSender:
                     vapid_private_key=settings.VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": settings.VAPID_SUBJECT},
                 )
+
+                # ✅ 成功した端末は health を更新
+                sub.last_seen_at = now
+                db.add(sub)
+                dirty = True
+
+                sent += 1
                 logger.info("[webpush] ok user_id=%s sub_id=%s", user_id, sub.id)
 
             except WebPushException as e:
@@ -80,7 +86,9 @@ class WebPushSender:
                 if status in (404, 410):
                     sub.is_active = False
                     db.add(sub)
-                    db.commit()
+                    dirty = True
+
+                    deactivated += 1
                     logger.info(
                         "[webpush] deactivated user_id=%s sub_id=%s status=%s",
                         user_id,
@@ -89,6 +97,7 @@ class WebPushSender:
                     )
                     continue
 
+                failed += 1
                 logger.warning(
                     "[webpush] failed user_id=%s sub_id=%s status=%s err=%s",
                     user_id,
@@ -96,3 +105,37 @@ class WebPushSender:
                     status,
                     e,
                 )
+
+        if dirty:
+            db.commit()
+
+        return {"sent": sent, "failed": failed, "deactivated": deactivated}
+
+    @staticmethod
+    def send_for_notification(
+        db: Session,
+        *,
+        user_id: int,
+        notification: InAppNotification,
+    ) -> dict:
+        # ✅ sw.js 側が url を見る想定なので url も入れる（deep_link も残す）
+        payload = {
+            "title": notification.title,
+            "body": notification.body,
+            "url": notification.deep_link,
+            "deep_link": notification.deep_link,
+        }
+        return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
+
+    @staticmethod
+    def send_debug(
+        db: Session,
+        *,
+        user_id: int,
+        title: str = "UNIPA Reminder",
+        body: str = "Web Push テスト送信です",
+        url: str = "/#/dashboard?tab=today",
+    ) -> dict:
+        payload = {"title": title, "body": body, "url": url, "deep_link": url}
+        return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
+

@@ -12,6 +12,7 @@ from app.schemas.webpush_subscription import (
     WebPushSubscriptionCreate,
     WebPushSubscriptionResponse,
 )
+from app.services.webpush_sender import WebPushSender
 
 router = APIRouter()
 
@@ -125,3 +126,15 @@ def deactivate_subscription_by_endpoint(
     db.add(row)
     db.commit()
     return
+
+@router.post("/debug-send")
+def debug_send_webpush(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    ログイン中ユーザーに Web Push を即送信して疎通確認する。
+    cron待ちゼロで「届く/届かない」を切り分けられる。
+    """
+    result = WebPushSender.send_debug(db, user_id=current_user.id)
+    return result

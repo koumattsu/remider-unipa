@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { Task, WeeklyTask } from '../types';
 import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
+import { fetchInAppNotifications, dismissInAppNotification } from '../api/notifications';
+import type { InAppNotification } from '../api/notifications';
 import { TaskForm } from '../components/TaskForm';
 import { TaskList } from '../components/TaskList';
 import { NotificationSettings } from '../components/NotificationSettings';
@@ -130,7 +132,7 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
 };
 
 // タブ
-type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings';
+type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings' | 'notifications';
 type AllViewMode = 'active' | 'overdue' | 'incomplete';
 
 export const Dashboard: React.FC = () => {
@@ -189,6 +191,10 @@ export const Dashboard: React.FC = () => {
   const [allViewMode, setAllViewMode] = useState<AllViewMode>('active');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [addDefaultDeadlineDate, setAddDefaultDeadlineDate] = useState<string | undefined>(undefined);
+  // 🔔 ベル（アプリ内通知）
+  const [notifs, setNotifs] = useState<InAppNotification[]>([]);
+  const [notifsLoading, setNotifsLoading] = useState(false);
+  const [notifsError, setNotifsError] = useState<string | null>(null);
 
     // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -252,6 +258,31 @@ export const Dashboard: React.FC = () => {
       await loadTaskNotificationOverrides();
     })();
   }, []);
+
+  // 🔔 notifications タブを開いたら通知一覧を取得
+  useEffect(() => {
+    if (activeTab !== 'notifications') return;
+
+    let cancelled = false;
+
+    (async () => {
+      setNotifsLoading(true);
+      setNotifsError(null);
+      try {
+        const items = await fetchInAppNotifications(50);
+        if (!cancelled) setNotifs(items);
+      } catch (e) {
+        console.error('通知一覧の取得に失敗しました:', e);
+        if (!cancelled) setNotifsError('通知の取得に失敗しました');
+      } finally {
+        if (!cancelled) setNotifsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
 
   const loadTaskNotificationOverrides = async () => {
     try {
@@ -341,6 +372,20 @@ export const Dashboard: React.FC = () => {
     return `${y}-${m}-${day}`;
   };
 
+  // 🔔 通知を消す（UIは先に消して体感を良くする）
+  const handleDismissNotif = async (id: number) => {
+    const prev = notifs;
+    setNotifs(prev.filter((n) => n.id !== id));
+
+    try {
+      await dismissInAppNotification(id);
+    } catch (e) {
+      console.error('通知のdismissに失敗:', e);
+      setNotifs(prev);
+      alert('通知の削除に失敗しました');
+    }
+  };
+
   // ➕ 右下のプラスボタンの挙動
   const handleFabClick = async () => {
     if (activeTab === 'all') {
@@ -367,6 +412,96 @@ export const Dashboard: React.FC = () => {
   // メインコンテンツの切り替え
   const renderContent = () => {
     switch (activeTab) {
+      case 'notifications':
+        return (
+          <div style={{ paddingBottom: '4rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <h1 style={{ margin: 0 }}>通知</h1>
+              <button
+                onClick={async () => {
+                  setNotifsLoading(true);
+                  setNotifsError(null);
+                  try {
+                    const items = await fetchInAppNotifications(50);
+                    setNotifs(items);
+                  } catch (e) {
+                    console.error('通知の更新に失敗:', e);
+                    alert('通知の更新に失敗しました');
+                  } finally {
+                    setNotifsLoading(false);
+                  }
+                }}
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(255,255,255,.15)',
+                  background: 'rgba(255,255,255,.06)',
+                  color: 'white',
+                }}
+              >
+                ↻ 更新
+              </button>
+            </div>
+
+            {notifsLoading && <p style={{ opacity: 0.7 }}>読み込み中...</p>}
+            {notifsError && <p style={{ color: '#ff8a8a' }}>{notifsError}</p>}
+
+            {!notifsLoading && !notifsError && notifs.length === 0 && (
+              <p style={{ opacity: 0.7 }}>通知はありません</p>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {notifs.map((n) => (
+                <div
+                  key={n.id}
+                  style={{
+                    borderRadius: '1rem',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    background: 'rgba(255,255,255,.04)',
+                    padding: '0.9rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
+                        {n.title}
+                      </div>
+                      <div style={{ whiteSpace: 'pre-wrap', opacity: 0.85, lineHeight: 1.35 }}>
+                        {n.body}
+                      </div>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.6 }}>
+                        {new Date(n.created_at).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDismissNotif(n.id)}
+                      style={{
+                        height: '2.25rem',
+                        padding: '0 0.75rem',
+                        borderRadius: '0.75rem',
+                        border: '1px solid rgba(255,255,255,.15)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: 'white',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      消す
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
       case 'today':
         return (
           <>
@@ -715,6 +850,12 @@ export const Dashboard: React.FC = () => {
           icon="📊"
           active={activeTab === 'stats'}
           onClick={() => setActiveTab('stats')}
+        />
+        <TabButton
+          label="通知"
+          icon="🔔"
+          active={activeTab === 'notifications'}
+          onClick={() => setActiveTab('notifications')}
         />
       </nav>
 

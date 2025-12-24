@@ -15,7 +15,7 @@ async def list_in_app_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    qs = (
+    items = (
         db.query(InAppNotification)
         .filter(InAppNotification.user_id == current_user.id)
         .filter(InAppNotification.dismissed_at.is_(None))
@@ -37,9 +37,10 @@ async def list_in_app_notifications(
                 "offset_hours": n.offset_hours,
                 "created_at": n.created_at.isoformat(),
             }
-            for n in qs
+            for n in items
         ]
     }
+
 
 @router.post("/in-app/{notification_id}/dismiss")
 async def dismiss_in_app_notification(

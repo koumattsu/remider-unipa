@@ -13,7 +13,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
-
 from app.db.base import Base
 
 class InAppNotification(Base):
@@ -79,6 +78,5 @@ class InAppNotification(Base):
     )
 
     dismissed_at = Column(DateTime(timezone=True), nullable=True, index=True)
-
     user = relationship("User")
     task = relationship("Task")

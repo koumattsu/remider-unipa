@@ -32,6 +32,7 @@ async def get_tasks(
 ):
     """課題一覧を取得"""
     filters = [Task.user_id == current_user.id]
+    filters.append(Task.deleted_at.is_(None))
 
     if start_date:
         filters.append(Task.deadline >= start_date)
@@ -136,30 +137,10 @@ async def delete_task(
     if not task:
         raise HTTPException(status_code=404, detail="課題が見つかりません")
     
-    try:
-        # 🔽 子テーブルを先に削除
-        db.query(TaskNotificationOverride).filter(
-            TaskNotificationOverride.task_id == task.id
-        ).delete(synchronize_session=False)
-
-        db.query(TaskNotificationLog).filter(
-            TaskNotificationLog.task_id == task.id
-        ).delete(synchronize_session=False)
-
-        # 🔽 親タスク削除
-        db.delete(task)
-        db.commit()
-
-    except IntegrityError:
-        db.rollback()
-        traceback.print_exc()  # ← Renderのログに詳細が出る
-        raise HTTPException(
-            status_code=409,
-            detail="FK制約で削除できません（通知ログ or override が残っています）",
-        )
-
+    # ✅ 物理削除しない：将来の分析価値を守る
+    task.deleted_at = datetime.now(timezone.utc)
+    db.commit()
     return None
-
 
 @router.post("/import-moodle-html")
 def import_moodle_html(

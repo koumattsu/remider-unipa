@@ -76,6 +76,7 @@ export interface NotificationSetting {
   reminder_offsets_hours: number[];      // 例: [3, 24]
   daily_digest_time: string;            // "08:00" など
   enable_morning_notification: boolean; // 朝通知 ON/OFF
+  enable_webpush: boolean;
 }
 
 // update 用（NotificationSettings.tsx の import 用）
@@ -83,4 +84,5 @@ export interface NotificationSettingUpdate {
   reminder_offsets_hours: number[];
   daily_digest_time: string;
   enable_morning_notification: boolean;
+  enable_webpush: boolean;
 }

@@ -49,6 +49,9 @@ class Task(Base):
         nullable=False,
     )
 
+    # ✅ ソフトデリート
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
     # リレーションシップ
     user = relationship("User", back_populates="tasks")
     

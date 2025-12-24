@@ -8,14 +8,17 @@ on:
     - cron: "0,30 * * * *"
   workflow_dispatch:
 
-
 jobs:
   call-daily-cron:
     runs-on: ubuntu-latest
-
     steps:
       - name: Call Render /api/v1/cron/daily
         run: |
-          curl -X POST "https://unipa-reminder-backend.onrender.com/api/v1/cron/daily" \
+          set -euo pipefail
+          echo "Now(UTC): $(date -u)"
+          curl -sS -X POST "https://unipa-reminder-backend.onrender.com/api/v1/cron/daily" \
                -H "Content-Type: application/json" \
-               --fail
+               --connect-timeout 10 \
+               --max-time 60 \
+               -w "\nHTTP_STATUS=%{http_code}\n" \
+               --fail-with-body

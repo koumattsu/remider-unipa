@@ -15,7 +15,6 @@ from app.schemas.notification_setting import (
 
 router = APIRouter()
 
-
 @router.get("/notification", response_model=NotificationSettingResponse)
 async def get_notification_setting(
     request: Request,
@@ -66,6 +65,7 @@ async def create_or_update_notification_setting(
         setting.enable_morning_notification = (
             setting_data.enable_morning_notification
         )
+        setting.enable_webpush = setting_data.enable_webpush
     else:
         # 新規作成
         setting = NotificationSetting(
@@ -73,6 +73,7 @@ async def create_or_update_notification_setting(
             reminder_offsets_hours=setting_data.reminder_offsets_hours,
             daily_digest_time=setting_data.daily_digest_time,
             enable_morning_notification=setting_data.enable_morning_notification,
+            enable_webpush=setting_data.enable_webpush,
         )
         db.add(setting)
 

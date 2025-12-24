@@ -35,6 +35,13 @@ class NotificationSetting(Base):
         nullable=False,
         default=True,
     )
+
+    # ✅ Web Push（プッシュ通知）をアプリ側で有効にするか（デフォルトOFF）
+    enable_webpush = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
     
     # リレーションシップ
     user = relationship("User", back_populates="notification_setting")

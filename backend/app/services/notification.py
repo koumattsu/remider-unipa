@@ -60,6 +60,9 @@ def is_notification_candidate(
     weekly_is_active: bool | None,
     now_utc: datetime,
 ) -> bool:
+    # ⓪ ソフトデリートは即除外（将来価値のため）
+    if task.deleted_at is not None:
+        return False
     """
     ✅ 通知対象の共通判定（集約）
 
@@ -157,7 +160,7 @@ def get_tasks_due_in_offsets(
     candidates = (
         db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
-        .filter(Task.user_id == user_id)
+        .filter(Task.user_id == user_id, Task.deleted_at.is_(None),)
         .all()
     )
 

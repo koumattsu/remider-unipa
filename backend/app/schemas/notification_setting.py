@@ -18,6 +18,11 @@ class NotificationSettingBase(BaseModel):
         description="朝のダイジェスト通知を送るかどうか",
     )
 
+    enable_webpush: bool = Field(
+        default=False,
+        description="Web Push（プッシュ通知）を有効にするか",
+    )
+
 class NotificationSettingCreate(NotificationSettingBase):
     pass
 

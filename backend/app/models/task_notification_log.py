@@ -19,7 +19,6 @@ class TaskNotificationLog(Base):
     - 同じ user_id + task_id + deadline + offset_hours の組み合わせには
       一度しか通知を送らない。
     """
-
     __tablename__ = "task_notification_logs"
     __table_args__ = (
         UniqueConstraint(

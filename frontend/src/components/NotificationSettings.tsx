@@ -77,6 +77,14 @@ export const NotificationSettings: React.FC = () => {
   // 3時間前通知 ON / OFF
   const [enableThreeHours, setEnableThreeHours] = useState<boolean>(true);
 
+  // プッシュ通知 ON / OFF
+  const [enableWebpush, setEnableWebpush] = useState<boolean>(false);
+
+  // ブラウザ許可状態
+  const [permission, setPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -88,6 +96,8 @@ export const NotificationSettings: React.FC = () => {
     try {
       const data = await settingsApi.getNotification();
       setSetting(data);
+
+      setEnableWebpush(data.enable_webpush ?? false);
 
       const hours = [...data.reminder_offsets_hours];
 
@@ -198,6 +208,7 @@ export const NotificationSettings: React.FC = () => {
         reminder_offsets_hours: newOffsets,
         daily_digest_time: digestTime,
         enable_morning_notification: enableMorning,
+        enable_webpush: enableWebpush,
       };
 
       // 👇 localStorage にも保存しておく
@@ -259,7 +270,7 @@ export const NotificationSettings: React.FC = () => {
     >
       <h2 style={{ marginTop: 0 }}>通知設定</h2>
 
-      {/* 朝通知：時間セレクト + トグル */}
+      {/* プッシュ通知 ON / OFF */}
       <div
         style={{
           marginBottom: '1.5rem',
@@ -270,147 +281,228 @@ export const NotificationSettings: React.FC = () => {
       >
         <div>
           <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-            朝通知
+            プッシュ通知
           </div>
           <div style={{ fontSize: '0.9rem', color: '#666' }}>
-            毎朝のまとめ通知（5:00〜10:00 の間で設定）
-          </div>
-        </div>
-
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
-        >
-          {/* 朝通知時刻セレクト：5:00〜10:00 を30分刻み */}
-          <select
-            value={digestTime}
-            onChange={(e) => setDigestTime(e.target.value)}
-            style={{ padding: '0.4rem 0.6rem', fontSize: '0.95rem' }}
-          >
-            {MORNING_TIME_OPTIONS.map((time) => (
-              <option key={time} value={time}>
-                {time}
-              </option>
-            ))}
-          </select>
-
-          <ToggleSwitch
-            checked={enableMorning}
-            onChange={() => setEnableMorning(!enableMorning)}
-          />
-        </div>
-      </div>
-
-      {/* 3時間前通知：トグル */}
-      <div
-        style={{
-          marginBottom: '1.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-            締切3時間前通知
-          </div>
-          <div style={{ fontSize: '0.9rem', color: '#666' }}>
-            締切の3時間前にリマインド
+            アプリを開いていなくても締切前に通知します
           </div>
         </div>
 
         <ToggleSwitch
-          checked={enableThreeHours}
-          onChange={() => setEnableThreeHours(!enableThreeHours)}
+          checked={enableWebpush}
+          onChange={() => {
+            const next = !enableWebpush;
+            setEnableWebpush(next);
+
+            if (next) {
+              // ON にした瞬間にブラウザ許可状態を確認
+              if (typeof Notification !== 'undefined') {
+                setPermission(Notification.permission);
+              }
+            }
+          }}
         />
       </div>
 
-      {/* その他の時間設定 */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <label
+      {enableWebpush && permission === 'default' && (
+        <div
           style={{
-            display: 'block',
-            marginBottom: '0.5rem',
-            fontWeight: 'bold',
+            marginBottom: '1rem',
+            padding: '0.75rem',
+            background: '#f8f9fa',
+            border: '1px solid #ddd',
+            borderRadius: '6px',
+            fontSize: '0.9rem',
           }}
         >
-          その他のリマインド時間（自由設定）
-        </label>
-
-        {otherOffsets.map((offset, index) => (
-          <div
-            key={index}
+          通知を受け取るには、ブラウザの許可が必要です。
+          <button
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              marginBottom: '0.5rem',
+              marginLeft: '0.75rem',
+              padding: '0.4rem 0.75rem',
+              borderRadius: '4px',
+              border: 'none',
+              background: '#007bff',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+            onClick={async () => {
+              const result = await Notification.requestPermission();
+              setPermission(result);
             }}
           >
-            <input
-              type="number"
-              min="1"
-              value={offset}
-              onChange={(e) =>
-                handleOffsetChange(
-                  index,
-                  parseInt(e.target.value, 10) || 1
-                )
-              }
+            許可する
+          </button>
+        </div>
+      )}
+
+      {enableWebpush && permission === 'denied' && (
+        <div
+          style={{
+            marginBottom: '1rem',
+            color: '#dc3545',
+            fontSize: '0.9rem',
+          }}
+        >
+          通知がブロックされています。ブラウザの設定から許可してください。
+        </div>
+      )}
+        {enableWebpush && (
+          <>
+            {/* 朝通知：時間セレクト + トグル */}
+            <div
               style={{
-                width: '100px',
-                padding: '0.5rem',
-                marginRight: '0.5rem',
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
               }}
-            />
-            <span>時間前</span>
+            >
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                  朝通知
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                  毎朝のまとめ通知（5:00〜10:00 の間で設定）
+                </div>
+              </div>
+
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+              >
+                {/* 朝通知時刻セレクト：5:00〜10:00 を30分刻み */}
+                <select
+                  value={digestTime}
+                  onChange={(e) => setDigestTime(e.target.value)}
+                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.95rem' }}
+                >
+                  {MORNING_TIME_OPTIONS.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+
+                <ToggleSwitch
+                  checked={enableMorning}
+                  onChange={() => setEnableMorning(!enableMorning)}
+                />
+              </div>
+            </div>
+
+            {/* 3時間前通知：トグル */}
+            <div
+              style={{
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                  締切3時間前通知
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                  締切の3時間前にリマインド
+                </div>
+              </div>
+
+              <ToggleSwitch
+                checked={enableThreeHours}
+                onChange={() => setEnableThreeHours(!enableThreeHours)}
+              />
+            </div>
+
+            {/* その他の時間設定 */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label
+                style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                その他のリマインド時間（自由設定）
+              </label>
+
+              {otherOffsets.map((offset, index) => (
+                <div
+                  key={index}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <input
+                    type="number"
+                    min="1"
+                    value={offset}
+                    onChange={(e) =>
+                      handleOffsetChange(
+                        index,
+                        parseInt(e.target.value, 10) || 1
+                      )
+                    }
+                    style={{
+                      width: '100px',
+                      padding: '0.5rem',
+                      marginRight: '0.5rem',
+                    }}
+                  />
+                  <span>時間前</span>
+
+                  <button
+                    onClick={() => handleRemoveOffset(index)}
+                    style={{
+                      marginLeft: '0.5rem',
+                      padding: '0.25rem 0.5rem',
+                      backgroundColor: '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+
+              <button
+                onClick={handleAddOffset}
+                style={{
+                  marginTop: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                時間を追加
+              </button>
+            </div>
 
             <button
-              onClick={() => handleRemoveOffset(index)}
+              onClick={handleSave}
+              disabled={isSaving}
               style={{
-                marginLeft: '0.5rem',
-                padding: '0.25rem 0.5rem',
-                backgroundColor: '#dc3545',
+                padding: '0.75rem 1.5rem',
+                fontSize: '1rem',
+                backgroundColor: '#28a745',
                 color: 'white',
                 border: 'none',
                 borderRadius: '4px',
-                cursor: 'pointer',
+                cursor: isSaving ? 'not-allowed' : 'pointer',
               }}
             >
-              削除
+              {isSaving ? '保存中...' : '設定を保存'}
             </button>
-          </div>
-        ))}
-
-        <button
-          onClick={handleAddOffset}
-          style={{
-            marginTop: '0.5rem',
-            padding: '0.5rem 1rem',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          時間を追加
-        </button>
-      </div>
-
-      <button
-        onClick={handleSave}
-        disabled={isSaving}
-        style={{
-          padding: '0.75rem 1.5rem',
-          fontSize: '1rem',
-          backgroundColor: '#28a745',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isSaving ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {isSaving ? '保存中...' : '設定を保存'}
-      </button>
+          </>
+      )}
     </div>
   );
 };

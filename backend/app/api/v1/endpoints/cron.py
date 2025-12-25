@@ -280,11 +280,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 # ✅ イベント資産（InAppNotification）はここで確実に永続化
             if created_inapps:
                 db.commit()
-            
-            # ✅ 成功した task_id だけログに残す
-            sent_task_ids: set[int] = set()
 
-            # ✅ WebPush（設定ONのときだけ）
+            # ✅ WebPush（無料/有料共通・設定ONのときだけ）
             if setting.enable_webpush:
                 for n in created_inapps:
                     try:
@@ -295,6 +292,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         )
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
+                    except Exception as e:
+                        # 失敗したらログは残さない（次回リトライ）
+                        print("[CRON] webpush failed:", str(e))
             # ✅ LINE（有料のみ）
             try:
                 if user.plan != "free" and line_user_id:
@@ -304,14 +304,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             tasks=tasks_3h,
                             hours=hours,
                         )
-                        # LINE が成功したら、このバッチ分は成功扱い
-                        for t in tasks_3h:
-                            sent_task_ids.add(t.id)
                     except Exception as e:
                         print("[CRON] send_deadline_reminder failed:", str(e))
                         # LINE失敗でもWebPush成功分は残すので continue しない
-                else:
-                    pass
             except Exception as e:
                 print("[CRON] send_deadline_reminder failed:", str(e))
 
@@ -348,8 +343,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if created_morning:
                 db.commit()
 
-            sent_task_ids: set[int] = set()
-
             # ✅ WebPush（無料/有料共通）
             if setting.enable_webpush:
                 for n in created_morning:
@@ -362,14 +355,20 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
             if tasks_today:
-                # ✅ 有料のみ LINE 送信
-                if user.plan != "free" and line_user_id:
-                    try:
-                        await send_daily_digest(line_user_id=line_user_id, tasks=tasks_today)
-                        for t in tasks_today:
-                            sent_task_ids.add(t.id)
-                    except Exception as e:
-                        print("[CRON] send_daily_digest failed:", str(e))
+                # ✅ LINE（有料のみ）
+                try:
+                    if user.plan != "free" and line_user_id:
+                        try:
+                            await send_deadline_reminder(
+                                line_user_id=line_user_id,
+                                tasks=tasks_3h,
+                                hours=hours,
+                            )
+                        except Exception as e:
+                            print("[CRON] send_deadline_reminder failed:", str(e))
+                            # LINE失敗でもWebPush成功分は残すので continue しない
+                except Exception as e:
+                    print("[CRON] send_deadline_reminder failed:", str(e))
                         # LINE失敗でもWebPush成功分は残すので continue しない
                 results["morning"] += len(tasks_today)
         db.commit()

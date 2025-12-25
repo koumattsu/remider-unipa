@@ -239,13 +239,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
             "enable_morning=", setting.enable_morning_notification,
             "digest_time=", setting.daily_digest_time)
 
-        # ✅ 通知対象判定をここで一括集約（将来の核）
+        # ✅ 判定も送信も「正規化後 offset」で統一
         cands = collect_notification_candidates(
             db,
             user_id=user_id,
-            offsets_hours=offsets_hours,   # ここは「生」を渡してOK（notification.py側で強制・正規化していく）
+            offsets_hours=normalized_offsets,
         )
-
         for h in normalized_offsets:
             print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
 
@@ -355,23 +354,17 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
             if tasks_today:
-                # ✅ LINE（有料のみ）
-                try:
-                    if user.plan != "free" and line_user_id:
-                        try:
-                            await send_deadline_reminder(
-                                line_user_id=line_user_id,
-                                tasks=tasks_3h,
-                                hours=hours,
-                            )
-                        except Exception as e:
-                            print("[CRON] send_deadline_reminder failed:", str(e))
-                            # LINE失敗でもWebPush成功分は残すので continue しない
-                except Exception as e:
-                    print("[CRON] send_deadline_reminder failed:", str(e))
-                        # LINE失敗でもWebPush成功分は残すので continue しない
+                # ✅ LINE（有料のみ・朝ダイジェスト）
+                if user.plan != "free" and line_user_id:
+                    try:
+                        await send_daily_digest(
+                            line_user_id=line_user_id,
+                            tasks=tasks_today,
+                        )
+                    except Exception as e:
+                        print("[CRON] send_daily_digest failed:", str(e))
+
                 results["morning"] += len(tasks_today)
-        db.commit()
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
     return {"notified": notified, "detail": results}
 

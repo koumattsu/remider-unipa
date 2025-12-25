@@ -26,11 +26,18 @@ export const Login: React.FC = () => {
   };
 
   const startLineLogin = () => {
-    const rawBase = import.meta.env.VITE_API_BASE_URL
-      || (import.meta.env.DEV ? 'http://127.0.0.1:8000' : 'https://unipa-reminder-backend.onrender.com');
+    const rawBase =
+      import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://127.0.0.1:8000'
+        : 'https://unipa-reminder-backend.onrender.com');
 
-    const base = String(rawBase).replace(/\/+$/, ''); // ✅ 末尾スラッシュ除去
-    const url = `${base}/api/v1/auth/line/authorize`; // ✅ ここは /api/v1 を明示
+    const base = String(rawBase).replace(/\/+$/, '');
+
+    const url = base.endsWith('/api/v1')
+      ? `${base}/auth/line/authorize`
+      : `${base}/api/v1/auth/line/authorize`;
+
     window.location.href = url;
   };
 

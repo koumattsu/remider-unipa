@@ -345,8 +345,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 if n:
                     created_morning.append(n)
 
-                if created_morning:
-                    db.commit()
+            if created_morning:
+                db.commit()
 
             sent_task_ids: set[int] = set()
 

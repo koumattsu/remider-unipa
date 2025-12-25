@@ -1,5 +1,4 @@
 // frontend/src/api/client.ts
-
 import axios, { AxiosError } from 'axios';
 
 const rawBase =
@@ -8,7 +7,9 @@ const rawBase =
     ? 'http://127.0.0.1:8000'
     : 'https://unipa-reminder-backend.onrender.com');
 
-// ✅ 末尾の / を落としてから /api/v1 を付与（壊れにくい）
+const normalized = String(rawBase).replace(/\/+$/, '');
+
+// ✅ rawBase に /api/v1 が入ってても入ってなくても、最終的に1回だけになる
 const baseURL = `${String(rawBase).replace(/\/+$/, '')}/api/v1`;
 
 const apiClient = axios.create({
@@ -28,10 +29,7 @@ apiClient.interceptors.request.use(
 
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    // 略（今のままでOK）
-    return Promise.reject(error);
-  },
+  (error: AxiosError) => Promise.reject(error),
 );
 
 export default apiClient;

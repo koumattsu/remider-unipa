@@ -1,7 +1,7 @@
 # backend/app/services/in_app_notifications.py
 
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from app.models.task import Task
 from app.models.in_app_notification import InAppNotification
 
@@ -24,7 +24,14 @@ def build_inapp_body(tasks: List[Task]) -> str:
             lines.append(f"• {t.title}（{deadline}）")
     return "\n".join(lines)
 
-def make_inapp_records(user_id: int, tasks: List[Task], offset_hours: int, now_utc: datetime) -> List[InAppNotification]:
+def make_inapp_records(
+    user_id: int,
+    tasks: List[Task],
+    offset_hours: int,
+    now_utc: datetime,
+    *,
+    run_id: Optional[int] = None,
+) -> List[InAppNotification]:
     title = build_inapp_title(offset_hours)
     body = build_inapp_body(tasks)
     recs: List[InAppNotification] = []
@@ -37,9 +44,10 @@ def make_inapp_records(user_id: int, tasks: List[Task], offset_hours: int, now_u
                 offset_hours=offset_hours,
                 kind="task_reminder",
                 title=title,
-                body=body,  # まとめを全件に同じ本文で持たせる（UIはthread化せず簡単に）
+                body=body,
                 deep_link=TODAY_DEEPLINK,
-                metadata=None,
+                extra=None,
+                run_id=run_id,
             )
         )
     return recs

@@ -152,3 +152,29 @@ def migrate_notification_runs(db: Session = Depends(get_db)):
 
     db.commit()
     return {"status": "ok", "dialect": dialect}
+
+@router.post("/migrate/notification-run-id-columns")
+def migrate_notification_run_id_columns(db: Session = Depends(get_db)):
+    """
+    InAppNotification / TaskNotificationLog に run_id を追加
+    """
+    db.execute(text("""
+        ALTER TABLE in_app_notifications
+        ADD COLUMN IF NOT EXISTS run_id INTEGER;
+    """))
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS ix_inapp_run_id
+        ON in_app_notifications (run_id);
+    """))
+
+    db.execute(text("""
+        ALTER TABLE task_notification_logs
+        ADD COLUMN IF NOT EXISTS run_id INTEGER;
+    """))
+    db.execute(text("""
+        CREATE INDEX IF NOT EXISTS ix_task_notif_run_id
+        ON task_notification_logs (run_id);
+    """))
+
+    db.commit()
+    return {"status": "ok"}

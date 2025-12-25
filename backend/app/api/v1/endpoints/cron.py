@@ -116,6 +116,8 @@ def _format_task_lines(tasks: list[Task]) -> str:
 
 def _upsert_in_app_notification(
     db: Session,
+    *,
+    run_id: int,
     user_id: int,
     task: Task,
     deadline_at_send_utc: datetime,
@@ -137,6 +139,7 @@ def _upsert_in_app_notification(
         return None
 
     n = InAppNotification(
+        run_id=run_id,
         user_id=user_id,
         task_id=task.id,
         deadline_at_send=deadline_at_send_utc,
@@ -175,155 +178,150 @@ async def run_daily_job(db: Session = Depends(get_db)):
     db.add(run)
     db.commit()
     db.refresh(run)
-    """
-    定期実行ジョブ（Scheduler / GitHub Actions 用）
 
-    - 「○時間前」通知：reminder_offsets_hours に従って毎回チェック
-    - 「当日タスクの朝通知」：get_tasks_due_today_morning に任せる（時間条件は外し、1日1回だけLogで制御）
-    """
-
-    # 内部の基準はUTC、ログ表示はJST
-    now_utc = datetime.now(timezone.utc)
-    now_jst = now_utc.astimezone(JST)
-
-    # ✅ 朝通知を送っていい時間帯（JST）
-    is_morning_window = time(5, 0) <= now_jst.time() <= time(10, 0)
-
-    print("=== run_daily_job ===")
-    print("[daily] build=2025-12-21-a")
-    print("  now_utc:", now_utc)
-    print("  now_jst:", now_jst)
-
-    results: Dict[str, int] = {
-        "three_hours_before": 0,
-        "morning": 0,
-        "users_targeted": 0,
-    }
-
-    # NotificationRun counters
+    # NotificationRun counters（finallyで必ず参照するので先に初期化）
     users_processed = 0
     due_candidates_total = 0
     morning_candidates_total = 0
-
     inapp_created = 0
-
     webpush_sent = 0
     webpush_failed = 0
     webpush_deactivated = 0
-
     line_sent = 0
     line_failed = 0
 
-    users = db.query(User).all()
+    try:
+        # 内部の基準はUTC、ログ表示はJST
+        now_utc = datetime.now(timezone.utc)
+        now_jst = now_utc.astimezone(JST)
 
-    VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
+        # ✅ 朝通知を送っていい時間帯（JST）
+        is_morning_window = time(5, 0) <= now_jst.time() <= time(10, 0)
 
-    for user in users:
-        user_id = user.id
-        line_user_id = user.line_user_id  # NoneでもOK
+        print("=== run_daily_job ===")
+        print("[daily] build=2025-12-21-a")
+        print("  now_utc:", now_utc)
+        print("  now_jst:", now_jst)
 
-        results["users_targeted"] += 1
-        users_processed += 1
+        results: Dict[str, int] = {
+            "three_hours_before": 0,
+            "morning": 0,
+            "users_targeted": 0,
+        }
 
-        # 通知設定取得
-        setting = get_or_create_notification_setting(db, user_id=user_id)
+        users = db.query(User).all()
+        VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
-        # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
-        materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
-        # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
-        evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
+        for user in users:
+            user_id = user.id
+            line_user_id = user.line_user_id  # NoneでもOK
 
-        raw_offsets = setting.reminder_offsets_hours
-        offsets_hours = raw_offsets or []
+            results["users_targeted"] += 1
+            users_processed += 1
 
-        # ✅ backend側で無料/有料制約を保証（唯一の真実）
-        # free: 1時間前のみ（朝は別ロジック）
-        if getattr(user, "plan", "free") == "free":
-            offsets_hours = [1]
-        # int化 + <=0除外 + 重複排除（順序維持）
-        normalized_offsets: list[int] = []
-        seen: set[int] = set()
-        for x in offsets_hours:
-            try:
-                h = int(x)
-            except (TypeError, ValueError):
-                continue
-            if h <= 0:
-                continue
-            if h in seen:
-                continue
-            seen.add(h)
-            normalized_offsets.append(h)
+            # 通知設定取得
+            setting = get_or_create_notification_setting(db, user_id=user_id)
 
-        print("[daily] user_id=", user_id,
-            "raw_offsets=", raw_offsets,
-            "offsets_hours=", offsets_hours,
-            "normalized_offsets=", normalized_offsets,
-            "enable_morning=", setting.enable_morning_notification,
-            "digest_time=", setting.daily_digest_time)
+            # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
+            materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
-        # ✅ 判定も送信も「正規化後 offset」で統一
-        cands = collect_notification_candidates(
-            db,
-            user_id=user_id,
-            offsets_hours=normalized_offsets,
-        )
+            # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
+            evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
 
-        for h, ts in cands.due_in_hours.items():
-            due_candidates_total += len(ts)
+            raw_offsets = setting.reminder_offsets_hours
+            offsets_hours = raw_offsets or []
 
-        for h in normalized_offsets:
-            print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
+            # ✅ backend側で無料/有料制約を保証（唯一の真実）
+            # free: 1時間前のみ（朝は別ロジック）
+            if getattr(user, "plan", "free") == "free":
+                offsets_hours = [1]
+            # int化 + <=0除外 + 重複排除（順序維持）
+            normalized_offsets: list[int] = []
+            seen: set[int] = set()
+            for x in offsets_hours:
+                try:
+                    h = int(x)
+                except (TypeError, ValueError):
+                    continue
+                if h <= 0:
+                    continue
+                if h in seen:
+                    continue
+                seen.add(h)
+                normalized_offsets.append(h)
 
-        # ---------- ① 「○時間前」通知 ----------
-        # ✅ 送信ループも正規化済みのoffsetで回す（判定とズレないようにする）
-        offsets = normalized_offsets
+            print("[daily] user_id=", user_id,
+                "raw_offsets=", raw_offsets,
+                "offsets_hours=", offsets_hours,
+                "normalized_offsets=", normalized_offsets,
+                "enable_morning=", setting.enable_morning_notification,
+                "digest_time=", setting.daily_digest_time)
 
-        for hours in offsets:
-            tasks_3h = cands.due_in_hours.get(hours, [])
-            if not tasks_3h:
-                continue
+            # ✅ 判定も送信も「正規化後 offset」で統一
+            cands = collect_notification_candidates(
+                db,
+                user_id=user_id,
+                offsets_hours=normalized_offsets,
+                run_id=run.id,
+            )
 
-            # ✅ まずベル通知を作る（無料の最低保証）
-            created_inapps: list[InAppNotification] = []
-            for task in tasks_3h:
-                deadline_at_send = to_utc(task.deadline)
-                dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
-                n = _upsert_in_app_notification(
-                    db=db,
-                    user_id=user_id,
-                    task=task,
-                    deadline_at_send_utc=deadline_at_send,
-                    offset_hours=hours,
-                    kind="task_reminder",
-                    title=f"締切まで残り約{hours}時間",
-                    body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                    deep_link="/#/dashboard?tab=today",
-                )
-                if n:
-                    created_inapps.append(n)
-                    inapp_created += 1
+            for h, ts in cands.due_in_hours.items():
+                due_candidates_total += len(ts)
 
-                # ✅ イベント資産（InAppNotification）はここで確実に永続化
-            if created_inapps:
-                db.commit()
+            for h in normalized_offsets:
+                print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
 
-            # ✅ WebPush（無料/有料共通・設定ONのときだけ）
-            if setting.enable_webpush:
-                for n in created_inapps:
-                    try:
-                        WebPushSender.send_for_notification(
-                            db=db,
-                            user_id=user_id,
-                            notification=n,
-                        )
-                        webpush_sent += 1
-                    except Exception as e:
-                        print("[CRON] webpush failed:", str(e))
-                        webpush_failed += 1
-            # ✅ LINE（有料のみ）
-            try:
+            # ---------- ① 「○時間前」通知 ----------
+            # ✅ 送信ループも正規化済みのoffsetで回す（判定とズレないようにする）
+            offsets = normalized_offsets
+
+            for hours in offsets:
+                tasks_3h = cands.due_in_hours.get(hours, [])
+                if not tasks_3h:
+                    continue
+
+                # ✅ まずベル通知を作る（無料の最低保証）
+                created_inapps: list[InAppNotification] = []
+                for task in tasks_3h:
+                    deadline_at_send = to_utc(task.deadline)
+                    dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                    n = _upsert_in_app_notification(
+                        db=db,
+                        run_id=run.id,
+                        user_id=user_id,
+                        task=task,
+                        deadline_at_send_utc=deadline_at_send,
+                        offset_hours=hours,
+                        kind="task_reminder",
+                        title=f"締切まで残り約{hours}時間",
+                        body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                        deep_link="/#/dashboard?tab=today",
+                    )
+                    if n:
+                        created_inapps.append(n)
+                        inapp_created += 1
+
+                    # ✅ イベント資産（InAppNotification）はここで確実に永続化
+                if created_inapps:
+                    db.commit()
+
+                # ✅ WebPush（無料/有料共通・設定ONのときだけ）
+                if setting.enable_webpush:
+                    for n in created_inapps:
+                        try:
+                            res = WebPushSender.send_for_notification(
+                                db=db,
+                                user_id=user_id,
+                                notification=n,
+                            )
+                            webpush_sent += int(res.get("sent", 0))
+                            webpush_failed += int(res.get("failed", 0))
+                            webpush_deactivated += int(res.get("deactivated", 0))
+                        except Exception as e:
+                            print("[CRON] webpush failed:", str(e))
+                            webpush_failed += 1
+                # ✅ LINE（有料のみ）
                 if user.plan != "free" and line_user_id:
                     try:
                         await send_deadline_reminder(
@@ -336,83 +334,83 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         print("[CRON] send_deadline_reminder failed:", str(e))
                         line_failed += len(tasks_3h)
                         # LINE失敗でもWebPush成功分は残すので continue しない
-            except Exception as e:
-                print("[CRON] send_deadline_reminder failed:", str(e))
-                line_failed += len(tasks_3h)
 
-            if hours == 3:
-                results["three_hours_before"] += len(tasks_3h)
-            else:
-                key = f"offset_{hours}"
-                results[key] = results.get(key, 0) + len(tasks_3h)
-      
-        # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
-        if setting.enable_morning_notification and is_morning_window:
-            tasks_today = cands.morning
-            morning_candidates_total += len(tasks_today)
+                if hours == 3:
+                    results["three_hours_before"] += len(tasks_3h)
+                else:
+                    key = f"offset_{hours}"
+                    results[key] = results.get(key, 0) + len(tasks_3h)
+        
+            # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
+            if setting.enable_morning_notification and is_morning_window:
+                tasks_today = cands.morning
+                morning_candidates_total += len(tasks_today)
 
-            # ✅ 朝ダイジェストもベルに残す（無料の最低保証）
-            created_morning: list[InAppNotification] = []
-            for task in tasks_today:
-                deadline_at_send = to_utc(task.deadline)
-                dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
-                n = _upsert_in_app_notification(
-                    db=db,
-                    user_id=user_id,
-                    task=task,
-                    deadline_at_send_utc=deadline_at_send,
-                    offset_hours=0,
-                    kind="morning_digest",
-                    title="今日締切の課題まとめ",
-                    body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                    deep_link="/#/dashboard?tab=today",
-                )
-                if n:
-                    created_morning.append(n)
+                # ✅ 朝ダイジェストもベルに残す（無料の最低保証）
+                created_morning: list[InAppNotification] = []
+                for task in tasks_today:
+                    deadline_at_send = to_utc(task.deadline)
+                    dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                    n = _upsert_in_app_notification(
+                        db=db,
+                        run_id=run.id,
+                        user_id=user_id,
+                        task=task,
+                        deadline_at_send_utc=deadline_at_send,
+                        offset_hours=0,
+                        kind="morning_digest",
+                        title="今日締切の課題まとめ",
+                        body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                        deep_link="/#/dashboard?tab=today",
+                    )
+                    if n:
+                        created_morning.append(n)
 
-            if created_morning:
-                db.commit()
+                if created_morning:
+                    db.commit()
 
-            # ✅ WebPush（無料/有料共通）
-            if setting.enable_webpush:
-                for n in created_morning:
-                    try:
-                        WebPushSender.send_for_notification(
-                            db=db,
-                            user_id=user_id,
-                            notification=n,
-                        )
-                    except Exception as e:
-                        print("[CRON] webpush failed:", str(e))
-            if tasks_today:
-                # ✅ LINE（有料のみ・朝ダイジェスト）
-                if user.plan != "free" and line_user_id:
-                    try:
-                        await send_daily_digest(
-                            line_user_id=line_user_id,
-                            tasks=tasks_today,
-                        )
-                    except Exception as e:
-                        print("[CRON] send_daily_digest failed:", str(e))
+                # ✅ WebPush（無料/有料共通）
+                if setting.enable_webpush:
+                    for n in created_morning:
+                        try:
+                            res = WebPushSender.send_for_notification(
+                                db=db,
+                                user_id=user_id,
+                                notification=n,
+                            )
+                            webpush_sent += int(res.get("sent", 0))
+                            webpush_failed += int(res.get("failed", 0))
+                            webpush_deactivated += int(res.get("deactivated", 0))
+                        except Exception as e:
+                            print("[CRON] webpush failed:", str(e))
+                            webpush_failed += 1
+                if tasks_today:
+                    # ✅ LINE（有料のみ・朝ダイジェスト）
+                    if user.plan != "free" and line_user_id:
+                        try:
+                            await send_daily_digest(
+                                line_user_id=line_user_id,
+                                tasks=tasks_today,
+                            )
+                        except Exception as e:
+                            print("[CRON] send_daily_digest failed:", str(e))
 
-                results["morning"] += len(tasks_today)
-    try:
+                    results["morning"] += len(tasks_today)
+
         notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
         return {"notified": notified, "detail": results}
 
     except Exception as e:
-        db.rollback()
-        run.status = "fail"
-        run.error_summary = (f"{type(e).__name__}: {str(e)}")[:500]
-        raise
+            db.rollback()
+            run.status = "fail"
+            run.error_summary = (f"{type(e).__name__}: {str(e)}")[:500]
+            raise
 
     finally:
         run.users_processed = users_processed
         run.due_candidates_total = due_candidates_total
         run.morning_candidates_total = morning_candidates_total
-
         run.inapp_created = inapp_created
-
         run.webpush_sent = webpush_sent
         run.webpush_failed = webpush_failed
         run.webpush_deactivated = webpush_deactivated
@@ -429,11 +427,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # except で fail がセット済みなら尊重（例外落ち）
         if run.status != "fail":
             if has_success and has_failure:
-                run.status = "partial"
+                    run.status = "partial"
             elif has_success and not has_failure:
-                run.status = "success"
+                    run.status = "success"
             elif (not has_success) and has_failure:
-                run.status = "fail"
+                    run.status = "fail"
             else:
                 # 候補ゼロなど：正常
                 run.status = "success"

@@ -50,6 +50,8 @@ def try_mark_notification_as_sent(
     task_id: int,
     deadline_utc: datetime,
     offset_hours: int,
+    *,
+    run_id: int | None = None,
 ) -> bool:
     """
     ✅ 送信前ロック
@@ -62,6 +64,7 @@ def try_mark_notification_as_sent(
         task_id=task_id,
         deadline_at_send=deadline_utc,
         offset_hours=offset_hours,
+        run_id=run_id,
         sent_at=datetime.now(timezone.utc),
     )
     db.add(log)
@@ -155,7 +158,6 @@ def mark_notification_as_sent(
     db.add(log)
     db.commit()
 
-
 from collections import defaultdict
 from typing import DefaultDict
 
@@ -163,6 +165,8 @@ def get_tasks_due_in_offsets(
     db: Session,
     user_id: int,
     offsets: List[int],
+    *,
+    run_id: int | None = None,
 ) -> Dict[int, List[Task]]:
     """
     ✅ 1回のDB取得 + 1回の走査で、offsetごとの通知対象を返す
@@ -267,7 +271,7 @@ def get_tasks_due_in_offsets(
                         user_id, task.id, deadline_utc.isoformat(), diff_hours
                     )
                     continue
-                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h):
+                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h, run_id=run_id):
                     logger.info(
                         "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
                         user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
@@ -290,7 +294,7 @@ def get_tasks_due_in_offsets(
                     )
                     continue
 
-                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h):
+                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h, run_id=run_id):
                     logger.info(
                         "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
                         user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
@@ -312,6 +316,8 @@ def get_tasks_due_in_hours(
     db: Session,
     user_id: int,
     hours: int,
+    *,
+    run_id: int | None = None,
 ) -> List[Task]:
     """
     互換用ラッパー。
@@ -321,10 +327,9 @@ def get_tasks_due_in_hours(
         db,
         user_id=user_id,
         offsets=[hours],
+        run_id=run_id,
     )
     return due_map.get(hours, [])
-
-
 
 # ================================
 # 当日朝通知用（内部UTC・判定はJST）
@@ -333,6 +338,8 @@ def get_tasks_due_in_hours(
 def get_tasks_due_today_morning(
     db: Session,
     user_id: int,
+    *,
+    run_id: int | None = None,
 ) -> List[Task]:
     """
     ✅ 内部UTC、判定はJSTの「今日」
@@ -369,7 +376,7 @@ def get_tasks_due_today_morning(
         deadline_utc = to_utc(task.deadline)
 
         if label_date == today_jst:
-            if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0):
+            if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0, run_id=run_id):
                 result.append(task)
     return result
 
@@ -386,6 +393,8 @@ def collect_notification_candidates(
     db: Session,
     user_id: int,
     offsets_hours: List[int],
+    *,
+    run_id: int | None = None,
 ) -> NotificationCandidates:
     # offsets を正規化
     normalized_offsets: List[int] = []
@@ -397,16 +406,21 @@ def collect_notification_candidates(
         if h > 0:
             normalized_offsets.append(h)
 
-    # ✅ ここが変更点：1回の走査で offset → tasks を作る
     due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
         db,
         user_id=user_id,
         offsets=normalized_offsets,
+        run_id=run_id,
+    )
+
+    morning_tasks = get_tasks_due_today_morning(
+        db,
+        user_id=user_id,
+        run_id=run_id,
     )
 
     total_due = sum(len(v) for v in due_map.values())
 
-    morning_tasks = get_tasks_due_today_morning(db, user_id=user_id)
 
     return NotificationCandidates(
         due_in_hours=due_map,

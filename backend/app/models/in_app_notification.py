@@ -18,6 +18,13 @@ from app.db.base import Base
 class InAppNotification(Base):
     __tablename__ = "in_app_notifications"
 
+    run_id = Column(
+        Integer,
+        nullable=True,
+        index=True,
+        comment="notification_runs.id (cron execution)",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "user_id",
@@ -26,6 +33,7 @@ class InAppNotification(Base):
             "offset_hours",
             name="uq_inapp_user_task_deadline_offset",
         ),
+
         Index(
             "ix_inapp_user_active_created",
             "user_id",

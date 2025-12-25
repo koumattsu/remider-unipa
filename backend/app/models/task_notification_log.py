@@ -20,6 +20,14 @@ class TaskNotificationLog(Base):
       一度しか通知を送らない。
     """
     __tablename__ = "task_notification_logs"
+
+    run_id = Column(
+        Integer,
+        nullable=True,
+        index=True,
+        comment="notification_runs.id (cron execution)",
+    )
+    
     __table_args__ = (
         UniqueConstraint(
             "user_id",

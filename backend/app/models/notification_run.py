@@ -1,6 +1,7 @@
 # backend/app/models/notification_run.py
 from sqlalchemy import Column, Integer, DateTime, String, Text
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
 
 
@@ -45,4 +46,6 @@ class NotificationRun(Base):
         nullable=False,
         index=True,
     )
+    # 監査/再現用スナップショット（Postgresのみ）
+    stats = Column(JSONB, nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True, index=True)

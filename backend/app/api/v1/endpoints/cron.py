@@ -171,6 +171,7 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
 
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
+    started_at_utc = datetime.now(timezone.utc)
     # ==============================
     # NotificationRun（cron 1実行 = 1行）
     # ==============================
@@ -210,6 +211,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
         }
 
         users = db.query(User).all()
+        users_total = len(users)
         VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
 
@@ -265,9 +267,18 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 offsets_hours=normalized_offsets,
                 run_id=run.id,
             )
-
+            had_any_candidate = False
             for h, ts in cands.due_in_hours.items():
                 due_candidates_total += len(ts)
+                if ts:
+                    had_any_candidate = True
+
+            # morning
+            if cands.morning:
+                had_any_candidate = True
+
+            if had_any_candidate:
+                users_with_candidates += 1
 
             for h in normalized_offsets:
                 print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
@@ -365,6 +376,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     )
                     if n:
                         created_morning.append(n)
+                        inapp_created += 1
 
                 if created_morning:
                     db.commit()
@@ -401,19 +413,30 @@ async def run_daily_job(db: Session = Depends(get_db)):
         return {"notified": notified, "detail": results}
 
     except Exception as e:
-            db.rollback()
-            run.status = "fail"
-            run.error_summary = (f"{type(e).__name__}: {str(e)}")[:500]
-            raise
+        db.rollback()
+        run.status = "fail"
+        run.error_summary = (f"{type(e).__name__}: {str(e)}")[:500]
+        raise
 
     finally:
         run.users_processed = users_processed
+        run.users_total = users_total
+        run.users_with_candidates = users_with_candidates
+        run.duration_ms = int((datetime.now(timezone.utc) - started_at_utc).total_seconds() * 1000)
         run.due_candidates_total = due_candidates_total
         run.morning_candidates_total = morning_candidates_total
         run.inapp_created = inapp_created
         run.webpush_sent = webpush_sent
         run.webpush_failed = webpush_failed
         run.webpush_deactivated = webpush_deactivated
+
+        run.stats = {
+            "build": "2025-12-25-cron-v2",
+            "now_utc": started_at_utc.isoformat(),
+            "users_total": users_total,
+            "users_processed": users_processed,
+            "users_with_candidates": users_with_candidates,
+        }
 
         run.line_sent = line_sent
         run.line_failed = line_failed
@@ -427,11 +450,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # except で fail がセット済みなら尊重（例外落ち）
         if run.status != "fail":
             if has_success and has_failure:
-                    run.status = "partial"
+                run.status = "partial"
             elif has_success and not has_failure:
-                    run.status = "success"
+                run.status = "success"
             elif (not has_success) and has_failure:
-                    run.status = "fail"
+                run.status = "fail"
             else:
                 # 候補ゼロなど：正常
                 run.status = "success"

@@ -146,6 +146,14 @@ def migrate_notification_runs(db: Session = Depends(get_db)):
     db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();"))
     db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NULL;"))
 
+    # ---- v2: observability columns ----
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS users_total INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS users_with_candidates INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS duration_ms INTEGER NULL;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS stats JSONB NULL;"))
+
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_runs_users_total ON notification_runs(users_total);"))
+
     # 3) index（観測用途で効く）
     db.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_runs_status ON notification_runs(status);"))
     db.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_runs_started_at ON notification_runs(started_at);"))

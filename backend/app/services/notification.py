@@ -223,7 +223,20 @@ def get_tasks_due_in_offsets(
             if h <= 0:
                 continue
 
-            if (h - 0.5) <= diff_hours <= (h + 0.5):
+            # =========================
+            # 通知ウィンドウ判定
+            # =========================
+
+            if h == 1:
+                # 1時間前通知：
+                # 90分前〜60分前 の間に入ったら送る
+                if not (1.0 <= diff_hours <= 1.5):
+                    continue
+            else:
+                # 従来ルール（±30分）
+                if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
+                    continue
+                
                 if override_mode == "disabled":
                     logger.info(
                         "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",

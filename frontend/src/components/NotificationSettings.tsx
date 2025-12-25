@@ -79,8 +79,11 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange }) => (
 export const NotificationSettings: React.FC = () => {
   const [, setSetting] = useState<NotificationSetting | null>(null);
 
-  // 時間前通知（例: [3,5,7]）
-  const [offsets, setOffsets] = useState<number[]>([3]);
+  // TODO: 将来 backend から plan を受け取って差し替える
+  const isPro = false; // 無料運用中は false 固定
+
+  // 無料ユーザー：時間前通知は 1h のみ（ON/OFF）
+  const [offsets, setOffsets] = useState<number[]>([1]);
 
   // 朝通知の時刻
   const [digestTime, setDigestTime] = useState<string>('08:00');
@@ -88,8 +91,8 @@ export const NotificationSettings: React.FC = () => {
   // 朝通知 ON / OFF
   const [enableMorning, setEnableMorning] = useState<boolean>(true);
 
-  // 3時間前通知 ON / OFF
-  const [enableThreeHours, setEnableThreeHours] = useState<boolean>(true);
+  // 1時間前通知 ON / OFF（無料のメイン）
+  const [enableOneHour, setEnableOneHour] = useState<boolean>(true);
 
   // プッシュ通知 ON / OFF
   const [enableWebpush, setEnableWebpush] = useState<boolean>(false);
@@ -142,7 +145,8 @@ export const NotificationSettings: React.FC = () => {
 
       setEnableWebpush(data.enable_webpush ?? false);
 
-      const hours = [...data.reminder_offsets_hours];
+      // 無料ユーザー：許可するのは 1h のみ
+      const hours = [...(data.reminder_offsets_hours ?? [])].filter((h) => h === 1);
 
       // 朝通知時刻：options にない値なら "08:00" にフォールバック
       const time = MORNING_TIME_OPTIONS.includes(data.daily_digest_time)
@@ -157,7 +161,7 @@ export const NotificationSettings: React.FC = () => {
 
       setOffsets(hours);
       setDigestTime(time);
-      setEnableThreeHours(hours.includes(3));
+      setEnableOneHour(hours.includes(1));
       setEnableMorning(enableMorningValue);
 
       // 👇 ここで localStorage にも保存しておく
@@ -181,9 +185,23 @@ export const NotificationSettings: React.FC = () => {
     }
   };
 
-
   const handleAddOffset = () => {
-    setOffsets((prev) => [...prev, 1]);
+    setOffsets((prev) => {
+      // 1時間前（ベース）があるか
+      const hasBase = prev.includes(1);
+
+      // 1以外（＝その他）
+      const others = prev.filter((o) => o !== 1);
+
+      // デフォルトで「2時間前」を追加（被らない安全な値）
+      const next = 2;
+
+      const result: number[] = [];
+      if (hasBase) result.push(1);
+      result.push(...others, next);
+
+      return result;
+    });
   };
 
   const enableWebPush = async () => {
@@ -296,22 +314,15 @@ export const NotificationSettings: React.FC = () => {
   
   const handleRemoveOffset = (index: number) => {
     setOffsets((prev) => {
-      const others = prev.filter((o) => o !== 3);
+      const hasBase = prev.includes(1);
+      const others = prev.filter((o) => o !== 1);
       const newOthers = others.filter((_, i) => i !== index);
 
       const result: number[] = [];
-
-      // もともと 3h があれば保持
-      if (prev.includes(3)) {
-        result.push(3);
-      }
-
+      if (hasBase) result.push(1);
       for (const o of newOthers) {
-        if (!result.includes(o)) {
-          result.push(o);
-        }
+        if (!result.includes(o)) result.push(o);
       }
-
       return result;
     });
   };
@@ -319,16 +330,14 @@ export const NotificationSettings: React.FC = () => {
   const handleOffsetChange = (index: number, value: number) => {
     setOffsets((prev) => {
       const safeValue = value > 0 ? value : 1;
-
-      const others = prev.filter((o) => o !== 3);
+      const hasBase = prev.includes(1);
+      const others = prev.filter((o) => o !== 1);
       const newOthers = [...others];
       newOthers[index] = safeValue;
 
       const result: number[] = [];
 
-      if (prev.includes(3)) {
-        result.push(3);
-      }
+      if (hasBase) result.push(1);
 
       for (const o of newOthers) {
         if (!result.includes(o)) {
@@ -344,17 +353,9 @@ export const NotificationSettings: React.FC = () => {
     setIsSaving(true);
 
     try {
-      let newOffsets = offsets.filter((o) => o > 0);
-
-      // 3時間前 OFF のときは 3 を削除
-      if (!enableThreeHours) {
-        newOffsets = newOffsets.filter((o) => o !== 3);
-      } else {
-        if (!newOffsets.includes(3)) {
-          newOffsets.push(3);
-        }
-      }
-
+      // 無料ユーザー：1hのみON/OFF
+      const newOffsets = enableOneHour ? [1] : [];
+      
       const updateData: NotificationSettingUpdate = {
         reminder_offsets_hours: newOffsets,
         daily_digest_time: digestTime,
@@ -407,9 +408,11 @@ export const NotificationSettings: React.FC = () => {
     return <p>読み込み中...</p>;
   }
 
-  // 3時間前(3h)以外のオフセットだけを表示用に取り出す
-  const otherOffsets = offsets.filter((o) => o !== 3);
+  // 有料ユーザー向け：1h(無料のメイン)以外を「その他」に回す
+  // ※ isPro=false でも TS 的に otherOffsets は必要（JSXで参照するため）
+  const otherOffsets = offsets.filter((o) => o !== 1);
 
+  // 無料ユーザーは 1h のみ
   return (
     <div
       style={{
@@ -590,7 +593,7 @@ export const NotificationSettings: React.FC = () => {
               </div>
             </div>
 
-            {/* 3時間前通知：トグル */}
+            {/* 1時間前通知：トグル（無料） */}
             <div
               style={{
                 marginBottom: '1.5rem',
@@ -601,92 +604,94 @@ export const NotificationSettings: React.FC = () => {
             >
               <div>
                 <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                  締切3時間前通知
+                  締切1時間前通知
                 </div>
                 <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                  締切の3時間前にリマインド
+                  締切の60〜90分前に通知します
                 </div>
               </div>
 
               <ToggleSwitch
-                checked={enableThreeHours}
-                onChange={() => setEnableThreeHours(!enableThreeHours)}
+                checked={enableOneHour}
+                onChange={() => setEnableOneHour(!enableOneHour)}
               />
             </div>
 
-            {/* その他の時間設定 */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label
-                style={{
-                  display: 'block',
-                  marginBottom: '0.5rem',
-                  fontWeight: 'bold',
-                }}
-              >
-                その他のリマインド時間（自由設定）
-              </label>
-
-              {otherOffsets.map((offset, index) => (
-                <div
-                  key={index}
+            {/* その他の時間設定（有料のみ） */}
+            {isPro && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
+                    display: 'block',
                     marginBottom: '0.5rem',
+                    fontWeight: 'bold',
                   }}
                 >
-                  <input
-                    type="number"
-                    min="1"
-                    value={offset}
-                    onChange={(e) =>
-                      handleOffsetChange(
-                        index,
-                        parseInt(e.target.value, 10) || 1
-                      )
-                    }
-                    style={{
-                      width: '100px',
-                      padding: '0.5rem',
-                      marginRight: '0.5rem',
-                    }}
-                  />
-                  <span>時間前</span>
+                  その他のリマインド時間（自由設定）
+                </label>
 
-                  <button
-                    onClick={() => handleRemoveOffset(index)}
+                {otherOffsets.map((offset, index) => (
+                  <div
+                    key={index}
                     style={{
-                      marginLeft: '0.5rem',
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#dc3545',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem',
                     }}
                   >
-                    削除
-                  </button>
-                </div>
-              ))}
+                    <input
+                      type="number"
+                      min="1"
+                      value={offset}
+                      onChange={(e) =>
+                        handleOffsetChange(index, parseInt(e.target.value, 10) || 1)
+                      }
+                      style={{
+                        width: '100px',
+                        padding: '0.5rem',
+                        marginRight: '0.5rem',
+                      }}
+                    />
+                    <span>時間前</span>
 
-              <button
-                onClick={handleAddOffset}
-                style={{
-                  marginTop: '0.5rem',
-                  padding: '0.5rem 1rem',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                時間を追加
-              </button>
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOffset(index)}
+                      style={{
+                        marginLeft: '0.5rem',
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#dc3545',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddOffset}
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  時間を追加
+                </button>
+              </div>
+            )}
 
             <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
               style={{

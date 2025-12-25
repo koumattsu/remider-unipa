@@ -250,17 +250,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
             print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
 
         # ---------- ① 「○時間前」通知 ----------
-        offsets = offsets_hours
+        # ✅ 送信ループも正規化済みのoffsetで回す（判定とズレないようにする）
+        offsets = normalized_offsets
 
-        for offset in offsets:
-            try:
-                hours = int(offset)
-            except (TypeError, ValueError):
-                continue
-
-            if hours <= 0:
-                continue
-
+        for hours in offsets:
             tasks_3h = cands.due_in_hours.get(hours, [])
             if not tasks_3h:
                 continue
@@ -284,6 +277,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 if n:
                     created_inapps.append(n)
 
+                # ✅ イベント資産（InAppNotification）はここで確実に永続化
+            if created_inapps:
+                db.commit()
+            
             # ✅ 成功した task_id だけログに残す
             sent_task_ids: set[int] = set()
 
@@ -291,11 +288,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if setting.enable_webpush:
                 for n in created_inapps:
                     try:
-                        WebPushSender.send_for_notification(...)
-                        ...
+                        WebPushSender.send_for_notification(
+                            db=db,
+                            user_id=user_id,
+                            notification=n,
+                        )
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
-
             # ✅ LINE（有料のみ）
             try:
                 if user.plan != "free" and line_user_id:
@@ -346,14 +345,20 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 if n:
                     created_morning.append(n)
 
+                if created_morning:
+                    db.commit()
+
             sent_task_ids: set[int] = set()
 
             # ✅ WebPush（無料/有料共通）
             if setting.enable_webpush:
                 for n in created_morning:
                     try:
-                        WebPushSender.send_for_notification(...)
-                        ...
+                        WebPushSender.send_for_notification(
+                            db=db,
+                            user_id=user_id,
+                            notification=n,
+                        )
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
             if tasks_today:

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, date, time, timezone
 from typing import List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from app.models.task import Task
 from app.models.task_notification_log import TaskNotificationLog
 from app.models.task_notification_override import TaskNotificationOverride
@@ -42,6 +43,34 @@ def deadline_jst_effective(dt: datetime) -> datetime:
         return jst_dt - timedelta(days=1)
 
     return jst_dt
+
+def try_mark_notification_as_sent(
+    db: Session,
+    user_id: int,
+    task_id: int,
+    deadline_utc: datetime,
+    offset_hours: int,
+) -> bool:
+    """
+    ✅ 送信前ロック
+    - UniqueConstraint(user_id, task_id, deadline_at_send, offset_hours) をロックとして使う
+    - True: このプロセスが送信権を獲得
+    - False: 既に別プロセスが獲得済み（=二重送信防止）
+    """
+    log = TaskNotificationLog(
+        user_id=user_id,
+        task_id=task_id,
+        deadline_at_send=deadline_utc,
+        offset_hours=offset_hours,
+        sent_at=datetime.now(timezone.utc),
+    )
+    db.add(log)
+    try:
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
 
 def deadline_label_date_jst(dt: datetime) -> date:
     """
@@ -226,17 +255,34 @@ def get_tasks_due_in_offsets(
             # =========================
             # 通知ウィンドウ判定
             # =========================
-
             if h == 1:
                 # 1時間前通知：
                 # 90分前〜60分前 の間に入ったら送る
                 if not (1.0 <= diff_hours <= 1.5):
                     continue
+                # ✅ 1時間前も送信前ロックで二重送信を構造的に防止
+                if override_mode == "disabled":
+                    logger.info(
+                        "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
+                        user_id, task.id, deadline_utc.isoformat(), diff_hours
+                    )
+                    continue
+                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h):
+                    logger.info(
+                        "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
+                        user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
+                    )
+                    continue
+                logger.info(
+                    "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
+                    user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
+                )
+                due_map[h].append(task)
             else:
                 # 従来ルール（±30分）
                 if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
                     continue
-                
+
                 if override_mode == "disabled":
                     logger.info(
                         "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
@@ -244,9 +290,9 @@ def get_tasks_due_in_offsets(
                     )
                     continue
 
-                if has_notification_been_sent(db, user_id, task.id, deadline_utc, h):
+                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h):
                     logger.info(
-                        "[due-skip] already_sent user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
+                        "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
                         user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
                     )
                     continue
@@ -257,7 +303,6 @@ def get_tasks_due_in_offsets(
                 )
                 due_map[h].append(task)
     return dict(due_map)
-
 
 # ================================
 # 3時間前通知用（内部UTC）
@@ -324,15 +369,8 @@ def get_tasks_due_today_morning(
         deadline_utc = to_utc(task.deadline)
 
         if label_date == today_jst:
-            if not has_notification_been_sent(
-                db,
-                user_id,
-                task.id,
-                deadline_utc,
-                0,
-            ):
+            if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0):
                 result.append(task)
-
     return result
 
 from dataclasses import dataclass

@@ -14,9 +14,6 @@ from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting  # ★ 追加
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.services.notification import (
-    get_tasks_due_in_hours,
-    get_tasks_due_today_morning,
-    mark_notification_as_sent,
     collect_notification_candidates,
     to_utc,
 )
@@ -66,7 +63,7 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
     if setting is None:
         setting = NotificationSetting(
             user_id=user_id,
-            reminder_offsets_hours=[3],       # デフォルト: 3時間前のみ
+            reminder_offsets_hours=[1],       # デフォルト: 1時間前のみ
             daily_digest_time="08:00",        # デフォルト: 朝8時
             enable_morning_notification=True, # デフォルト: 朝通知ON
         )
@@ -83,7 +80,7 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
         updated = True
 
     if not setting.reminder_offsets_hours:
-        setting.reminder_offsets_hours = [3]
+        setting.reminder_offsets_hours = [1]
         updated = True
 
     if not setting.daily_digest_time:
@@ -213,16 +210,27 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
         evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
 
-        # ★ デバッグ：daily が本当にどの offsets を使っているか
         raw_offsets = setting.reminder_offsets_hours
         offsets_hours = raw_offsets or []
 
+        # ✅ backend側で無料/有料制約を保証（唯一の真実）
+        # free: 1時間前のみ（朝は別ロジック）
+        if getattr(user, "plan", "free") == "free":
+            offsets_hours = [1]
+        # int化 + <=0除外 + 重複排除（順序維持）
         normalized_offsets: list[int] = []
+        seen: set[int] = set()
         for x in offsets_hours:
             try:
-                normalized_offsets.append(int(x))
+                h = int(x)
             except (TypeError, ValueError):
-                pass
+                continue
+            if h <= 0:
+                continue
+            if h in seen:
+                continue
+            seen.add(h)
+            normalized_offsets.append(h)
 
         print("[daily] user_id=", user_id,
             "raw_offsets=", raw_offsets,
@@ -235,13 +243,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
         cands = collect_notification_candidates(
             db,
             user_id=user_id,
-            offsets_hours=offsets_hours,   # ← ★ ここを統一（調査の一貫性）
+            offsets_hours=offsets_hours,   # ここは「生」を渡してOK（notification.py側で強制・正規化していく）
         )
-
-        print("[daily] user_id=", user_id,
-            "cands.debug=", cands.debug,
-            "due_keys=", list(cands.due_in_hours.keys()),
-            "morning_count=", len(cands.morning))
 
         for h in normalized_offsets:
             print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
@@ -284,19 +287,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ✅ 成功した task_id だけログに残す
             sent_task_ids: set[int] = set()
 
-            # ✅ WebPush（無料/有料共通）
-            for n in created_inapps:
-                try:
-                    WebPushSender.send_for_notification(
-                        db=db,
-                        user_id=user_id,
-                        notification=n,
-                    )
-                    if n.task_id:
-                        sent_task_ids.add(n.task_id)
-                except Exception as e:
-                    # 失敗したらログは残さない（次回リトライ）
-                    print("[CRON] webpush failed:", str(e))
+            # ✅ WebPush（設定ONのときだけ）
+            if setting.enable_webpush:
+                for n in created_inapps:
+                    try:
+                        WebPushSender.send_for_notification(...)
+                        ...
+                    except Exception as e:
+                        print("[CRON] webpush failed:", str(e))
 
             # ✅ LINE（有料のみ）
             try:
@@ -317,18 +315,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     pass
             except Exception as e:
                 print("[CRON] send_deadline_reminder failed:", str(e))
-
-            # ✅ 成功したものだけ TaskNotificationLog を作る
-            for task in tasks_3h:
-                if task.id not in sent_task_ids:
-                    continue
-                mark_notification_as_sent(
-                    db,
-                    user_id,
-                    task.id,
-                    to_utc(task.deadline),
-                    hours,
-                )
 
             if hours == 3:
                 results["three_hours_before"] += len(tasks_3h)
@@ -363,18 +349,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
             sent_task_ids: set[int] = set()
 
             # ✅ WebPush（無料/有料共通）
-            for n in created_morning:
-                try:
-                    WebPushSender.send_for_notification(
-                        db=db,
-                        user_id=user_id,
-                        notification=n,
-                    )
-                    if n.task_id:
-                        sent_task_ids.add(n.task_id)
-                except Exception as e:
-                    print("[CRON] webpush failed:", str(e))
-
+            if setting.enable_webpush:
+                for n in created_morning:
+                    try:
+                        WebPushSender.send_for_notification(...)
+                        ...
+                    except Exception as e:
+                        print("[CRON] webpush failed:", str(e))
             if tasks_today:
                 # ✅ 有料のみ LINE 送信
                 if user.plan != "free" and line_user_id:
@@ -385,18 +366,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     except Exception as e:
                         print("[CRON] send_daily_digest failed:", str(e))
                         # LINE失敗でもWebPush成功分は残すので continue しない
-
-                # ✅ 成功したものだけ TaskNotificationLog を作る
-                for task in tasks_today:
-                    if task.id not in sent_task_ids:
-                        continue
-                    mark_notification_as_sent(
-                        db,
-                        user_id,
-                        task.id,
-                        to_utc(task.deadline),
-                        0,
-                    )
                 results["morning"] += len(tasks_today)
         db.commit()
     notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)

@@ -1,3 +1,4 @@
+// frontend/src/api/notifications.ts
 import apiClient from './client';
 
 export type InAppNotification = {
@@ -12,13 +13,15 @@ export type InAppNotification = {
   created_at: string;
 };
 
-export async function fetchInAppNotifications(limit = 30): Promise<InAppNotification[]> {
-  const res = await apiClient.get('/api/v1/notifications/in-app', {
+export async function fetchInAppNotifications(
+  limit = 30
+): Promise<InAppNotification[]> {
+  const res = await apiClient.get('/notifications/in-app', {
     params: { limit },
   });
   return res.data.items ?? [];
 }
 
 export async function dismissInAppNotification(id: number): Promise<void> {
-  await apiClient.post(`/api/v1/notifications/in-app/${id}/dismiss`);
+  await apiClient.post(`/notifications/in-app/${id}/dismiss`);
 }

@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.db.base import init_db
 from app.models.user import User
 from app.models.notification_setting import NotificationSetting
+from app.models.notification_run import NotificationRun
 
 router = APIRouter(tags=["admin"])
 
@@ -83,3 +84,71 @@ def migrate_task_notification_logs_deadline_at_send(db: Session = Depends(get_db
 
     db.commit()
     return {"status": "ok"}
+
+@router.post("/migrate/notification-runs")
+def migrate_notification_runs(db: Session = Depends(get_db)):
+    """
+    NotificationRun をDBに導入する（1回だけ実行想定）
+    - テーブル作成
+    - 不足カラムがあれば追加（将来の拡張にも耐える）
+    """
+    dialect = db.bind.dialect.name if db.bind is not None else "unknown"
+
+    # SQLite など（本番はPostgres想定だが、開発の壊れ防止）
+    if dialect != "postgresql":
+        init_db()
+        return {"status": "ok", "dialect": dialect, "mode": "init_db"}
+
+    # 1) create table（存在するなら何もしない）
+    db.execute(
+        text("""
+        CREATE TABLE IF NOT EXISTS notification_runs (
+            id SERIAL PRIMARY KEY,
+            status VARCHAR(16) NOT NULL DEFAULT 'running',
+            error_summary TEXT NULL,
+
+            users_processed INTEGER NOT NULL DEFAULT 0,
+
+            due_candidates_total INTEGER NOT NULL DEFAULT 0,
+            morning_candidates_total INTEGER NOT NULL DEFAULT 0,
+
+            inapp_created INTEGER NOT NULL DEFAULT 0,
+
+            webpush_sent INTEGER NOT NULL DEFAULT 0,
+            webpush_failed INTEGER NOT NULL DEFAULT 0,
+            webpush_deactivated INTEGER NOT NULL DEFAULT 0,
+
+            line_sent INTEGER NOT NULL DEFAULT 0,
+            line_failed INTEGER NOT NULL DEFAULT 0,
+
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ NULL
+        );
+        """)
+    )
+
+    # 2) 将来のカラム追加に備え、ADD COLUMN IF NOT EXISTS（安全側）
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'running';"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS error_summary TEXT NULL;"))
+
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS users_processed INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS due_candidates_total INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS morning_candidates_total INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS inapp_created INTEGER NOT NULL DEFAULT 0;"))
+
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_sent INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_failed INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_deactivated INTEGER NOT NULL DEFAULT 0;"))
+
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS line_sent INTEGER NOT NULL DEFAULT 0;"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS line_failed INTEGER NOT NULL DEFAULT 0;"))
+
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ NOT NULL DEFAULT NOW();"))
+    db.execute(text("ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NULL;"))
+
+    # 3) index（観測用途で効く）
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_runs_status ON notification_runs(status);"))
+    db.execute(text("CREATE INDEX IF NOT EXISTS ix_notification_runs_started_at ON notification_runs(started_at);"))
+
+    db.commit()
+    return {"status": "ok", "dialect": dialect}

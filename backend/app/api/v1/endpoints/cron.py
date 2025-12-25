@@ -13,6 +13,7 @@ from app.models.in_app_notification import InAppNotification
 from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting  # ★ 追加
 from app.models.task_outcome_log import TaskOutcomeLog
+from app.models.notification_run import NotificationRun 
 from app.services.notification import (
     collect_notification_candidates,
     to_utc,
@@ -167,6 +168,13 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
 
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
+    # ==============================
+    # NotificationRun（cron 1実行 = 1行）
+    # ==============================
+    run = NotificationRun(status="running")
+    db.add(run)
+    db.commit()
+    db.refresh(run)
     """
     定期実行ジョブ（Scheduler / GitHub Actions 用）
 
@@ -192,6 +200,20 @@ async def run_daily_job(db: Session = Depends(get_db)):
         "users_targeted": 0,
     }
 
+    # NotificationRun counters
+    users_processed = 0
+    due_candidates_total = 0
+    morning_candidates_total = 0
+
+    inapp_created = 0
+
+    webpush_sent = 0
+    webpush_failed = 0
+    webpush_deactivated = 0
+
+    line_sent = 0
+    line_failed = 0
+
     users = db.query(User).all()
 
     VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
@@ -199,7 +221,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
     for user in users:
         user_id = user.id
         line_user_id = user.line_user_id  # NoneでもOK
+
         results["users_targeted"] += 1
+        users_processed += 1
 
         # 通知設定取得
         setting = get_or_create_notification_setting(db, user_id=user_id)
@@ -245,6 +269,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
             user_id=user_id,
             offsets_hours=normalized_offsets,
         )
+
+        for h, ts in cands.due_in_hours.items():
+            due_candidates_total += len(ts)
+
         for h in normalized_offsets:
             print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
 
@@ -275,6 +303,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 )
                 if n:
                     created_inapps.append(n)
+                    inapp_created += 1
 
                 # ✅ イベント資産（InAppNotification）はここで確実に永続化
             if created_inapps:
@@ -289,11 +318,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             user_id=user_id,
                             notification=n,
                         )
+                        webpush_sent += 1
                     except Exception as e:
                         print("[CRON] webpush failed:", str(e))
-                    except Exception as e:
-                        # 失敗したらログは残さない（次回リトライ）
-                        print("[CRON] webpush failed:", str(e))
+                        webpush_failed += 1
             # ✅ LINE（有料のみ）
             try:
                 if user.plan != "free" and line_user_id:
@@ -303,11 +331,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             tasks=tasks_3h,
                             hours=hours,
                         )
+                        line_sent += len(tasks_3h)
                     except Exception as e:
                         print("[CRON] send_deadline_reminder failed:", str(e))
+                        line_failed += len(tasks_3h)
                         # LINE失敗でもWebPush成功分は残すので continue しない
             except Exception as e:
                 print("[CRON] send_deadline_reminder failed:", str(e))
+                line_failed += len(tasks_3h)
 
             if hours == 3:
                 results["three_hours_before"] += len(tasks_3h)
@@ -315,10 +346,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 key = f"offset_{hours}"
                 results[key] = results.get(key, 0) + len(tasks_3h)
       
-
         # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
         if setting.enable_morning_notification and is_morning_window:
             tasks_today = cands.morning
+            morning_candidates_total += len(tasks_today)
 
             # ✅ 朝ダイジェストもベルに残す（無料の最低保証）
             created_morning: list[InAppNotification] = []
@@ -365,8 +396,52 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         print("[CRON] send_daily_digest failed:", str(e))
 
                 results["morning"] += len(tasks_today)
-    notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
-    return {"notified": notified, "detail": results}
+    try:
+        notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
+        return {"notified": notified, "detail": results}
+
+    except Exception as e:
+        db.rollback()
+        run.status = "fail"
+        run.error_summary = (f"{type(e).__name__}: {str(e)}")[:500]
+        raise
+
+    finally:
+        run.users_processed = users_processed
+        run.due_candidates_total = due_candidates_total
+        run.morning_candidates_total = morning_candidates_total
+
+        run.inapp_created = inapp_created
+
+        run.webpush_sent = webpush_sent
+        run.webpush_failed = webpush_failed
+        run.webpush_deactivated = webpush_deactivated
+
+        run.line_sent = line_sent
+        run.line_failed = line_failed
+
+        # ==============================
+        # status 確定（success/partial/fail）
+        # ==============================
+        has_success = (inapp_created > 0) or (webpush_sent > 0) or (line_sent > 0)
+        has_failure = (webpush_failed > 0) or (line_failed > 0)
+
+        # except で fail がセット済みなら尊重（例外落ち）
+        if run.status != "fail":
+            if has_success and has_failure:
+                run.status = "partial"
+            elif has_success and not has_failure:
+                run.status = "success"
+            elif (not has_success) and has_failure:
+                run.status = "fail"
+            else:
+                # 候補ゼロなど：正常
+                run.status = "success"
+
+        run.finished_at = datetime.now(timezone.utc)
+
+        db.add(run)
+        db.commit()
 
 # ここから下の debug 系は、君の元コードそのまま残してOK
 @router.post("/debug-send")

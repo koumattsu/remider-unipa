@@ -5,7 +5,7 @@ from typing import Dict
 from fastapi import APIRouter, Depends, Query
 import re
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from app.db.session import get_db
 from app.models.user import User
 from app.models.task import Task
@@ -522,12 +522,57 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.webpush_failed = webpush_failed
         run.webpush_deactivated = webpush_deactivated
 
+        # ==============================
+        # snapshot（M&A耐性: run時点の事実を固定）
+        # - dismiss は後から変わるので含めない
+        # - DB集計（全件ロード排除）
+        # ==============================
+        snapshot = None
+        try:
+            inapp_total = int(
+                db.query(func.count(InAppNotification.id))
+                .filter(InAppNotification.run_id == run.id)
+                .scalar()
+                or 0
+            )
+
+            status_expr = func.jsonb_extract_path_text(
+                InAppNotification.extra,
+                "webpush",
+                "status",
+            )
+
+            rows = (
+                db.query(status_expr.label("status"), func.count(InAppNotification.id))
+                .filter(InAppNotification.run_id == run.id)
+                .group_by(status_expr)
+                .all()
+            )
+
+            events = {"sent": 0, "failed": 0, "deactivated": 0, "skipped": 0, "unknown": 0}
+            for st, cnt in rows:
+                key = st if st in events else "unknown"
+                events[key] += int(cnt or 0)
+
+            snapshot = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "inapp_total": inapp_total,
+                "webpush_events": events,
+            }
+        except Exception as e:
+            # snapshot 失敗でcron全体を落とさない（監査ログは残す）
+            snapshot = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "error": (f"{type(e).__name__}: {str(e)}")[:300],
+            }
+
         run.stats = {
             "build": "2025-12-25-cron-v2",
             "now_utc": started_at_utc.isoformat(),
             "users_total": users_total,
             "users_processed": users_processed,
             "users_with_candidates": users_with_candidates,
+            "snapshot": snapshot,
         }
 
         run.line_sent = line_sent

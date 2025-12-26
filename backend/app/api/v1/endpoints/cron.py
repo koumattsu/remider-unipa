@@ -127,6 +127,7 @@ def _upsert_in_app_notification(
     body: str,
     deep_link: str,
 ) -> InAppNotification | None:
+    from sqlalchemy.exc import IntegrityError
     exists = (
         db.query(InAppNotification.id)
         .filter(InAppNotification.user_id == user_id)
@@ -150,6 +151,11 @@ def _upsert_in_app_notification(
         deep_link=deep_link,
     )
     db.add(n)
+    try:
+        db.flush()  # ✅ Unique制約で最終チェック（並列でも壊れない）
+    except IntegrityError:
+        db.rollback()  # ✅ その通知1件のINSERT失敗を無害化
+        return None
     return n
 
 @router.post("/debug-migrate-task-auto-notify-flag")
@@ -308,7 +314,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         kind="task_reminder",
                         title=f"締切まで残り約{hours}時間",
                         body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                        deep_link="/#/dashboard?tab=today",
+                        deep_link="/dashboard?tab=today",
                     )
                     if n:
                         created_inapps.append(n)
@@ -332,13 +338,27 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_failed += int(res.get("failed", 0))
                             webpush_deactivated += int(res.get("deactivated", 0))
 
-                            # ✅ delivery結果をイベント（InAppNotification）に刻む
+                            sent_n = int(res.get("sent", 0))
+                            failed_n = int(res.get("failed", 0))
+                            deactivated_n = int(res.get("deactivated", 0))
+
+                            if sent_n > 0:
+                                delivery_status = "sent"
+                            elif deactivated_n > 0 and failed_n == 0:
+                                delivery_status = "deactivated"
+                            elif failed_n > 0:
+                                delivery_status = "failed"
+                            else:
+                                delivery_status = "skipped"
+
                             n.extra = {
                                 **(n.extra or {}),
                                 "webpush": {
-                                    "sent": int(res.get("sent", 0)),
-                                    "failed": int(res.get("failed", 0)),
-                                    "deactivated": int(res.get("deactivated", 0)),
+                                    "status": delivery_status,
+                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "sent": sent_n,
+                                    "failed": failed_n,
+                                    "deactivated": deactivated_n,
                                 },
                             }
                             db.add(n)
@@ -348,7 +368,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_failed += 1
                             n.extra = {
                                 **(n.extra or {}),
-                                "webpush": {"sent": 0, "failed": 1, "deactivated": 0},
+                                "webpush": {
+                                    "status": "failed",
+                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "sent": 0,
+                                    "failed": 1,
+                                    "deactivated": 0,
+                                },
                                 "webpush_error": str(e)[:300],
                             }
                             db.add(n)
@@ -418,6 +444,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_sent += int(res.get("sent", 0))
                             webpush_failed += int(res.get("failed", 0))
                             webpush_deactivated += int(res.get("deactivated", 0))
+
+
 
                             n.extra = {
                                 **(n.extra or {}),

@@ -151,20 +151,47 @@ def get_run_summary(
     )
 
     inapp_total = len(items)
+
+    # 反応（dismiss）
+    dismissed_count = sum(1 for n in items if n.dismissed_at is not None)
+    dismiss_rate = round((dismissed_count / inapp_total) * 100) if inapp_total else 0
+
+    # 配信（subscription単位 counts）
     delivered = 0
     failed = 0
     deactivated = 0
     unknown = 0
+
+    # 配信（イベント単位 status）
+    events_sent = 0
+    events_failed = 0
+    events_deactivated = 0
+    events_skipped = 0
+    events_unknown = 0
 
     for n in items:
         extra = n.extra or {}
         wp = extra.get("webpush")
         if not isinstance(wp, dict):
             unknown += 1
+            events_unknown += 1
             continue
+
         delivered += int(wp.get("sent", 0) or 0)
         failed += int(wp.get("failed", 0) or 0)
         deactivated += int(wp.get("deactivated", 0) or 0)
+
+        st = wp.get("status")
+        if st == "sent":
+            events_sent += 1
+        elif st == "failed":
+            events_failed += 1
+        elif st == "deactivated":
+            events_deactivated += 1
+        elif st == "skipped":
+            events_skipped += 1
+        else:
+            events_unknown += 1
 
     return {
         "run": {
@@ -176,14 +203,24 @@ def get_run_summary(
         },
         "inapp": {
             "total": inapp_total,
+            "dismissed_count": dismissed_count,
+            "dismiss_rate": dismiss_rate,
             "webpush": {
+                # subscription軸（件数）
                 "delivered": delivered,
                 "failed": failed,
                 "deactivated": deactivated,
                 "unknown": unknown,
+                # イベント軸（通知レコード単位）
+                "events": {
+                    "sent": events_sent,
+                    "failed": events_failed,
+                    "deactivated": events_deactivated,
+                    "skipped": events_skipped,
+                    "unknown": events_unknown,
+                },
             },
         },
-        # 参考：Run集計（cron側のカウンタ）と突合しやすい
         "run_counters": {
             "inapp_created": r.inapp_created,
             "webpush_sent": r.webpush_sent,
@@ -191,4 +228,3 @@ def get_run_summary(
             "webpush_deactivated": r.webpush_deactivated,
         },
     }
-

@@ -6,6 +6,12 @@ import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../ap
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
 import { Task } from '../types';
 
+/**
+ * StatsView（監査/分析ビュー）:
+ * - OutcomeLog: 締切到達時点の結果（行動の真実）
+ * - InAppNotification summary: 通知資産 × ユーザー反応（dismiss）
+ * - NotificationRun: cron 実行の事実（観測/監査の真実）
+ */
 interface StatsViewProps {
   tasks: Task[]; // 互換のため残す（今後 outcomes だけにするなら削除OK）
 }
@@ -39,7 +45,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
 
         // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
         const fromNotifs = startOfWeek.toISOString();
-        const toNotifs = startOfToday.toISOString();
+        const endOfToday = new Date(startOfToday);
+        endOfToday.setDate(endOfToday.getDate() + 1);
+        const toNotifs = endOfToday.toISOString();
 
         const [outcomeData, weeklySummary, summary] = await Promise.all([
           outcomesApi.list({ from: fromOutcomes, to: toOutcomes }),
@@ -100,6 +108,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const monthly = useMemo(() => calcRate(monthlyLogs), [monthlyLogs]);
 
   // ✅ 週次通知反応（summary API 1発）
+  const weeklySummaryLoaded = weeklyNotifSummary !== null;
   const weeklyCreated = weeklyNotifSummary?.total ?? 0;
   const weeklyDismissed = weeklyNotifSummary?.dismissed ?? 0;
   const weeklyDismissRate = weeklyNotifSummary?.dismiss_rate ?? 0;
@@ -127,7 +136,11 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <StatsCard
         title="今週（直近7日）の達成率"
-        subtitle="OutcomeLog（締切到達時点の結果）ベース"
+        subtitle={
+          weeklySummaryLoaded
+            ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
+            : "通知サマリ取得失敗（暫定値）"
+        }
         rate={weekly.rate}
         total={weekly.total}
         done={weekly.done}

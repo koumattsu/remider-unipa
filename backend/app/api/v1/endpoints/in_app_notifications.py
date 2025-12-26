@@ -15,12 +15,22 @@ from app.models.in_app_notification import InAppNotification
 
 router = APIRouter()
 
-@router.get("/in-app", response_model=InAppNotificationListResponse)
+@router.get(
+    "/in-app",
+    response_model=InAppNotificationListResponse,
+    summary="In-app通知一覧（ベル通知）",
+    description=(
+        "InAppNotification を created_at 基準で取得します。\n"
+        "- include_dismissed=false の場合、dismissed_at が null のみ返します\n"
+        "- from/to は created_at の範囲フィルタです（ISO8601）"
+    ),
+    response_description="In-app通知の配列（created_at desc）",
+)
 async def list_in_app_notifications(
-    limit: int = Query(20, ge=1, le=100),
-    include_dismissed: bool = Query(False),
-    from_: datetime | None = Query(None, alias="from"),
-    to: datetime | None = Query(None),
+    limit: int = Query(20, ge=1, le=100, description="取得件数（最大100）"),
+    include_dismissed: bool = Query(False, description="dismiss 済みも含める"),
+    from_: datetime | None = Query(None, alias="from", description="created_at の下限（ISO8601）"),
+    to: datetime | None = Query(None, description="created_at の上限（ISO8601）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -63,7 +73,12 @@ async def list_in_app_notifications(
         ]
     }
 
-@router.post("/in-app/{notification_id}/dismiss")
+@router.post(
+    "/in-app/{notification_id}/dismiss",
+    summary="In-app通知をdismiss（既読化）",
+    description="対象の InAppNotification の dismissed_at を現在時刻（UTC）で埋めます。",
+    response_description="dismiss 結果",
+)
 async def dismiss_in_app_notification(
     notification_id: int,
     db: Session = Depends(get_db),
@@ -85,13 +100,26 @@ async def dismiss_in_app_notification(
 
     return {"ok": True, "dismissed_at": n.dismissed_at.isoformat()}
 
-@router.get("/in-app/summary", response_model=InAppNotificationSummaryResponse)
+@router.get(
+    "/in-app/summary",
+    response_model=InAppNotificationSummaryResponse,
+    summary="In-app通知の期間サマリ（read-only）",
+    description=(
+        "StatsView 用の read-only 集計API。\n"
+        "- created_at 基準で from/to を解釈\n"
+        "- dismissed は dismissed_at != null\n"
+        "- webpush_events は extra.webpush.status をイベント軸で集計（sent/failed/deactivated/skipped/unknown）\n"
+        "※ 全件ロードせず DB 集計で返します。"
+    ),
+    response_description="期間サマリ（total/dismiss_rate/webpush_events）",
+)
 async def summarize_in_app_notifications(
-    from_: datetime | None = Query(None, alias="from"),
-    to: datetime | None = Query(None),
+    from_: datetime | None = Query(None, alias="from", description="created_at の下限（ISO8601）"),
+    to: datetime | None = Query(None, description="created_at の上限（ISO8601）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+
     """
     分析用：InAppNotification の期間サマリ（read only）
 

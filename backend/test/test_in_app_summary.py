@@ -1,9 +1,12 @@
 # backend/tests/test_in_app_summary.py
 
 def test_in_app_summary_contract_and_sanity(client):
+    req_from = "2025-01-01T00:00:00Z"
+    req_to = "2025-01-07T00:00:00Z"
+
     res = client.get(
         "/api/v1/notifications/in-app/summary",
-        params={"from": "2025-01-01T00:00:00Z", "to": "2025-01-07T00:00:00Z"},
+        params={"from": req_from, "to": req_to},
     )
     assert res.status_code == 200
 
@@ -19,6 +22,9 @@ def test_in_app_summary_contract_and_sanity(client):
     # range
     assert "from" in data["range"]
     assert "to" in data["range"]
+    # ✅ リクエスト値がそのまま返る（契約固定）
+    assert data["range"]["from"] == req_from
+    assert data["range"]["to"] == req_to
 
     # 数値の健全性
     total = data["total"]
@@ -34,7 +40,10 @@ def test_in_app_summary_contract_and_sanity(client):
 
     # webpush_events は5キー固定（破壊的変更を検知）
     ev = data["webpush_events"]
-    for k in ["sent", "failed", "deactivated", "skipped", "unknown"]:
+    expected_keys = {"sent", "failed", "deactivated", "skipped", "unknown"}
+    for k in expected_keys:
         assert k in ev
         assert isinstance(ev[k], int)
         assert ev[k] >= 0
+    # ✅ 余計なキー追加も検知（仕様膨張を止める）
+    assert set(ev.keys()) == expected_keys

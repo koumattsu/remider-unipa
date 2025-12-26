@@ -1,195 +1,106 @@
-# UniPA Reminder App
+# UNIPA Reminder App
 
-大学生向けの課題管理＋LINE通知Webアプリケーション（Phase 1）
+大学生向けの課題管理 + 通知（Web Push / In-app / 将来LINE）アプリ  
+**M&A耐性（監査可能性）を最優先**に、通知の「事実」をサーバ側に残す設計で実装しています。
 
-## 概要
+---
 
-このアプリは、大学生が課題を管理し、締切前にLINE通知を受け取れるWebアプリケーションです。
+## 何ができるか（現状）
 
-### Phase 1 の機能
+### 課題管理
+- ✅ 課題の手動追加・一覧表示
+- ✅ 完了 / 未完了切り替え（完了タスクは通知対象外）
+- ✅ 削除
+- ✅（将来）Moodle / UNIPA からの自動取得・重複判定・AI理解レイヤー
 
-- ✅ ユーザーが課題を手入力で登録
-- ✅ 課題一覧の表示（今日から1週間以内）
-- ✅ 課題の完了/未完了切り替え
-- ✅ 課題の削除
-- ✅ 通知設定（締切リマインド時間、日次ダイジェスト時間）
-- ✅ LINE通知のための土台（ダミー実装）
+### 通知（現状の主軸）
+- ✅ **In-app通知（ベル通知）**  
+  通知を DB に保存し、ユーザーが dismiss（既読化）できる
+- ✅ **Web Push（無料プラン向け）**  
+  Service Worker 経由で OS 通知（アプリ未起動でも通知）
+- ✅ **通知基盤の監査ログ**
+  - cron 実行 1 回 = 1 レコード（NotificationRun）
+  - 重複通知防止（TaskNotificationLog）
+  - 通知生成時の締切を固定保存（deadline_at_send）
 
-### 将来的な拡張予定
+※ LINE通知は将来の有料プラン想定（現在は未実装）
 
-- Moodleタイムラインから自動取得するAPI
-- ブラウザ拡張機能
-- 実際のLINE Messaging API連携
-- LINEログイン認証
+---
+
+## 設計方針（M&A耐性）
+
+### 1. 「通知が来た / 来なかった」をサーバの事実として追跡
+- **NotificationRun**
+  - cron 実行 1 回 = 1 行
+  - status / error_summary / counters / finished_at / stats(snapshot)
+- 障害時でも「なぜ通知されなかったか」を後から説明可能
+
+### 2. 幽霊通知（重複通知）を設計で排除
+- **TaskNotificationLog**
+  - 「この通知は送った」という事実を保存
+- **deadline_at_send**
+  - 通知作成時点の締切をコピー
+  - 締切変更があっても当時の事実は不変
+
+### 3. UI 表示と分析データを分離
+- **OutcomeLog（task_outcome_log）**
+  - 締切到達時点で「完了 / 未完了」を記録
+  - 後から状態が変わっても分析結果は変わらない
+
+---
 
 ## 技術スタック
 
-### バックエンド
-
+### Backend
 - Python 3.11+
 - FastAPI
 - SQLAlchemy
-- SQLite（開発時）、将来PostgreSQL対応可能
-- Uvicorn
+- PostgreSQL（本番） / SQLite（開発）
+- Web Push: pywebpush
+- 認証: Cookie Session（itsdangerous）
 
-### フロントエンド
-
-- React 18
+### Frontend
+- React
 - TypeScript
 - Vite
-- React Router
+- Service Worker（Web Push）
 
-## セットアップ
+---
 
-### 1. バックエンドのセットアップ
+## セットアップ（ローカル）
 
+### Backend
 ```bash
 cd backend
 
-# 仮想環境の作成（推奨）
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# 依存パッケージのインストール
 pip install -r requirements.txt
 
-# 環境変数の設定
 cp env.example .env
-# .env ファイルを必要に応じて編集
+# DATABASE_URL / SESSION_SECRET / FRONTEND_URL 等を設定
 
-# データベースの初期化（アプリ起動時に自動実行されます）
-
-# サーバーの起動
 uvicorn app.main:app --reload --port 8000
-```
 
-### 2. フロントエンドのセットアップ
+## API（抜粋）
 
-```bash
-cd frontend
+### In-app 通知
+- GET /api/v1/notifications/in-app
+- POST /api/v1/notifications/in-app/{id}/dismiss
+- GET /api/v1/notifications/in-app/summary?from=&to=
 
-# 依存パッケージのインストール
-npm install
+### Web Push
+- POST /api/v1/notifications/webpush/subscribe
+- POST /api/v1/notifications/webpush/unsubscribe
 
-# 開発サーバーの起動
-npm run dev
-```
+### 監査（NotificationRun）
+- GET /api/v1/admin/notification-runs/latest
+- GET /api/v1/admin/notification-runs/{run_id}/summary
 
-### 3. アクセス
 
-- フロントエンド: http://localhost:5173
-- バックエンドAPI: http://localhost:8000
-- API ドキュメント: http://localhost:8000/docs
+## 認証（現状）
 
-## プロジェクト構造
-
-```
-unipa-reminder-app/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── v1/
-│   │   │       ├── endpoints/
-│   │   │       │   ├── auth.py      # 認証エンドポイント
-│   │   │       │   ├── tasks.py     # 課題管理エンドポイント
-│   │   │       │   └── settings.py  # 通知設定エンドポイント
-│   │   │       └── api.py
-│   │   ├── core/
-│   │   │   ├── config.py      # 設定管理
-│   │   │   └── security.py    # 認証ミドルウェア（ダミー認証）
-│   │   ├── db/
-│   │   │   ├── base.py        # DB接続設定
-│   │   │   └── session.py     # セッション管理
-│   │   ├── models/
-│   │   │   ├── user.py
-│   │   │   ├── task.py
-│   │   │   └── notification_setting.py
-│   │   ├── schemas/
-│   │   │   ├── user.py
-│   │   │   ├── task.py
-│   │   │   └── notification_setting.py
-│   │   ├── services/
-│   │   │   └── line_client.py  # LINE通知サービス（ダミー実装）
-│   │   └── main.py
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── api/          # API クライアント
-│   │   ├── components/   # React コンポーネント
-│   │   ├── pages/        # ページコンポーネント
-│   │   ├── types/        # TypeScript 型定義
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   ├── package.json
-│   └── vite.config.ts
-└── README.md
-```
-
-## API エンドポイント
-
-### 認証
-
-- `GET /api/v1/auth/me` - 現在のユーザー情報を取得
-
-### 課題管理
-
-- `GET /api/v1/tasks/` - 課題一覧を取得（クエリパラメータ: `start_date`, `end_date`, `is_done`）
-- `POST /api/v1/tasks/` - 課題を新規作成
-- `PATCH /api/v1/tasks/{task_id}` - 課題を更新
-- `DELETE /api/v1/tasks/{task_id}` - 課題を削除
-
-### 通知設定
-
-- `GET /api/v1/settings/notification` - 通知設定を取得
-- `POST /api/v1/settings/notification` - 通知設定を作成/更新
-
-## 認証について（開発時）
-
-現在、ダミー認証が有効になっています。
-
-- リクエストヘッダーに `X-Dummy-User-Id: 1` を設定すると、そのユーザーIDでログインしたことになります
-- 存在しないユーザーIDの場合は、自動的にダミーユーザーが作成されます
-- 将来的にLINEログイン認証に置き換える予定です
-
-## データベーススキーマ
-
-### users テーブル
-
-- `id`: 主キー
-- `line_user_id`: LINEユーザーID（ユニーク）
-- `display_name`: 表示名
-- `university`: 大学名
-- `plan`: プラン（"free", "basic", "pro"）
-
-### tasks テーブル
-
-- `id`: 主キー
-- `user_id`: ユーザーID（外部キー）
-- `title`: 課題タイトル
-- `course_name`: 授業名
-- `deadline`: 締切日時（タイムゾーン付き）
-- `memo`: メモ（任意）
-- `is_done`: 完了フラグ
-- `created_at`: 作成日時
-- `updated_at`: 更新日時
-
-### notification_settings テーブル
-
-- `id`: 主キー
-- `user_id`: ユーザーID（外部キー、ユニーク）
-- `reminder_offsets_hours`: 締切リマインド時間（JSON配列、例: [24, 3, 1]）
-- `daily_digest_time`: 日次ダイジェスト送信時間（"HH:MM"形式）
-
-## 今後の拡張
-
-1. **Moodle連携**: `/api/v1/moodle/import` エンドポイントを追加
-2. **LINEログイン**: 実際のLINE Login APIを使用した認証
-3. **LINE通知**: LINE Messaging APIを使用した実際の通知送信
-4. **通知スケジューラー**: バックグラウンドでリマインド通知を送信するジョブ
-5. **ブラウザ拡張**: Chrome/Firefox拡張機能の開発
-
-## ライセンス
-
-このプロジェクトは個人利用・教育目的で使用できます。
-
+- Cookie セッション（HttpOnly）
+- 開発時のみ `DUMMY_AUTH_ENABLED=true` の場合、
+  `X-Dummy-User-Id` ヘッダを許可

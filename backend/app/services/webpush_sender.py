@@ -5,7 +5,6 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from pywebpush import webpush, WebPushException
-
 from app.core.config import settings
 from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
@@ -52,11 +51,9 @@ class WebPushSender:
 
         payload_json = json.dumps(payload, ensure_ascii=False)
         now = WebPushSender._utcnow()
-
         sent = 0
         failed = 0
         deactivated = 0
-
         dirty = False
 
         for sub in subs:
@@ -75,7 +72,6 @@ class WebPushSender:
                 sub.last_seen_at = now
                 db.add(sub)
                 dirty = True
-
                 sent += 1
                 logger.info("[webpush] ok user_id=%s sub_id=%s", user_id, sub.id)
 
@@ -87,7 +83,6 @@ class WebPushSender:
                     sub.is_active = False
                     db.add(sub)
                     dirty = True
-
                     deactivated += 1
                     logger.info(
                         "[webpush] deactivated user_id=%s sub_id=%s status=%s",
@@ -134,7 +129,7 @@ class WebPushSender:
         user_id: int,
         title: str = "UNIPA Reminder",
         body: str = "Web Push テスト送信です",
-        url: str = "/#/dashboard?tab=today",
+        url: str = "/dashboard?tab=today", 
     ) -> dict:
         payload = {"title": title, "body": body, "url": url, "deep_link": url}
         return WebPushSender._send_payload(db, user_id=user_id, payload=payload)

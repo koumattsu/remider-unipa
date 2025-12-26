@@ -396,7 +396,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         kind="morning_digest",
                         title="今日締切の課題まとめ",
                         body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
-                        deep_link="/#/dashboard?tab=today",
+                        deep_link="/dashboard?tab=today",
                     )
                     if n:
                         created_morning.append(n)

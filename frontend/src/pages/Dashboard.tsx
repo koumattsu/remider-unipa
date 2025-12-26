@@ -478,7 +478,7 @@ export const Dashboard: React.FC = () => {
                   onClick={() => {
                     // deep_link は "/#/dashboard?tab=today" 形式
                     // HashRouterなので hash を直接いじるのが最小diffで確実
-                    window.location.hash = n.deep_link.replace('/#', '#');
+                    window.location.href = n.deep_link; // BrowserRouter前提
                   }}
                   style={{
                     borderRadius: '1rem',

@@ -182,6 +182,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
     # NotificationRun counters（finallyで必ず参照するので先に初期化）
     users_processed = 0
+    users_with_candidates = 0
     due_candidates_total = 0
     morning_candidates_total = 0
     inapp_created = 0
@@ -319,6 +320,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
                 # ✅ WebPush（無料/有料共通・設定ONのときだけ）
                 if setting.enable_webpush:
+                    touched = False
                     for n in created_inapps:
                         try:
                             res = WebPushSender.send_for_notification(
@@ -329,9 +331,31 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_sent += int(res.get("sent", 0))
                             webpush_failed += int(res.get("failed", 0))
                             webpush_deactivated += int(res.get("deactivated", 0))
+
+                            # ✅ delivery結果をイベント（InAppNotification）に刻む
+                            n.extra = {
+                                **(n.extra or {}),
+                                "webpush": {
+                                    "sent": int(res.get("sent", 0)),
+                                    "failed": int(res.get("failed", 0)),
+                                    "deactivated": int(res.get("deactivated", 0)),
+                                },
+                            }
+                            db.add(n)
+                            touched = True
                         except Exception as e:
                             print("[CRON] webpush failed:", str(e))
                             webpush_failed += 1
+                            n.extra = {
+                                **(n.extra or {}),
+                                "webpush": {"sent": 0, "failed": 1, "deactivated": 0},
+                                "webpush_error": str(e)[:300],
+                            }
+                            db.add(n)
+                            touched = True
+                    if touched:
+                        db.commit()
+
                 # ✅ LINE（有料のみ）
                 if user.plan != "free" and line_user_id:
                     try:
@@ -383,6 +407,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
                 # ✅ WebPush（無料/有料共通）
                 if setting.enable_webpush:
+                    touched = False
                     for n in created_morning:
                         try:
                             res = WebPushSender.send_for_notification(
@@ -393,9 +418,29 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_sent += int(res.get("sent", 0))
                             webpush_failed += int(res.get("failed", 0))
                             webpush_deactivated += int(res.get("deactivated", 0))
+
+                            n.extra = {
+                                **(n.extra or {}),
+                                "webpush": {
+                                    "sent": int(res.get("sent", 0)),
+                                    "failed": int(res.get("failed", 0)),
+                                    "deactivated": int(res.get("deactivated", 0)),
+                                },
+                            }
+                            db.add(n)
+                            touched = True
                         except Exception as e:
                             print("[CRON] webpush failed:", str(e))
                             webpush_failed += 1
+                            n.extra = {
+                                **(n.extra or {}),
+                                "webpush": {"sent": 0, "failed": 1, "deactivated": 0},
+                                "webpush_error": str(e)[:300],
+                            }
+                            db.add(n)
+                            touched = True
+                    if touched:
+                        db.commit()
                 if tasks_today:
                     # ✅ LINE（有料のみ・朝ダイジェスト）
                     if user.plan != "free" and line_user_id:

@@ -11,7 +11,6 @@ api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(cron.router, prefix="/cron", tags=["cron"])
 api_router.include_router(admin_migrate.router,prefix="/admin",tags=["admin"],)
-api_router.include_router(notification_runs.router, prefix="/admin", tags=["admin"])
 api_router.include_router(outcomes.router, prefix="/outcomes", tags=["outcomes"])
 api_router.include_router(
     in_app_notifications.router,

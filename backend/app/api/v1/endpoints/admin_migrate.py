@@ -1,8 +1,9 @@
 # backend/app/api/v1/endpoints/admin_migrate.py
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy import select
 from app.db.session import get_db
 from app.db.base import init_db
 from app.models.user import User
@@ -186,3 +187,154 @@ def migrate_notification_run_id_columns(db: Session = Depends(get_db)):
 
     db.commit()
     return {"status": "ok"}
+
+@router.post("/migrate/backfill-task-notification-logs-deadline-at-send")
+def backfill_task_notification_logs_deadline_at_send(db: Session = Depends(get_db)):
+    """
+    既存互換で nullable になっている task_notification_logs.deadline_at_send の NULL を埋める（1回だけ実行）
+    - まず tasks.deadline で埋める
+    - tasks.deadline が無い/参照できないものは sent_at で埋める
+    目的：UNIQUE(user_id, task_id, deadline_at_send, offset_hours) の dedupe を完全に効かせる
+    """
+    dialect = db.bind.dialect.name if db.bind is not None else "unknown"
+
+    if dialect == "postgresql":
+        # ① tasks.deadline で埋める（task_id が残ってるもの）
+        r1 = db.execute(
+            text("""
+            UPDATE task_notification_logs tnl
+            SET deadline_at_send = t.deadline
+            FROM tasks t
+            WHERE tnl.deadline_at_send IS NULL
+              AND tnl.task_id = t.id
+              AND t.deadline IS NOT NULL;
+            """)
+        )
+
+        # ② 残り（task無し/deadline無し）は sent_at で埋める
+        r2 = db.execute(
+            text("""
+            UPDATE task_notification_logs
+            SET deadline_at_send = sent_at
+            WHERE deadline_at_send IS NULL;
+            """)
+        )
+
+        # ③ 検算
+        null_count = db.execute(
+            text("SELECT COUNT(*) FROM task_notification_logs WHERE deadline_at_send IS NULL;")
+        ).scalar() or 0
+
+        db.commit()
+        return {
+            "status": "ok",
+            "dialect": dialect,
+            "filled_from_tasks": int(getattr(r1, "rowcount", 0) or 0),
+            "filled_from_sent_at": int(getattr(r2, "rowcount", 0) or 0),
+            "null_remaining": int(null_count),
+        }
+
+    # --- fallback（sqlite/dev壊れ防止）：Pythonで埋める ---
+    # できるだけ同じ意味になるように埋める（ただし dev 用）
+    rows = db.execute(
+        text("""
+       SELECT id, task_id, sent_at
+        FROM task_notification_logs
+        WHERE deadline_at_send IS NULL;
+        """)
+    ).all()
+    if not rows:
+        return {"status": "ok", "dialect": dialect, "updated": 0, "null_remaining": 0}
+
+    updated = 0
+    for (log_id, task_id, sent_at) in rows:
+        deadline = None
+        if task_id is not None:
+            deadline = db.execute(
+                text("SELECT deadline FROM tasks WHERE id = :tid"),
+                {"tid": task_id},
+            ).scalar()
+        fill = deadline or sent_at
+        db.execute(
+            text("UPDATE task_notification_logs SET deadline_at_send = :v WHERE id = :id"),
+            {"v": fill, "id": log_id},
+        )
+        updated += 1
+    db.commit()
+    null_count = db.execute(
+        text("SELECT COUNT(*) FROM task_notification_logs WHERE deadline_at_send IS NULL;")
+    ).scalar() or 0
+    return {"status": "ok", "dialect": dialect, "updated": updated, "null_remaining": int(null_count)}
+
+@router.get("/notification-runs/latest")
+def get_latest_notification_run(db: Session = Depends(get_db)):
+    """
+    観測用（read-only）
+    最新の NotificationRun を1件返す
+    """
+    run = (
+        db.query(NotificationRun)
+        .order_by(NotificationRun.started_at.desc())
+        .first()
+    )
+    if not run:
+        return {"found": False}
+
+    return {
+        "found": True,
+        "run": {
+            "id": run.id,
+            "status": run.status,
+            "error_summary": run.error_summary,
+            "users_processed": run.users_processed,
+            "due_candidates_total": run.due_candidates_total,
+            "morning_candidates_total": run.morning_candidates_total,
+            "inapp_created": run.inapp_created,
+            "webpush_sent": run.webpush_sent,
+            "webpush_failed": run.webpush_failed,
+            "webpush_deactivated": run.webpush_deactivated,
+            "line_sent": run.line_sent,
+            "line_failed": run.line_failed,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "stats": run.stats,
+        },
+    }
+
+
+@router.get("/notification-runs")
+def list_notification_runs(
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """
+    観測用（read-only）
+    最近の NotificationRun を返す
+    """
+    runs = (
+        db.query(NotificationRun)
+        .order_by(NotificationRun.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "status": r.status,
+                "error_summary": r.error_summary,
+                "users_processed": r.users_processed,
+                "due_candidates_total": r.due_candidates_total,
+                "morning_candidates_total": r.morning_candidates_total,
+                "inapp_created": r.inapp_created,
+                "webpush_sent": r.webpush_sent,
+                "webpush_failed": r.webpush_failed,
+                "webpush_deactivated": r.webpush_deactivated,
+                "line_sent": r.line_sent,
+                "line_failed": r.line_failed,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            }
+            for r in runs
+        ]
+    }

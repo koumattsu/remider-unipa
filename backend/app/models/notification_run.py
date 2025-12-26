@@ -8,7 +8,6 @@ from app.db.base import Base
 class NotificationRun(Base):
     """
     cron 実行 1回 = 1行
-
     M&A耐性:
     - 「通知が来た/来ない」をサーバ側の事実として追える
     - 例外時も status/error_summary が残る

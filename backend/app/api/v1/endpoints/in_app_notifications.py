@@ -28,6 +28,7 @@ async def list_in_app_notifications(
         "items": [
             {
                 "id": n.id,
+                "run_id": n.run_id,
                 "kind": n.kind,
                 "title": n.title,
                 "body": n.body,
@@ -36,6 +37,7 @@ async def list_in_app_notifications(
                 "deadline_at_send": n.deadline_at_send.isoformat(),
                 "offset_hours": n.offset_hours,
                 "created_at": n.created_at.isoformat(),
+                "extra": n.extra,
             }
             for n in items
         ]
@@ -62,4 +64,4 @@ async def dismiss_in_app_notification(
         db.add(n)
         db.commit()
 
-    return {"ok": True}
+    return {"ok": True, "dismissed_at": n.dismissed_at.isoformat()}

@@ -53,26 +53,24 @@ def try_mark_notification_as_sent(
     *,
     run_id: int | None = None,
 ) -> bool:
-    """
-    ✅ 送信前ロック
-    - UniqueConstraint(user_id, task_id, deadline_at_send, offset_hours) をロックとして使う
-    - True: このプロセスが送信権を獲得
-    - False: 既に別プロセスが獲得済み（=二重送信防止）
-    """
-    log = TaskNotificationLog(
-        user_id=user_id,
-        task_id=task_id,
-        deadline_at_send=deadline_utc,
-        offset_hours=offset_hours,
-        run_id=run_id,
-        sent_at=datetime.now(timezone.utc),
-    )
-    db.add(log)
+    # ✅ 送信前ロックは「このトランザクション内」で確保する（commitは呼び出し側でまとめて行う）
+    # - ここで commit すると「ログだけ確定して InApp が残らない」欠落が起き得る
+    # - SAVEPOINT + flush で一意制約チェックだけ行い、成功ならロック獲得
     try:
-        db.commit()
+        with db.begin_nested():
+            log = TaskNotificationLog(
+                user_id=user_id,
+                task_id=task_id,
+                deadline_at_send=deadline_utc,
+                offset_hours=offset_hours,
+                run_id=run_id,
+                sent_at=datetime.now(timezone.utc),
+            )
+            db.add(log)
+            db.flush()  # ✅ ここで unique 制約を評価させる
         return True
     except IntegrityError:
-        db.rollback()
+        # ✅ 既にロック済み（=二重送信防止）
         return False
 
 def deadline_label_date_jst(dt: datetime) -> date:

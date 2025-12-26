@@ -445,14 +445,27 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_failed += int(res.get("failed", 0))
                             webpush_deactivated += int(res.get("deactivated", 0))
 
+                            sent_n = int(res.get("sent", 0))
+                            failed_n = int(res.get("failed", 0))
+                            deactivated_n = int(res.get("deactivated", 0))
 
+                            if sent_n > 0:
+                                delivery_status = "sent"
+                            elif deactivated_n > 0 and failed_n == 0:
+                                delivery_status = "deactivated"
+                            elif failed_n > 0:
+                                delivery_status = "failed"
+                            else:
+                                delivery_status = "skipped"
 
                             n.extra = {
                                 **(n.extra or {}),
                                 "webpush": {
-                                    "sent": int(res.get("sent", 0)),
-                                    "failed": int(res.get("failed", 0)),
-                                    "deactivated": int(res.get("deactivated", 0)),
+                                    "status": delivery_status,
+                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "sent": sent_n,
+                                    "failed": failed_n,
+                                    "deactivated": deactivated_n,
                                 },
                             }
                             db.add(n)
@@ -462,7 +475,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             webpush_failed += 1
                             n.extra = {
                                 **(n.extra or {}),
-                                "webpush": {"sent": 0, "failed": 1, "deactivated": 0},
+                                "webpush": {
+                                    "status": "failed",
+                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "sent": 0,
+                                    "failed": 1,
+                                    "deactivated": 0,
+                                },
                                 "webpush_error": str(e)[:300],
                             }
                             db.add(n)

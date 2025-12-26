@@ -16,14 +16,43 @@ export type InAppNotification = {
   extra?: any; // JSONB（webpush観測を最小で使う）
 };
 
+export type InAppNotificationsSummary = {
+  range: { from: string | null; to: string | null };
+  total: number;
+  dismissed: number;
+  dismiss_rate: number; // 0-100
+  webpush_events: {
+    sent: number;
+    failed: number;
+    deactivated: number;
+    skipped: number;
+    unknown: number;
+  };
+};
+
 export async function fetchInAppNotifications(
   limit = 30,
-  opts?: { includeDismissed?: boolean }
+  opts?: { includeDismissed?: boolean; from?: string; to?: string }
 ): Promise<InAppNotification[]> {
   const res = await apiClient.get('/notifications/in-app', {
-    params: { limit, include_dismissed: opts?.includeDismissed ?? false },
+    params: {
+      limit,
+      include_dismissed: opts?.includeDismissed ?? false,
+      from: opts?.from,
+      to: opts?.to,
+    },
   });
   return res.data.items ?? [];
+}
+
+export async function fetchInAppNotificationsSummary(opts?: { from?: string; to?: string }): Promise<InAppNotificationsSummary> {
+  const res = await apiClient.get('/notifications/in-app/summary', {
+    params: {
+      from: opts?.from,
+      to: opts?.to,
+    },
+  });
+  return res.data;
 }
 
 export async function dismissInAppNotification(id: number): Promise<void> {

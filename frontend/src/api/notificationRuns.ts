@@ -23,7 +23,6 @@ export type NotificationRun = {
 
   stats?: any;
 };
-
 export type RunSummary = {
   run: {
     id: number;
@@ -34,11 +33,20 @@ export type RunSummary = {
   };
   inapp: {
     total: number;
+    dismissed_count?: number;
+    dismiss_rate?: number;
     webpush: {
       delivered: number;
       failed: number;
       deactivated: number;
       unknown: number;
+      events?: {
+        sent: number;
+        failed: number;
+        deactivated: number;
+        skipped: number;
+        unknown: number;
+      };
     };
   };
   run_counters: {

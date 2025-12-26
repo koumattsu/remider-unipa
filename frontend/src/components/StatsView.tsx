@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { outcomesApi, OutcomeLog } from '../api/outcomes';
-import { fetchInAppNotifications, InAppNotification } from '../api/notifications';
+import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
 import { Task } from '../types';
-
 
 interface StatsViewProps {
   tasks: Task[]; // 互換のため残す（今後 outcomes だけにするなら削除OK）
@@ -13,7 +12,7 @@ interface StatsViewProps {
 
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [logs, setLogs] = useState<OutcomeLog[]>([]);
-  const [notifs, setNotifs] = useState<InAppNotification[]>([]);
+  const [weeklyNotifSummary, setWeeklyNotifSummary] = useState<InAppNotificationsSummary | null>(null);
   const [latestRun, setLatestRun] = useState<NotificationRun | null>(null);
   const [latestRunSummary, setLatestRunSummary] = useState<RunSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,16 +26,31 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         setError(null);
         // まずは全件取得（重くなったら from/to で絞る）
         const run = await fetchLatestNotificationRun().catch(() => null);
-        const [outcomeData, notifData, summary] = await Promise.all([
-          outcomesApi.list(),
-          fetchInAppNotifications(200, { includeDismissed: true }),
+        // 期間（deadline基準でbackendへ渡す）
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfWeek = new Date(startOfToday);
+        startOfWeek.setDate(startOfWeek.getDate() - 6);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const fromOutcomes = startOfMonth.toISOString();
+        const toOutcomes = endOfMonth.toISOString();
+
+        // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
+        const fromNotifs = startOfWeek.toISOString();
+        const toNotifs = startOfToday.toISOString();
+
+        const [outcomeData, weeklySummary, summary] = await Promise.all([
+          outcomesApi.list({ from: fromOutcomes, to: toOutcomes }),
+          fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }),
           run?.id ? fetchRunSummary(run.id).catch(() => null) : Promise.resolve(null),
         ]);
 
         if (!mounted) return;
 
         setLogs(outcomeData);
-        setNotifs(notifData);
+        setWeeklyNotifSummary(weeklySummary);
         setLatestRun(run);
         setLatestRunSummary(summary);
 
@@ -70,52 +84,6 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     [logs, startOfWeek, startOfToday]
   );
 
-  const parseNotifCreatedAt = (n: InAppNotification) => new Date(n.created_at);
-
-  const weeklyNotifs = useMemo(
-    () => notifs.filter((n) => inRange(parseNotifCreatedAt(n), startOfWeek, startOfToday)),
-    [notifs, startOfWeek, startOfToday]
-  );
-
-  const runNotifs = useMemo(() => {
-    if (!latestRun?.id) return [];
-    return notifs.filter((n) => n.run_id === latestRun.id);
-  }, [notifs, latestRun]);
-
-  const runDismissed = useMemo(() => runNotifs.filter((n) => !!n.dismissed_at).length, [runNotifs]);
-
-  const runDismissRate = useMemo(() => {
-    const total = runNotifs.length;
-    if (total === 0) return 0;
-    return Math.round((runDismissed / total) * 100);
-  }, [runNotifs, runDismissed]);
-
-
-  const notifWeeklyStats = useMemo(() => {
-    const created = weeklyNotifs.length;
-    const dismissed = weeklyNotifs.filter((n) => !!n.dismissed_at).length;
-    const dismissRate = created === 0 ? 0 : Math.round((dismissed / created) * 100);
-
-    let sent = 0;
-    let failed = 0;
-    let deactivated = 0;
-    let sentEvents = 0;
-
-    for (const n of weeklyNotifs) {
-      const wp = (n.extra as any)?.webpush;
-      if (!wp) continue;
-
-      sent += Number(wp.sent ?? 0);
-      failed += Number(wp.failed ?? 0);
-      deactivated += Number(wp.deactivated ?? 0);
-
-      if (wp.status === 'sent') sentEvents += 1;
-    }
-
-    return { created, dismissed, dismissRate, sent, failed, deactivated, sentEvents };
-  }, [weeklyNotifs]);
-
-
   const monthlyLogs = useMemo(
     () => logs.filter((x) => inRange(parseDeadline(x), startOfMonth, endOfMonth)),
     [logs, startOfMonth, endOfMonth]
@@ -131,6 +99,23 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const weekly = useMemo(() => calcRate(weeklyLogs), [weeklyLogs]);
   const monthly = useMemo(() => calcRate(monthlyLogs), [monthlyLogs]);
 
+  // ✅ 週次通知反応（summary API 1発）
+  const weeklyCreated = weeklyNotifSummary?.total ?? 0;
+  const weeklyDismissed = weeklyNotifSummary?.dismissed ?? 0;
+  const weeklyDismissRate = weeklyNotifSummary?.dismiss_rate ?? 0;
+
+  const weeklyEvents = weeklyNotifSummary?.webpush_events;
+  const weeklySentEvents = weeklyEvents?.sent ?? 0;
+
+  // NotifStatsCard は props 形を変えない（最小diff）
+  const weeklySent = weeklyEvents?.sent ?? 0;
+  const weeklyFailed = weeklyEvents?.failed ?? 0;
+  const weeklyDeactivated = weeklyEvents?.deactivated ?? 0;
+
+  const summaryInappTotal = latestRunSummary?.inapp?.total ?? 0;
+  const summaryDismissed = latestRunSummary?.inapp?.dismissed_count ?? 0;
+  const summaryDismissRate = latestRunSummary?.inapp?.dismiss_rate ?? 0;
+
   if (loading) {
     return <div style={{ color: 'rgba(255,255,255,.7)' }}>Loading…</div>;
   }
@@ -138,7 +123,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     return <div style={{ color: '#fca5a5' }}>Failed: {error}</div>;
   }
 
-    return (
+  return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <StatsCard
         title="今週（直近7日）の達成率"
@@ -151,13 +136,13 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       <NotifStatsCard
         title="今週の通知反応"
         subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
-        created={notifWeeklyStats.created}
-        dismissed={notifWeeklyStats.dismissed}
-        dismissRate={notifWeeklyStats.dismissRate}
-        sent={notifWeeklyStats.sent}
-        failed={notifWeeklyStats.failed}
-        deactivated={notifWeeklyStats.deactivated}
-        sentEvents={notifWeeklyStats.sentEvents}
+        created={weeklyCreated}
+        dismissed={weeklyDismissed}
+        dismissRate={weeklyDismissRate}
+        sent={weeklySent}
+        failed={weeklyFailed}
+        deactivated={weeklyDeactivated}
+        sentEvents={weeklySentEvents}
       />
 
       <StatsCard
@@ -173,9 +158,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
         run={latestRun}
         summary={latestRunSummary}
-        inappTotal={runNotifs.length}
-        dismissed={runDismissed}
-        dismissRate={runDismissRate}
+        inappTotal={summaryInappTotal}
+        dismissed={summaryDismissed}
+        dismissRate={summaryDismissRate}
       />
     </div>
   );
@@ -292,6 +277,13 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         failed: Number(summary.inapp.webpush.failed ?? 0),
         deactivated: Number(summary.inapp.webpush.deactivated ?? 0),
         unknown: Number(summary.inapp.webpush.unknown ?? 0),
+        events: {
+          sent: Number(summary.inapp.webpush.events?.sent ?? 0),
+          failed: Number(summary.inapp.webpush.events?.failed ?? 0),
+          deactivated: Number(summary.inapp.webpush.events?.deactivated ?? 0),
+          skipped: Number(summary.inapp.webpush.events?.skipped ?? 0),
+          unknown: Number(summary.inapp.webpush.events?.unknown ?? 0),
+        },
       }
     : null;
 
@@ -345,7 +337,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
 
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'rgba(255,255,255,.78)' }}>
         <span>dismiss率: {clampedRate}%</span>
-        <span>{dismissed} / {inappTotal} 件（run_id一致）</span>
+        <span>{dismissed} / {inappTotal} 件（summary）</span>
       </div>
 
       <div style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: 'rgba(255,255,255,.72)' }}>
@@ -357,6 +349,10 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         <div style={{ marginTop: '0.6rem', marginBottom: '0.35rem', fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>資産集計（InAppNotification側）</div>
         <div>
           inapp_total={summaryCounters?.inapp_total ?? '—'} / delivered={summaryCounters?.delivered ?? '—'} failed={summaryCounters?.failed ?? '—'} deact={summaryCounters?.deactivated ?? '—'} unknown={summaryCounters?.unknown ?? '—'}
+        </div>
+
+        <div style={{ marginTop: '0.25rem' }}>
+          events: sent={summaryCounters?.events.sent ?? '—'} failed={summaryCounters?.events.failed ?? '—'} deact={summaryCounters?.events.deactivated ?? '—'} skipped={summaryCounters?.events.skipped ?? '—'} unknown={summaryCounters?.events.unknown ?? '—'}
         </div>
 
         <div style={{ marginTop: '0.5rem', color: 'rgba(255,255,255,.6)' }}>

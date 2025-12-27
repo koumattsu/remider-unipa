@@ -38,3 +38,10 @@ api_router.include_router(
     prefix="/tasks",
     tags=["task_notification_override"],
 )
+
+# ✅ 管理: NotificationRun（cron実行の監査ログ）
+api_router.include_router(
+    notification_runs.router,
+    prefix="/admin",
+    tags=["admin"],
+)

@@ -9,11 +9,12 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Index,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
-from app.db.base import Base
+from app.db.base import Base, is_sqlite
 
 class InAppNotification(Base):
     __tablename__ = "in_app_notifications"
@@ -77,7 +78,7 @@ class InAppNotification(Base):
     body = Column(Text, nullable=False)
     deep_link = Column(String(512), nullable=False)
 
-    extra = Column(JSONB, nullable=True)
+    extra = Column(JSON if is_sqlite else JSONB, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),

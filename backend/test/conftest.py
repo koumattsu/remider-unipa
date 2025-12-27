@@ -13,7 +13,7 @@ from app.main import app
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.in_app_notification import InAppNotification
-from sqlalchemy import func
+from app.models.notification_run import NotificationRun  
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -29,7 +29,6 @@ class FakeQuery:
         self._is_group_query = False
 
     def filter(self, *args, **kwargs):
-        # dismissed_at isnot(None) が来たら dismissed count 側に寄せる
         s = " ".join([str(a) for a in args])
         if "dismissed_at" in s and ("IS NOT" in s or "is not" in s):
             self._is_dismissed_query = True
@@ -37,7 +36,6 @@ class FakeQuery:
 
     def with_entities(self, *ents):
         s = " ".join([str(e) for e in ents])
-        # group by 用の status_expr / label が入るとだいたい "status" が混ざる
         if "status" in s:
             self._is_group_query = True
         return self
@@ -45,27 +43,79 @@ class FakeQuery:
     def group_by(self, *args, **kwargs):
         return self
 
+    # ✅ 追加
+    def order_by(self, *args, **kwargs):
+        return self
+
+    # ✅ 追加
+    def first(self):
+        # NotificationRun.latest 用のダミー（attribute accessされるのでオブジェクトで返す）
+        return getattr(self, "_first_obj", None)
+
     def scalar(self):
-        # count(*) 系
         return self._dismissed if self._is_dismissed_query else self._total
 
     def all(self):
-        # group by status の rows
+        if self._is_group_query:
+            return [("sent", 3), ("failed", 1), (None, 1)]
         return self._rows
 
+class _FakeInApp:
+    def __init__(self, dismissed_at=None, extra=None):
+        self.dismissed_at = dismissed_at
+        self.extra = extra
 
 class FakeSession:
     def __init__(self):
-        # テストデータ（必要ならここだけ変える）
         self.total = 5
         self.dismissed = 2
-        # status None は unknown に寄ることを確認したい
-        self.rows = [("sent", 3), ("failed", 1), (None, 1)]
+        from datetime import datetime, timezone
+        self.rows = [
+            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "sent", "sent": 1}}),
+            _FakeInApp(dismissed_at=datetime(2025, 1, 1, tzinfo=timezone.utc), extra={"webpush": {"status": "failed", "failed": 1}}),
+            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "deactivated", "deactivated": 1}}),
+            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "skipped"}}),
+            _FakeInApp(dismissed_at=None, extra=None),  # unknown になるケース
+        ]
 
     def query(self, model):
-        # 今回は InAppNotification のみ想定（他が来たら落とす）
-        assert model is InAppNotification
-        return FakeQuery(total=self.total, dismissed=self.dismissed, rows=self.rows)
+        if model is InAppNotification:
+            return FakeQuery(
+                total=self.total,
+                dismissed=self.dismissed,
+                rows=self.rows,
+            )
+        if model is NotificationRun:
+            q = FakeQuery(
+                total=0,
+                dismissed=0,
+                rows=[],
+            )
+
+            # ✅ latest_notification_run() が参照する属性を揃えたダミー
+            from datetime import datetime, timezone
+
+            q._first_obj = NotificationRun(
+                id=1,
+                status="success",
+                error_summary=None,
+                users_processed=3,
+                due_candidates_total=10,
+                morning_candidates_total=5,
+                inapp_created=2,
+                webpush_sent=2,
+                webpush_failed=1,
+                webpush_deactivated=0,
+                line_sent=0,
+                line_failed=0,
+                started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                finished_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                stats={"snapshot": {"any": "ok"}},  # latestでは返さないがモデル上あってOK
+            )
+
+            return q
+
+        raise AssertionError(f"Unexpected model: {model}")
 
 @pytest.fixture()
 def client():

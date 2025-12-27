@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-
 from app.db.session import get_db
 from app.models.notification_run import NotificationRun
 from app.models.in_app_notification import InAppNotification

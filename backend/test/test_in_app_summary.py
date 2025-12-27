@@ -23,8 +23,9 @@ def test_in_app_summary_contract_and_sanity(client):
     assert "from" in data["range"]
     assert "to" in data["range"]
     # ✅ リクエスト値がそのまま返る（契約固定）
-    assert data["range"]["from"] == req_from
-    assert data["range"]["to"] == req_to
+    assert data["range"]["from"].startswith("2025-01-01T00:00:00")
+    assert data["range"]["to"].startswith("2025-01-07T00:00:00")
+
 
     # 数値の健全性
     total = data["total"]

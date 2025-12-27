@@ -34,12 +34,14 @@ class FakeQuery:
         return self
 
     def with_entities(self, *ents):
-        s = " ".join([str(e) for e in ents])
-        if "status" in s:
+        # ✅ (status, cnt) のように複数カラムなら集計モード
+        if len(ents) >= 2:
             self._is_group_query = True
         return self
 
+
     def group_by(self, *args, **kwargs):
+        self._is_group_query = True
         return self
 
     # ✅ 追加
@@ -55,35 +57,99 @@ class FakeQuery:
         return self._dismissed if self._is_dismissed_query else self._total
 
     def all(self):
-        # group_by(status) のときは (status, cnt) を返す
+        # ✅ 集計クエリ（in-app summary）
         if self._is_group_query:
-            return self._rows  # ← ここは [(status, cnt), ...]
-        # ✅ 非集計（/admin/.../summary や /in-app 一覧など）は InAppNotification オブジェクト群を返したい
+            return [
+                ("sent", 1),
+                ("failed", 1),
+                ("deactivated", 1),
+                ("skipped", 1),
+                (None, 1),
+            ]
+
+        # ✅ 通知一覧（run summary / run in-app）
         return getattr(self, "_items", [])
 
+        
+    def limit(self, *args, **kwargs):
+        return self
+
 class _FakeInApp:
-    def __init__(self, dismissed_at=None, extra=None):
+    def __init__(
+        self,
+        id: int,
+        run_id: int,
+        kind: str = "webpush",
+        title: str = "t",
+        body: str = "b",
+        deep_link: str = "/#/dashboard?tab=today",
+        task_id: int | None = None,
+        deadline_at_send=None,
+        offset_hours: int | None = None,
+        created_at=None,
+        dismissed_at=None,
+        extra=None,
+    ):
+        self.id = id
+        self.run_id = run_id
+        self.kind = kind
+        self.title = title
+        self.body = body
+        self.deep_link = deep_link
+        self.task_id = task_id
+        self.deadline_at_send = deadline_at_send
+        self.offset_hours = offset_hours
+        self.created_at = created_at
         self.dismissed_at = dismissed_at
         self.extra = extra
+
 
 class FakeSession:
     def __init__(self):
         self.total = 5
         self.dismissed = 2
         from datetime import datetime, timezone
+        now = datetime(2025, 1, 6, tzinfo=timezone.utc)
         self.inapp_items = [
-            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "sent", "sent": 1}}),
-            _FakeInApp(dismissed_at=datetime(2025, 1, 1, tzinfo=timezone.utc), extra={"webpush": {"status": "failed", "failed": 1}}),
-            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "deactivated", "deactivated": 1}}),
-            _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "skipped"}}),
-            _FakeInApp(dismissed_at=None, extra=None),  # unknown になるケース
+            _FakeInApp(
+                id=101, run_id=1,
+                created_at=now,
+                deadline_at_send=now,
+                extra={"webpush": {"status": "sent", "sent": 1}},
+            ),
+            _FakeInApp(
+                id=102, run_id=1,
+                created_at=now,
+                deadline_at_send=now,
+                dismissed_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                extra={"webpush": {"status": "failed", "failed": 1}},
+            ),
+            _FakeInApp(
+                id=103, run_id=1,
+                created_at=now,
+                deadline_at_send=now,
+                extra={"webpush": {"status": "deactivated", "deactivated": 1}},
+            ),
+            _FakeInApp(
+                id=104, run_id=1,
+                created_at=now,
+                deadline_at_send=now,
+                extra={"webpush": {"status": "skipped"}},
+            ),
+            _FakeInApp(
+                id=105, run_id=1,
+                created_at=now,
+                deadline_at_send=now,
+                extra=None,  # unknown
+            ),
         ]
+
         # ✅ 集計API（/notifications/in-app/summary）の group_by が期待する形
         self.group_rows = [("sent", 1), ("failed", 1), (None, 1)]
 
     def query(self, model):
         if model is InAppNotification:
-            q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=self.group_rows)
+            q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=[])
             q._items = self.inapp_items
             return q
         if model is NotificationRun:

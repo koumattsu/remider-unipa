@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.models.notification_run import NotificationRun
 from app.models.in_app_notification import InAppNotification
 from app.services.webpush_aggregate import calc_webpush_events_for_run
+from app.services.in_app_summary_aggregate import calc_in_app_summary_for_run
 
 router = APIRouter(tags=["admin"])
 
@@ -143,37 +144,23 @@ def get_run_summary(
     if not r:
         raise HTTPException(status_code=404, detail="run not found")
 
-    items = (
-        db.query(InAppNotification)
-        .filter(InAppNotification.run_id == run_id)
-        .all()
-    )
+    summary = calc_in_app_summary_for_run(db, run_id)
 
-    inapp_total = len(items)
+    inapp_total = summary["inapp_total"]
 
     # 反応（dismiss）
-    dismissed_count = sum(1 for n in items if n.dismissed_at is not None)
+    dismissed_count = summary["dismissed_count"]
     dismiss_rate = round((dismissed_count / inapp_total) * 100) if inapp_total else 0
 
     # 配信（subscription単位 counts）
-    delivered = 0
-    failed = 0
-    deactivated = 0
-    unknown = 0
+    delivered = summary["delivered"]
+    failed = summary["failed"]
+    deactivated = summary["deactivated"]
+    unknown = summary["unknown"]
 
+    # ✅ イベント軸（通知レコード単位）は SSOT
     events = calc_webpush_events_for_run(db, run_id)
 
-    for n in items:
-        extra = n.extra or {}
-        wp = extra.get("webpush")
-        if not isinstance(wp, dict):
-            unknown += 1
-            continue
-
-        delivered += int(wp.get("sent", 0) or 0)
-        failed += int(wp.get("failed", 0) or 0)
-        deactivated += int(wp.get("deactivated", 0) or 0)
-        
     return {
         "run": {
             "id": r.id,

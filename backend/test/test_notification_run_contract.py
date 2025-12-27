@@ -178,4 +178,3 @@ def test_notification_run_summary_contract(client):
     else:
         expected = round(inapp["dismissed_count"] / inapp["total"] * 100)
         assert abs(inapp["dismiss_rate"] - expected) <= 1
-

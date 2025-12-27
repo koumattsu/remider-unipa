@@ -301,8 +301,7 @@ def get_latest_notification_run(db: Session = Depends(get_db)):
         },
     }
 
-
-@router.get("/notification-runs")
+@router.get("/migrate/notification-runs")
 def list_notification_runs(
     limit: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),

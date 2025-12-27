@@ -9,6 +9,7 @@ from app.schemas.in_app_notification import (
     InAppNotificationSummaryResponse,
 )
 from app.db.session import get_db
+from app.db.base import is_sqlite
 from app.core.security import get_current_user
 from app.models.user import User
 from app.models.in_app_notification import InAppNotification
@@ -153,9 +154,17 @@ async def summarize_in_app_notifications(
 
     dismiss_rate = round((dismissed / total) * 100) if total else 0
 
-    # ✅ webpush status をDBで group by（JSONB）
-    # extra->'webpush'->>'status' が取れない/NULL は unknown に寄せる
-    status_expr = InAppNotification.extra["webpush"]["status"].astext
+    # ✅ webpush status をDBで group by（SQLite/Postgres 両対応）
+    if is_sqlite:
+        # SQLite: JSON1拡張（$.webpush.status）
+        status_expr = func.json_extract(InAppNotification.extra, "$.webpush.status")
+    else:
+        # Postgres: JSONB
+        status_expr = func.jsonb_extract_path_text(
+            InAppNotification.extra,
+            "webpush",
+            "status",
+        )
 
     rows = (
         base.with_entities(status_expr.label("status"), func.count(InAppNotification.id).label("cnt"))

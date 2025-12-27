@@ -1,6 +1,7 @@
 # backend/app/models/notification_run.py
 from sqlalchemy import Column, Integer, DateTime, String, Text, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.types import JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base, is_sqlite
 
@@ -47,5 +48,5 @@ class NotificationRun(Base):
     # 監査/再現用スナップショット
     # - Postgres: JSONB
     # - SQLite(テスト/ローカル): JSON（JSONBがcompileできないため）
-    stats = Column(JSON if is_sqlite else JSONB, nullable=True)
+    stats = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True, index=True)

@@ -1,4 +1,4 @@
-# backend/tests/conftest.py
+# backend/test/conftest.py
 
 import os
 import sys
@@ -29,11 +29,24 @@ class FakeQuery:
 
         self._is_dismissed_query = False
         self._is_group_query = False
+        self._eq_filters: dict[str, object] = {}
 
     def filter(self, *args, **kwargs):
         s = " ".join([str(a) for a in args])
         if "dismissed_at" in s and ("IS NOT" in s or "is not" in s):
             self._is_dismissed_query = True
+        # ✅ 通常の where 条件（例: NotificationRun.id == 999999）を拾う
+        for a in args:
+            # SQLAlchemy BinaryExpression (left == right)
+            left = getattr(a, "left", None)
+            right = getattr(a, "right", None)
+            if left is None or right is None:
+                continue
+            key = getattr(left, "key", None) or getattr(left, "name", None)
+            # right は BindParameter になってることが多い
+            val = getattr(right, "value", None)
+            if key is not None and val is not None:
+                self._eq_filters[key] = val
         return self
 
     def with_entities(self, *ents):
@@ -43,7 +56,7 @@ class FakeQuery:
         return self
     
     def one_or_none(self):
-        items = getattr(self, "_items", [])
+        items = self._apply_filters(getattr(self, "_items", []))
         if not items:
             return None
         if len(items) == 1:
@@ -53,18 +66,17 @@ class FakeQuery:
     def group_by(self, *args, **kwargs):
         self._is_group_query = True
         return self
-
-    # ✅ 追加
-    def order_by(self, *args, **kwargs):
-        return self
     
     def order_by(self, *args, **kwargs):
         return self
 
-    # ✅ 追加
     def first(self):
-        # NotificationRun.latest 用のダミー（attribute accessされるのでオブジェクトで返す）
-        return getattr(self, "_first_obj", None)
+        fo = getattr(self, "_first_obj", None)
+        if fo is not None and not self._eq_filters:
+            return fo
+
+        items = self._apply_filters(getattr(self, "_items", []))
+        return items[0] if items else None
 
     def scalar(self):
         return self._dismissed if self._is_dismissed_query else self._total
@@ -81,9 +93,22 @@ class FakeQuery:
             ]
 
         # ✅ 通知一覧（run summary / run in-app）
-        return getattr(self, "_items", [])
-
-        
+        return self._apply_filters(getattr(self, "_items", []))
+    
+    def _apply_filters(self, items):
+        if not self._eq_filters:
+            return items
+        out = []
+        for it in items:
+            ok = True
+            for k, v in self._eq_filters.items():
+                if getattr(it, k, None) != v:
+                    ok = False
+                    break
+            if ok:
+                out.append(it)
+        return out
+  
     def limit(self, *args, **kwargs):
         return self
 
@@ -176,7 +201,7 @@ class FakeSession:
             # ✅ latest_notification_run() が参照する属性を揃えたダミー
             from datetime import datetime, timezone
 
-            q._first_obj = NotificationRun(
+            dummy = NotificationRun(
                 id=1,
                 status="success",
                 error_summary=None,
@@ -193,6 +218,8 @@ class FakeSession:
                 finished_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 stats={"snapshot": {"any": "ok"}},  # latestでは返さないがモデル上あってOK
             )
+            q._first_obj = dummy
+            q._items = [dummy]
             return q
         
         if model is WebPushSubscription:

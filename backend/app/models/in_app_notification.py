@@ -14,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
-from app.db.base import Base, is_sqlite
+from app.db.base import Base
 
 class InAppNotification(Base):
     __tablename__ = "in_app_notifications"
@@ -78,7 +78,10 @@ class InAppNotification(Base):
     body = Column(Text, nullable=False)
     deep_link = Column(String(512), nullable=False)
 
-    extra = Column(JSON if is_sqlite else JSONB, nullable=True)
+    extra = Column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=True,
+    )
 
     created_at = Column(
         DateTime(timezone=True),
@@ -87,5 +90,5 @@ class InAppNotification(Base):
     )
 
     dismissed_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    user = relationship("User")
+    user = relationship("User", overlaps="in_app_notifications")
     task = relationship("Task")

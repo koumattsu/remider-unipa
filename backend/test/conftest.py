@@ -8,7 +8,6 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 import pytest
 from fastapi.testclient import TestClient
-
 from app.main import app
 from app.db.session import get_db
 from app.core.security import get_current_user
@@ -56,9 +55,11 @@ class FakeQuery:
         return self._dismissed if self._is_dismissed_query else self._total
 
     def all(self):
+        # group_by(status) のときは (status, cnt) を返す
         if self._is_group_query:
-            return [("sent", 3), ("failed", 1), (None, 1)]
-        return self._rows
+            return self._rows  # ← ここは [(status, cnt), ...]
+        # ✅ 非集計（/admin/.../summary や /in-app 一覧など）は InAppNotification オブジェクト群を返したい
+        return getattr(self, "_items", [])
 
 class _FakeInApp:
     def __init__(self, dismissed_at=None, extra=None):
@@ -70,21 +71,21 @@ class FakeSession:
         self.total = 5
         self.dismissed = 2
         from datetime import datetime, timezone
-        self.rows = [
+        self.inapp_items = [
             _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "sent", "sent": 1}}),
             _FakeInApp(dismissed_at=datetime(2025, 1, 1, tzinfo=timezone.utc), extra={"webpush": {"status": "failed", "failed": 1}}),
             _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "deactivated", "deactivated": 1}}),
             _FakeInApp(dismissed_at=None, extra={"webpush": {"status": "skipped"}}),
             _FakeInApp(dismissed_at=None, extra=None),  # unknown になるケース
         ]
+        # ✅ 集計API（/notifications/in-app/summary）の group_by が期待する形
+        self.group_rows = [("sent", 1), ("failed", 1), (None, 1)]
 
     def query(self, model):
         if model is InAppNotification:
-            return FakeQuery(
-                total=self.total,
-                dismissed=self.dismissed,
-                rows=self.rows,
-            )
+            q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=self.group_rows)
+            q._items = self.inapp_items
+            return q
         if model is NotificationRun:
             q = FakeQuery(
                 total=0,

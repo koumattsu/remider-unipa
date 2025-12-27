@@ -8,11 +8,14 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 import pytest
 from fastapi.testclient import TestClient
+from datetime import datetime, timezone
 from app.main import app
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.in_app_notification import InAppNotification
-from app.models.notification_run import NotificationRun  
+from app.models.notification_run import NotificationRun
+from app.models.notification_setting import NotificationSetting
+from app.models.webpush_subscription import WebPushSubscription
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -38,13 +41,23 @@ class FakeQuery:
         if len(ents) >= 2:
             self._is_group_query = True
         return self
-
+    
+    def one_or_none(self):
+        items = getattr(self, "_items", [])
+        if not items:
+            return None
+        if len(items) == 1:
+            return items[0]
+        raise AssertionError("Expected at most one row")
 
     def group_by(self, *args, **kwargs):
         self._is_group_query = True
         return self
 
     # ✅ 追加
+    def order_by(self, *args, **kwargs):
+        return self
+    
     def order_by(self, *args, **kwargs):
         return self
 
@@ -82,7 +95,7 @@ class _FakeInApp:
         kind: str = "webpush",
         title: str = "t",
         body: str = "b",
-        deep_link: str = "/#/dashboard?tab=today",
+        deep_link: str = "/dashboard?tab=today",
         task_id: int | None = None,
         deadline_at_send=None,
         offset_hours: int | None = None,
@@ -103,9 +116,10 @@ class _FakeInApp:
         self.dismissed_at = dismissed_at
         self.extra = extra
 
-
 class FakeSession:
     def __init__(self):
+        self._added = []
+        self._id_seq = 1000
         self.total = 5
         self.dismissed = 2
         from datetime import datetime, timezone
@@ -170,19 +184,73 @@ class FakeSession:
                 due_candidates_total=10,
                 morning_candidates_total=5,
                 inapp_created=2,
-                webpush_sent=2,
+                webpush_sent=1,
                 webpush_failed=1,
-                webpush_deactivated=0,
+                webpush_deactivated=1,
                 line_sent=0,
                 line_failed=0,
                 started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 finished_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 stats={"snapshot": {"any": "ok"}},  # latestでは返さないがモデル上あってOK
             )
-
             return q
+        
+        if model is WebPushSubscription:
+            class _Q:
+                def __init__(self, items):
+                    self._items = items
+
+                def filter(self, *args, **kwargs):
+                    return self
+                
+                def order_by(self, *args, **kwargs):
+                    return self
+
+                def limit(self, *args, **kwargs):
+                    return self
+
+                def one_or_none(self):
+                    return self._items[0] if self._items else None
+
+                def all(self):
+                    return self._items
+
+            # upsert 前は空、add() 後は _added に入る
+            subs = [x for x in self._added if isinstance(x, WebPushSubscription)]
+            return _Q(subs)
+            
+        if model is NotificationSetting:
+            class _FakeSetting:
+                def __init__(self):
+                    self.enable_webpush = True  # ← debug-send を通したいので True
+
+            class _Q:
+                def filter(self, *args, **kwargs):
+                    return self
+
+                def one_or_none(self):
+                    return _FakeSetting()
+
+            return _Q()
 
         raise AssertionError(f"Unexpected model: {model}")
+
+    def add(self, obj):
+        # DBがやることを再現
+        if getattr(obj, "id", None) is None:
+            obj.id = self._id_seq
+            self._id_seq += 1
+
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = datetime.now(timezone.utc)
+
+        self._added.append(obj)
+
+    def commit(self):
+        pass
+
+    def refresh(self, obj):
+        pass
 
 @pytest.fixture()
 def client():

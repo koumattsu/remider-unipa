@@ -25,6 +25,7 @@ from app.services.line_client import (
 )
 from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 from app.services.webpush_sender import WebPushSender
+from app.services.webpush_aggregate import calc_webpush_events_for_run
 
 router = APIRouter()
 
@@ -518,15 +519,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.due_candidates_total = due_candidates_total
         run.morning_candidates_total = morning_candidates_total
         run.inapp_created = inapp_created
-        run.webpush_sent = webpush_sent
-        run.webpush_failed = webpush_failed
-        run.webpush_deactivated = webpush_deactivated
-
-        # ==============================
-        # snapshot（M&A耐性: run時点の事実を固定）
-        # - dismiss は後から変わるので含めない
-        # - DB集計（全件ロード排除）
-        # ==============================
         snapshot = None
         try:
             inapp_total = int(
@@ -554,6 +546,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 key = st if st in events else "unknown"
                 events[key] += int(cnt or 0)
 
+            # ✅ SSOT: webpush_* は events から確定させる（途中加算は信用しない）
+            webpush_sent = int(events["sent"])
+            webpush_failed = int(events["failed"])
+            webpush_deactivated = int(events["deactivated"])
+
             snapshot = {
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "inapp_total": inapp_total,
@@ -565,6 +562,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "error": (f"{type(e).__name__}: {str(e)}")[:300],
             }
+
+        # ✅ ここで run に入れる（SSOT確定後）
+        run.webpush_sent = webpush_sent
+        run.webpush_failed = webpush_failed
+        run.webpush_deactivated = webpush_deactivated
 
         run.stats = {
             "build": "2025-12-25-cron-v2",

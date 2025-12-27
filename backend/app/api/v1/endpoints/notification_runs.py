@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.notification_run import NotificationRun
 from app.models.in_app_notification import InAppNotification
+from app.services.webpush_aggregate import calc_webpush_events_for_run
 
 router = APIRouter(tags=["admin"])
 
@@ -69,7 +70,6 @@ def get_notification_run(
         "started_at": r.started_at.isoformat() if r.started_at else None,
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
     }
-
 
 @router.get("/notification-runs/latest")
 def latest_notification_run(db: Session = Depends(get_db)):
@@ -161,37 +161,19 @@ def get_run_summary(
     deactivated = 0
     unknown = 0
 
-    # 配信（イベント単位 status）
-    events_sent = 0
-    events_failed = 0
-    events_deactivated = 0
-    events_skipped = 0
-    events_unknown = 0
+    events = calc_webpush_events_for_run(db, run_id)
 
     for n in items:
         extra = n.extra or {}
         wp = extra.get("webpush")
         if not isinstance(wp, dict):
             unknown += 1
-            events_unknown += 1
             continue
 
         delivered += int(wp.get("sent", 0) or 0)
         failed += int(wp.get("failed", 0) or 0)
         deactivated += int(wp.get("deactivated", 0) or 0)
-
-        st = wp.get("status")
-        if st == "sent":
-            events_sent += 1
-        elif st == "failed":
-            events_failed += 1
-        elif st == "deactivated":
-            events_deactivated += 1
-        elif st == "skipped":
-            events_skipped += 1
-        else:
-            events_unknown += 1
-
+        
     return {
         "run": {
             "id": r.id,
@@ -210,14 +192,7 @@ def get_run_summary(
                 "failed": failed,
                 "deactivated": deactivated,
                 "unknown": unknown,
-                # イベント軸（通知レコード単位）
-                "events": {
-                    "sent": events_sent,
-                    "failed": events_failed,
-                    "deactivated": events_deactivated,
-                    "skipped": events_skipped,
-                    "unknown": events_unknown,
-                },
+                "events": events,
             },
         },
         "run_counters": {

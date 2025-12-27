@@ -87,6 +87,11 @@ def test_notification_run_snapshot_contract(client):
     assert "stats" in run
     assert run["stats"] is None or isinstance(run["stats"], dict)
 
+    # ✅ 追加契約: stats が dict の場合は snapshot を必ず含む（監査耐性）
+    if isinstance(run["stats"], dict):
+        assert "snapshot" in run["stats"]
+        assert isinstance(run["stats"]["snapshot"], dict)
+
 def test_notification_run_summary_contract(client):
     """
     契約テスト: /admin/notification-runs/{run_id}/summary の shape を固定する
@@ -118,6 +123,11 @@ def test_notification_run_summary_contract(client):
     assert run["started_at"] is None or isinstance(run["started_at"], str)
     assert run["finished_at"] is None or isinstance(run["finished_at"], str)
     assert run["stats"] is None or isinstance(run["stats"], dict)
+
+    # ✅ 追加契約: stats が dict の場合は snapshot を必ず含む（監査耐性）
+    if isinstance(run["stats"], dict):
+        assert "snapshot" in run["stats"]
+        assert isinstance(run["stats"]["snapshot"], dict)
 
     # inapp
     inapp = data["inapp"]
@@ -152,3 +162,20 @@ def test_notification_run_summary_contract(client):
     for k in counters.keys():
         assert isinstance(counters[k], int)
         assert counters[k] >= 0
+
+    # ✅ 追加契約: summary 内のカウンタ整合性（監査耐性）
+    assert counters["webpush_sent"] == events["sent"]
+    assert counters["webpush_failed"] == events["failed"]
+    assert counters["webpush_deactivated"] == events["deactivated"]
+
+    # ✅ 追加契約: inapp total と events の弱い整合（将来拡張を殺さない）
+    events_sum = sum(events.values())
+    assert events_sum <= inapp["total"]
+
+    # ✅ 追加契約: dismiss_rate は概ね整合（丸め誤差 ±1 を許容）
+    if inapp["total"] == 0:
+        assert inapp["dismiss_rate"] == 0
+    else:
+        expected = round(inapp["dismissed_count"] / inapp["total"] * 100)
+        assert abs(inapp["dismiss_rate"] - expected) <= 1
+

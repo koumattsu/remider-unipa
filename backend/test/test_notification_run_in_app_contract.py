@@ -49,6 +49,11 @@ def test_notification_run_in_app_contract(client):
         assert isinstance(n["title"], str)
         assert isinstance(n["body"], str)
 
+        # ✅ deep_link 契約固定：通知タップで Today に飛べること
+        assert isinstance(n["deep_link"], str)
+        assert n["deep_link"].startswith("/dashboard")
+        assert "tab=today" in n["deep_link"]
+
         assert n["deadline_at_send"] is None or isinstance(n["deadline_at_send"], str)
         assert n["created_at"] is None or isinstance(n["created_at"], str)
         assert n["dismissed_at"] is None or isinstance(n["dismissed_at"], str)

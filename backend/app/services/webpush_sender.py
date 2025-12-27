@@ -22,6 +22,23 @@ class WebPushSender:
     @staticmethod
     def _utcnow():
         return datetime.now(timezone.utc)
+    
+    @staticmethod
+    def _is_enabled_for_user(db: Session, user_id: int) -> bool:
+        """
+        Web Push がユーザー設定で有効かどうか
+        - NotificationSetting.enable_webpush を唯一の判定源にする
+        - 設定が無い場合は False（安全側）
+        """
+        setting = (
+            db.query(NotificationSetting)
+            .filter(NotificationSetting.user_id == user_id)
+            .one_or_none()
+        )
+        if not setting:
+            return False
+        return bool(setting.enable_webpush)
+
 
     @staticmethod
     def _send_payload(

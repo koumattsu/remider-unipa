@@ -219,6 +219,7 @@ def get_tasks_due_in_offsets(
     offsets: List[int],
     *,
     run_id: int | None = None,
+    debug: Dict[str, int] | None = None,
 ) -> Dict[int, List[Task]]:
     """
     ✅ 1回のDB取得 + 1回の走査で、offsetごとの通知対象を返す
@@ -281,6 +282,9 @@ def get_tasks_due_in_offsets(
         )
 
         if not decision.should_send:
+            if debug is not None:
+                k = f"decision.{decision.reason}"
+                debug[k] = debug.get(k, 0) + 1
             logger.info(
                 "[notify-skip] user_id=%s task_id=%s reason=%s",
                 user_id, task.id, decision.reason
@@ -340,12 +344,16 @@ def get_tasks_due_in_offsets(
                     continue
                 # ✅ 1時間前も送信前ロックで二重送信を構造的に防止
                 if override_mode == "disabled":
+                    if debug is not None:
+                        debug["decision.skipped:override_disabled"] = debug.get("decision.skipped:override_disabled", 0) + 1
                     logger.info(
                         "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
                         user_id, task.id, deadline_utc.isoformat(), diff_hours
                     )
                     continue
                 if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h, run_id=run_id):
+                    if debug is not None:
+                        debug["decision.skipped:already_locked"] = debug.get("decision.skipped:already_locked", 0) + 1
                     logger.info(
                         "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
                         user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
@@ -355,6 +363,8 @@ def get_tasks_due_in_offsets(
                     "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
                     user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
                 )
+                if debug is not None:
+                    debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
                 due_map[h].append(task)
             else:
                 # 従来ルール（±30分）
@@ -414,6 +424,7 @@ def get_tasks_due_today_morning(
     user_id: int,
     *,
     run_id: int | None = None,
+    debug: Dict[str, int] | None = None,
 ) -> List[Task]:
     """
     ✅ 内部UTC、判定はJSTの「今日」
@@ -459,6 +470,9 @@ def get_tasks_due_today_morning(
             offset_hours=0,       # ✅ 朝通知 = 0
         )
         if not decision.should_send:
+            if debug is not None:
+                k = f"decision.{decision.reason}"
+                debug[k] = debug.get(k, 0) + 1
             logger.info(
                 "[morning-skip] user_id=%s task_id=%s reason=%s",
                 user_id, task.id, decision.reason
@@ -470,6 +484,9 @@ def get_tasks_due_today_morning(
 
         if label_date == today_jst:
             if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0, run_id=run_id):
+                if debug is not None:
+                    debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
+
                 result.append(task)
     return result
 
@@ -499,6 +516,10 @@ def collect_notification_candidates(
         if h > 0:
             normalized_offsets.append(h)
 
+    debug_counts: Dict[str, int] = {
+        "offsets_count": len(normalized_offsets),
+    }
+
     due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
         db,
         user_id=user_id,
@@ -510,17 +531,16 @@ def collect_notification_candidates(
         db,
         user_id=user_id,
         run_id=run_id,
+        debug=debug_counts,
     )
 
     total_due = sum(len(v) for v in due_map.values())
 
+    debug_counts["due_total"] = total_due
+    debug_counts["morning_total"] = len(morning_tasks)
 
     return NotificationCandidates(
         due_in_hours=due_map,
         morning=morning_tasks,
-        debug={
-            "offsets_count": len(normalized_offsets),
-            "due_total": total_due,
-            "morning_total": len(morning_tasks),
-        },
+        debug=debug_counts,
     )

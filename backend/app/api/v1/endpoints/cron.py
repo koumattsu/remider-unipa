@@ -198,6 +198,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
     webpush_deactivated = 0
     line_sent = 0
     line_failed = 0
+    # ✅ decision reason 集計（SSOT由来）
+    decision_counts: Dict[str, int] = {}
 
     try:
         # 内部の基準はUTC、ログ表示はJST
@@ -275,6 +277,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 offsets_hours=normalized_offsets,
                 run_id=run.id,
             )
+            # ✅ reason 集計（notification.py 側の logger と同一コード体系）
+            for k, v in (cands.debug or {}).items():
+                if not (isinstance(k, str) and isinstance(v, int)):
+                    continue
+                if not k.startswith("decision."):
+                    continue
+                reason = k[len("decision."):]
+                decision_counts[reason] = decision_counts.get(reason, 0) + v
             had_any_candidate = False
             for h, ts in cands.due_in_hours.items():
                 due_candidates_total += len(ts)
@@ -578,6 +588,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 "users_processed": users_processed,
                 "users_with_candidates": users_with_candidates,
                 "snapshot": snapshot,
+                "decision_counts": decision_counts,
             },
         }
 

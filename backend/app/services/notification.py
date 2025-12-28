@@ -365,6 +365,7 @@ def get_tasks_due_in_offsets(
                 )
                 if debug is not None:
                     debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
+                    debug[f"task_reason:{task.id}"] = decision.reason
                 due_map[h].append(task)
             else:
                 # 従来ルール（±30分）
@@ -429,7 +430,6 @@ def get_tasks_due_today_morning(
     """
     ✅ 内部UTC、判定はJSTの「今日」
     """
-
     now_utc = datetime.now(timezone.utc)
     today_jst = now_utc.astimezone(JST).date()
     now_jst = now_utc.astimezone(JST)
@@ -486,7 +486,7 @@ def get_tasks_due_today_morning(
             if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0, run_id=run_id):
                 if debug is not None:
                     debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
-
+                    debug[f"task_reason:{task.id}"] = decision.reason
                 result.append(task)
     return result
 
@@ -514,33 +514,32 @@ def collect_notification_candidates(
         except (TypeError, ValueError):
             continue
         if h > 0:
-            normalized_offsets.append(h)
+            normalized_offsets.append(h)      
 
-    debug_counts: Dict[str, int] = {
-        "offsets_count": len(normalized_offsets),
-    }
+    debug: Dict[str, int] = {"offsets_count": len(normalized_offsets)}        
 
     due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
         db,
         user_id=user_id,
         offsets=normalized_offsets,
         run_id=run_id,
+        debug=debug,
     )
 
     morning_tasks = get_tasks_due_today_morning(
         db,
         user_id=user_id,
         run_id=run_id,
-        debug=debug_counts,
+        debug=debug,
     )
 
     total_due = sum(len(v) for v in due_map.values())
 
-    debug_counts["due_total"] = total_due
-    debug_counts["morning_total"] = len(morning_tasks)
+    debug["due_total"] = total_due
+    debug["morning_total"] = len(morning_tasks)
 
     return NotificationCandidates(
         due_in_hours=due_map,
         morning=morning_tasks,
-        debug=debug_counts,
+        debug=debug,
     )

@@ -315,6 +315,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 for task in tasks_3h:
                     deadline_at_send = to_utc(task.deadline)
                     dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                    reason = None
+                    if cands.debug:
+                        reason = cands.debug.get(f"task_reason:{task.id}")
+
                     n = _upsert_in_app_notification(
                         db=db,
                         run_id=run.id,
@@ -328,6 +332,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deep_link="/dashboard?tab=today",
                     )
                     if n:
+                        n.extra = {
+                            **(n.extra or {}),
+                            "reason": reason,
+                        }
                         created_inapps.append(n)
                         inapp_created += 1
 
@@ -423,6 +431,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 for task in tasks_today:
                     deadline_at_send = to_utc(task.deadline)
                     dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+                    reason = None
+                    if cands.debug:
+                        reason = cands.debug.get(f"task_reason:{task.id}")
                     n = _upsert_in_app_notification(
                         db=db,
                         run_id=run.id,
@@ -436,9 +447,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deep_link="/dashboard?tab=today",
                     )
                     if n:
+                        n.extra = {
+                            **(n.extra or {}),
+                            "reason": reason,
+                        }
                         created_morning.append(n)
                         inapp_created += 1
-
                 if created_morning:
                     db.commit()
 
@@ -865,7 +879,8 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
         # ③ outcome 判定（completed_at が deadline までにあれば done）
         completed_at = t.completed_at
         outcome = "done" if (completed_at is not None and completed_at <= deadline) else "missed"
-
+        if outcome == "missed":
+            t.should_notify = False
         db.add(
             TaskOutcomeLog(
                 user_id=user_id,

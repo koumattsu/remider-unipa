@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from app.models.task import Task
-from app.models.task_notification_log import TaskNotificationLog
 from app.models.task_notification_override import TaskNotificationOverride
 from app.models.weekly_task import WeeklyTask
+from app.models.task_notification_log import TaskNotificationLog
+from app.services.notification_decision import NotificationDecision  # ✅ 追加
 import logging
 from zoneinfo import ZoneInfo
 
@@ -120,6 +121,59 @@ def is_notification_candidate(
         return False
     return True
 
+def decide_notification(
+    *,
+    task: Task,
+    weekly_is_active: bool | None,
+    now_utc: datetime,
+    override: TaskNotificationOverride | None,
+    base_offsets: List[int],
+    offset_hours: int | None = None,
+) -> NotificationDecision:
+    """
+    SSOT（Phase 1）：
+    - 通知「候補」かどうかだけを判定する
+    - DBロック・diff_hours 判定は含めない（最小diff）
+    """
+
+    # ⓪ ソフトデリート
+    if task.deleted_at is not None:
+        return NotificationDecision(False, "skipped:soft_deleted", [])
+
+    # ① 完了
+    if task.is_done:
+        return NotificationDecision(False, "skipped:completed", [])
+
+    # ② should_notify（None は True 扱い）
+    if task.should_notify is False:
+        return NotificationDecision(False, "skipped:task_notify_disabled", [])
+
+    # ③ weekly active
+    if task.weekly_task_id is not None:
+        if weekly_is_active is not True:
+            return NotificationDecision(False, "skipped:weekly_inactive", [])
+
+    # ④ 締切が未来か（UTC）
+    deadline_utc = to_utc(task.deadline)
+    if deadline_utc < now_utc:
+        return NotificationDecision(False, "skipped:deadline_passed", [])
+
+    # ⑤ override（三値）
+    # - offset_hours が 0（朝通知）の場合は [0] をベースに扱う
+    effective_offsets = [0] if offset_hours == 0 else base_offsets
+
+    if override:
+        ro = override.reminder_offsets_hours
+        if ro is None:
+            # 継承：朝なら [0]、時間前なら base_offsets
+            effective_offsets = [0] if offset_hours == 0 else base_offsets
+        elif isinstance(ro, list) and len(ro) == 0:
+            return NotificationDecision(False, "skipped:override_disabled", [])
+        else:
+            effective_offsets = ro
+
+    return NotificationDecision(True, "candidate:offset_window", effective_offsets)
+
 def has_notification_been_sent(
     db: Session,
     user_id: int,
@@ -208,9 +262,31 @@ def get_tasks_due_in_offsets(
     )
 
     for task, weekly_is_active in candidates:
-        # ✅ 通知対象の共通判定（唯一の真実に寄せる）
-        if not is_notification_candidate(task, weekly_is_active, now_utc):
+        # override の取得（既存のまま）
+        override = (
+            db.query(TaskNotificationOverride)
+            .filter(
+                TaskNotificationOverride.user_id == user_id,
+                TaskNotificationOverride.task_id == task.id,
+            )
+            .first()
+        )
+
+        decision = decide_notification(
+            task=task,
+            weekly_is_active=weekly_is_active,
+            now_utc=now_utc,
+            override=override,
+            base_offsets=normalized,
+        )
+
+        if not decision.should_send:
+            logger.info(
+                "[notify-skip] user_id=%s task_id=%s reason=%s",
+                user_id, task.id, decision.reason
+            )
             continue
+
 
         deadline_utc = to_utc(task.deadline)
         diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
@@ -231,8 +307,8 @@ def get_tasks_due_in_offsets(
         # - reminder_offsets_hours is None: 継承（グローバル offsets）
         # - reminder_offsets_hours == []: 通知OFF
         # - reminder_offsets_hours == [..]: カスタム
-        effective_offsets = normalized
-        override_mode = "inherit"
+        effective_offsets = decision.effective_offsets
+        override_mode = "custom" if override else "inherit"
 
         if override:
             ro = override.reminder_offsets_hours
@@ -365,10 +441,29 @@ def get_tasks_due_today_morning(
     result: List[Task] = []
 
     for task, weekly_is_active in candidates:
-        if not is_notification_candidate(task, weekly_is_active, now_utc):
-            continue
+        override = (
+            db.query(TaskNotificationOverride)
+            .filter(
+                TaskNotificationOverride.user_id == user_id,
+                TaskNotificationOverride.task_id == task.id,
+            )
+            .first()
+        )
 
-        effective_deadline_jst = deadline_jst_effective(task.deadline)
+        decision = decide_notification(
+            task=task,
+            weekly_is_active=weekly_is_active,
+            now_utc=now_utc,
+            override=override,
+            base_offsets=[],      # ✅ 朝は使わない
+            offset_hours=0,       # ✅ 朝通知 = 0
+        )
+        if not decision.should_send:
+            logger.info(
+                "[morning-skip] user_id=%s task_id=%s reason=%s",
+                user_id, task.id, decision.reason
+            )
+            continue
 
         label_date = deadline_label_date_jst(task.deadline)
         deadline_utc = to_utc(task.deadline)

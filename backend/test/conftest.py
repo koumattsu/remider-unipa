@@ -216,8 +216,16 @@ class FakeSession:
                 line_failed=0,
                 started_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
                 finished_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
-                stats={"snapshot": {"any": "ok"}},  # latestでは返さないがモデル上あってOK
+                stats={
+                    "v": 1,
+                    "kind": "notification_run_stats",
+                    "generated_at": datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat(),
+                    "payload": {
+                        "snapshot": {"any": "ok"},
+                    },
+                },  # latestでは返さないがモデル上あってOK
             )
+
             q._first_obj = dummy
             q._items = [dummy]
             return q

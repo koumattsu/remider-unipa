@@ -8,4 +8,5 @@ from app.models.task_notification_log import TaskNotificationLog  # noqa: F401
 from app.models.task_outcome_log import TaskOutcomeLog  # noqa: F401
 from app.models.in_app_notification import InAppNotification  # noqa: F401
 from app.models.webpush_subscription import WebPushSubscription  # noqa: F401
-from app.models.notification_run import NotificationRun
+from app.models.notification_run import NotificationRun  # noqa: F401
+from app.models.webpush_delivery import WebPushDelivery  # noqa: F401

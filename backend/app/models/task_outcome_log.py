@@ -13,16 +13,13 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 
-
 class TaskOutcomeLog(Base):
     """
     タスクの「締切到達時点」の結果を保存するテーブル。
-
     ✅ 分析の唯一の真実：
     - 締切（deadline）に対して「その時点で完了していたか」を1回だけ確定保存する
     - 締切後の完了/締切延長/復活があっても、このログは不変
     """
-
     __tablename__ = "task_outcome_logs"
     __table_args__ = (
         UniqueConstraint(

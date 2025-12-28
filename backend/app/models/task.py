@@ -12,9 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
 from app.db.base import Base
-
 from app.models.task_notification_override import TaskNotificationOverride
 from app.models.weekly_task import WeeklyTask
 
@@ -24,7 +22,6 @@ class Task(Base):
         # ユーザーごとの締切順ソート用 Index（元のまま）
         Index("ix_tasks_user_deadline", "user_id", "deadline"),
     )
-
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
@@ -48,22 +45,17 @@ class Task(Base):
         onupdate=func.now(),
         nullable=False,
     )
-
     # ✅ ソフトデリート
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
-
     # リレーションシップ
     user = relationship("User", back_populates="tasks")
-    
     # 🔔 通知ログ
     notification_logs = relationship(
         "TaskNotificationLog",
         back_populates="task",
         cascade="all, delete-orphan",
     )
-
     outcome_logs = relationship("TaskOutcomeLog", back_populates="task")
-
     notification_override = relationship(
         "TaskNotificationOverride",
         back_populates="task",
@@ -71,5 +63,4 @@ class Task(Base):
         cascade="all, delete-orphan",  # ★追加
         passive_deletes=True,          # ★追加（DB側CASCADEに任せる）
     )
-
     weekly_task = relationship("WeeklyTask", back_populates="generated_tasks")

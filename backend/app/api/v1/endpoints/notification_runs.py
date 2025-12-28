@@ -164,6 +164,7 @@ def get_run_summary(
     events = calc_webpush_events_for_run(db, run_id)
 
     return {
+        "summary_v": 1,
         "run": {
             "id": r.id,
             "status": r.status,
@@ -176,7 +177,6 @@ def get_run_summary(
             "dismissed_count": dismissed_count,
             "dismiss_rate": dismiss_rate,
             "webpush": {
-                # subscription軸（件数）
                 "delivered": delivered,
                 "failed": failed,
                 "deactivated": deactivated,

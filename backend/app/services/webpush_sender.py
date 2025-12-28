@@ -8,6 +8,7 @@ from pywebpush import webpush, WebPushException
 from app.core.config import settings
 from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
+from app.models.webpush_delivery import WebPushDelivery
 from app.models.in_app_notification import InAppNotification
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,6 @@ class WebPushSender:
     - 判定ロジックは持たない
     - InAppNotification（イベント資産）をそのまま push payload にする
     """
-
     @staticmethod
     def _utcnow():
         return datetime.now(timezone.utc)
@@ -39,13 +39,14 @@ class WebPushSender:
             return False
         return bool(setting.enable_webpush)
 
-
     @staticmethod
     def _send_payload(
         db: Session,
         *,
         user_id: int,
         payload: dict,
+        in_app_notification_id: int | None = None,
+        run_id: int | None = None,
     ) -> dict:
         """
         任意payloadをユーザーの全subscriptionへ送る（判定は持たない）
@@ -90,6 +91,20 @@ class WebPushSender:
                 db.add(sub)
                 dirty = True
                 sent += 1
+                # ✅ attempt（成功）
+                if in_app_notification_id is not None:
+                    db.add(
+                        WebPushDelivery(
+                            run_id=run_id,
+                            in_app_notification_id=in_app_notification_id,
+                            user_id=user_id,
+                            subscription_id=sub.id,
+                            status="sent",
+                            http_status=201,
+                            attempted_at=now,
+                        )
+                    )
+                    dirty = True
                 logger.info("[webpush] ok user_id=%s sub_id=%s", user_id, sub.id)
 
             except WebPushException as e:
@@ -107,9 +122,35 @@ class WebPushSender:
                         sub.id,
                         status,
                     )
+                    if in_app_notification_id is not None:
+                        db.add(
+                            WebPushDelivery(
+                                run_id=run_id,
+                                in_app_notification_id=in_app_notification_id,
+                                user_id=user_id,
+                                subscription_id=sub.id,
+                                status="deactivated",
+                                http_status=status,
+                                attempted_at=now,
+                            )
+                        )
+                        dirty = True
                     continue
-
                 failed += 1
+                if in_app_notification_id is not None:
+                    db.add(
+                        WebPushDelivery(
+                            run_id=run_id,
+                            in_app_notification_id=in_app_notification_id,
+                            user_id=user_id,
+                            subscription_id=sub.id,
+                            status="failed",
+                            http_status=status,
+                            error_summary=str(e)[:255],
+                            attempted_at=now,
+                        )
+                    )
+                    dirty = True
                 logger.warning(
                     "[webpush] failed user_id=%s sub_id=%s status=%s err=%s",
                     user_id,
@@ -137,7 +178,13 @@ class WebPushSender:
             "url": notification.deep_link,
             "deep_link": notification.deep_link,
         }
-        return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
+        return WebPushSender._send_payload(
+            db,
+            user_id=user_id,
+            payload=payload,
+            in_app_notification_id=notification.id,
+            run_id=notification.run_id,
+        )
 
     @staticmethod
     def send_debug(

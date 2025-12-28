@@ -87,10 +87,16 @@ def test_notification_run_snapshot_contract(client):
     assert "stats" in run
     assert run["stats"] is None or isinstance(run["stats"], dict)
 
-    # ✅ 追加契約: stats が dict の場合は snapshot を必ず含む（監査耐性）
+    # ✅ 高価値契約: stats は SSOT ではないため payload は自由に進化できる
+    # 固定するのはヘッダのみ（破壊的変更の検知 + 進化の阻害を避ける）
     if isinstance(run["stats"], dict):
-        assert "snapshot" in run["stats"]
-        assert isinstance(run["stats"]["snapshot"], dict)
+        for k in ["v", "kind", "generated_at", "payload"]:
+            assert k in run["stats"]
+
+        assert isinstance(run["stats"]["v"], int)
+        assert isinstance(run["stats"]["kind"], str)
+        assert isinstance(run["stats"]["generated_at"], str)
+        assert isinstance(run["stats"]["payload"], dict)
 
 def test_notification_run_summary_contract(client):
     """
@@ -111,8 +117,9 @@ def test_notification_run_summary_contract(client):
     data = res.json()
     assert isinstance(data, dict)
 
-    # top-level keys
-    assert set(data.keys()) == {"run", "inapp", "run_counters"}
+    # top-level keys（summary_v を導入して進化を許容）
+    assert set(data.keys()) == {"summary_v", "run", "inapp", "run_counters"}
+    assert data["summary_v"] == 1
 
     # run
     run = data["run"]
@@ -124,10 +131,15 @@ def test_notification_run_summary_contract(client):
     assert run["finished_at"] is None or isinstance(run["finished_at"], str)
     assert run["stats"] is None or isinstance(run["stats"], dict)
 
-    # ✅ 追加契約: stats が dict の場合は snapshot を必ず含む（監査耐性）
+    # ✅ 高価値契約: stats は補助データ。ヘッダのみ固定し、payloadは自由に進化可能
     if isinstance(run["stats"], dict):
-        assert "snapshot" in run["stats"]
-        assert isinstance(run["stats"]["snapshot"], dict)
+        for k in ["v", "kind", "generated_at", "payload"]:
+            assert k in run["stats"]
+
+        assert isinstance(run["stats"]["v"], int)
+        assert isinstance(run["stats"]["kind"], str)
+        assert isinstance(run["stats"]["generated_at"], str)
+        assert isinstance(run["stats"]["payload"], dict)
 
     # inapp
     inapp = data["inapp"]
@@ -178,3 +190,18 @@ def test_notification_run_summary_contract(client):
     else:
         expected = round(inapp["dismissed_count"] / inapp["total"] * 100)
         assert abs(inapp["dismiss_rate"] - expected) <= 1
+
+    # stats.payload.snapshot.webpush_events のキー集合は固定（SSOTと一致）
+    if isinstance(run["stats"], dict):
+        payload = run["stats"].get("payload") or {}
+        snapshot = payload.get("snapshot") or {}
+        events = snapshot.get("webpush_events")
+
+        if isinstance(events, dict):
+            assert set(events.keys()) == {
+                "sent",
+                "failed",
+                "deactivated",
+                "skipped",
+                "unknown",
+            }

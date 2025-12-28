@@ -526,8 +526,19 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
                     results["morning"] += len(tasks_today)
 
-        notified = (results["three_hours_before"] > 0) or (results["morning"] > 0)
-        return {"notified": notified, "detail": results}
+        # API 表示用に名前を正規化（内部ロジックには触らない）
+        detail = {}
+        for k, v in results.items():
+            if k == "three_hours_before":
+                detail["offset_1h"] = v   # ← 今の設計実態に合わせた名前
+            else:
+                detail[k] = v
+
+        notified = any(
+            k.startswith("offset_") and v > 0 for k, v in detail.items()
+        ) or detail.get("morning", 0) > 0
+
+        return {"notified": notified, "detail": detail}
 
     except Exception as e:
         db.rollback()

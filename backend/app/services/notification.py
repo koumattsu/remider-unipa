@@ -85,7 +85,6 @@ def deadline_label_date_jst(dt: datetime) -> date:
         label = label - timedelta(days=1)
     return label
 
-
 def is_notification_candidate(
     task: Task,
     weekly_is_active: bool | None,
@@ -172,7 +171,78 @@ def decide_notification(
         else:
             effective_offsets = ro
 
+    # Phase 2（SSOT拡張）：
+    # - offset_hours が指定されている場合は「そのoffsetで今送るべきか」まで判定する
+    # - DBロックは呼び出し側で実施（try_mark_notification_as_sent）
+    if offset_hours is not None:
+        try:
+            h = int(offset_hours)
+        except (TypeError, ValueError):
+            return NotificationDecision(False, "skipped:invalid_offset", [])
+
+        if h <= 0:
+            return NotificationDecision(False, "skipped:invalid_offset", [])
+
+        # このoffsetが有効か
+        if h not in (effective_offsets or []):
+            return NotificationDecision(False, "skipped:offset_not_enabled", [])
+
+        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
+
+        # 通知ウィンドウ判定（既存ロジックをSSOTに移管）
+        if h == 1:
+            # 90分前〜60分前
+            if not (1.0 <= diff_hours <= 1.5):
+                return NotificationDecision(False, "skipped:offset_window_outside", [])
+        else:
+            # ±30分
+            if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
+                return NotificationDecision(False, "skipped:offset_window_outside", [])
+
+        return NotificationDecision(True, "send:offset_hit", effective_offsets)
+
+    # offset_hours 未指定の場合は「候補」だけ返す（Phase1のまま）
     return NotificationDecision(True, "candidate:offset_window", effective_offsets)
+
+def decide_notification_and_lock(
+    *,
+    db: Session,
+    user_id: int,
+    run_id: int | None,
+    task: Task,
+    weekly_is_active: bool | None,
+    now_utc: datetime,
+    override: TaskNotificationOverride | None,
+    base_offsets: List[int],
+    offset_hours: int,
+) -> NotificationDecision:
+    """
+    SSOT（Phase 3）：
+    - decide_notification()（候補/override/window）を呼ぶ
+    - should_send=True のときだけ try_mark_notification_as_sent() で送信前ロックを獲得する
+    - ロック獲得できなければ skipped:already_locked
+    """
+
+    d = decide_notification(
+        task=task,
+        weekly_is_active=weekly_is_active,
+        now_utc=now_utc,
+        override=override,
+        base_offsets=base_offsets,
+        offset_hours=offset_hours,
+    )
+    if not d.should_send:
+        return d
+
+    # ✅ ロックは “送るべき” と判定できた場合のみ
+    deadline_utc = to_utc(task.deadline)
+    if not try_mark_notification_as_sent(
+        db, user_id, task.id, deadline_utc, int(offset_hours), run_id=run_id
+    ):
+        return NotificationDecision(False, "skipped:already_locked", d.effective_offsets)
+
+    return d
+
 
 def has_notification_been_sent(
     db: Session,
@@ -291,41 +361,10 @@ def get_tasks_due_in_offsets(
             )
             continue
 
-
         deadline_utc = to_utc(task.deadline)
         diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
-
-        # override の取得（※ここはまだ1件ずつ。次の最適化でJOINに変えられる）
-        override = (
-            db.query(TaskNotificationOverride)
-            .filter(
-                TaskNotificationOverride.user_id == user_id,
-                TaskNotificationOverride.task_id == task.id,
-            )
-            .first()
-        )
-
-        # override があればそれを優先、なければグローバル offsets
-        #
-        # ✅ M&A前提の仕様（三値）
-        # - reminder_offsets_hours is None: 継承（グローバル offsets）
-        # - reminder_offsets_hours == []: 通知OFF
-        # - reminder_offsets_hours == [..]: カスタム
+        # ✅ SSOT: effective_offsets は decide_notification() の結果のみを信頼する
         effective_offsets = decision.effective_offsets
-        override_mode = "custom" if override else "inherit"
-
-        if override:
-            ro = override.reminder_offsets_hours
-            if ro is None:
-                effective_offsets = normalized
-                override_mode = "inherit"
-            elif isinstance(ro, list) and len(ro) == 0:
-                effective_offsets = []
-                override_mode = "disabled"
-            else:
-                effective_offsets = ro
-                override_mode = "custom"
-
         for offset in effective_offsets or []:
             try:
                 h = int(offset)
@@ -334,63 +373,37 @@ def get_tasks_due_in_offsets(
             if h <= 0:
                 continue
 
-            # =========================
-            # 通知ウィンドウ判定
-            # =========================
-            if h == 1:
-                # 1時間前通知：
-                # 90分前〜60分前 の間に入ったら送る
-                if not (1.0 <= diff_hours <= 1.5):
-                    continue
-                # ✅ 1時間前も送信前ロックで二重送信を構造的に防止
-                if override_mode == "disabled":
-                    if debug is not None:
-                        debug["decision.skipped:override_disabled"] = debug.get("decision.skipped:override_disabled", 0) + 1
-                    logger.info(
-                        "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
-                        user_id, task.id, deadline_utc.isoformat(), diff_hours
-                    )
-                    continue
-                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h, run_id=run_id):
-                    if debug is not None:
-                        debug["decision.skipped:already_locked"] = debug.get("decision.skipped:already_locked", 0) + 1
-                    logger.info(
-                        "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
-                        user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
-                    )
-                    continue
-                logger.info(
-                    "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
-                    user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
-                )
+            offset_decision = decide_notification_and_lock(
+                db=db,
+                user_id=user_id,
+                run_id=run_id,
+                task=task,
+                weekly_is_active=weekly_is_active,
+                now_utc=now_utc,
+                override=override,
+                base_offsets=normalized,
+                offset_hours=h,
+            )
+
+            if not offset_decision.should_send:
                 if debug is not None:
-                    debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
-                    debug[f"task_reason:{task.id}"] = decision.reason
-                due_map[h].append(task)
-            else:
-                # 従来ルール（±30分）
-                if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
-                    continue
-
-                if override_mode == "disabled":
-                    logger.info(
-                        "[due-skip] disabled_by_override user_id=%s task_id=%s deadline_utc=%s diff_hours=%.3f",
-                        user_id, task.id, deadline_utc.isoformat(), diff_hours
-                    )
-                    continue
-
-                if not try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, h, run_id=run_id):
-                    logger.info(
-                        "[due-skip] already_locked user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
-                        user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
-                    )
-                    continue
-
+                    k = f"decision.{offset_decision.reason}"
+                    debug[k] = debug.get(k, 0) + 1
                 logger.info(
-                    "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f override_mode=%s",
-                    user_id, task.id, h, deadline_utc.isoformat(), diff_hours, override_mode
+                    "[due-skip] user_id=%s task_id=%s offset=%s reason=%s deadline_utc=%s diff_hours=%.3f",
+                    user_id, task.id, h, offset_decision.reason, deadline_utc.isoformat(), diff_hours
                 )
-                due_map[h].append(task)
+                continue
+
+            logger.info(
+                "[due-hit] user_id=%s task_id=%s offset=%s deadline_utc=%s diff_hours=%.3f",
+                user_id, task.id, h, deadline_utc.isoformat(), diff_hours
+            )
+            if debug is not None:
+                debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
+                debug[f"task_reason:{task.id}"] = decision.reason
+            due_map[h].append(task)
+
     return dict(due_map)
 
 # ================================

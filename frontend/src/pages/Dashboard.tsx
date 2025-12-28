@@ -132,6 +132,51 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
   );
 };
 
+type LatestRunResponse =
+  | { found: false; run: null }
+  | {
+      found: true;
+      run: {
+        id: number;
+        status: string;
+        started_at: string | null;
+        finished_at: string | null;
+        users_processed: number;
+        users_with_candidates: number;
+        due_candidates_total: number;
+        morning_candidates_total: number;
+        inapp_created: number;
+        webpush_sent: number;
+        webpush_failed: number;
+        webpush_deactivated: number;
+        line_sent: number;
+        line_failed: number;
+        stats?: {
+          v?: number;
+          kind?: string;
+          generated_at?: string;
+          payload?: {
+            decision_counts?: Record<string, number>;
+            [k: string]: any;
+          };
+          [k: string]: any;
+        } | null;
+      };
+    };
+
+const fetchLatestNotificationRun = async (): Promise<LatestRunResponse> => {
+  const res = await fetch(
+    `${import.meta.env.VITE_API_BASE_URL}/api/v1/admin/notification-runs/latest`,
+    { credentials: 'include' }
+  );
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`latest run fetch failed: ${res.status} ${t}`);
+  }
+  return (await res.json()) as LatestRunResponse;
+};
+
+
 // タブ
 type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings' | 'notifications';
 type AllViewMode = 'active' | 'overdue' | 'incomplete';
@@ -198,6 +243,12 @@ export const Dashboard: React.FC = () => {
   const [notifs, setNotifs] = useState<InAppNotification[]>([]);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [notifsError, setNotifsError] = useState<string | null>(null);
+  // 🛠 最新 NotificationRun（admin用）
+  const [latestRun, setLatestRun] = useState<LatestRunResponse | null>(null);
+  const [latestRunLoading, setLatestRunLoading] = useState(false);
+  const [latestRunError, setLatestRunError] = useState<string | null>(null);
+  const [showRunDetails, setShowRunDetails] = useState(false);
+  const [showAllReasons, setShowAllReasons] = useState(false);
 
     // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -282,14 +333,24 @@ export const Dashboard: React.FC = () => {
     (async () => {
       setNotifsLoading(true);
       setNotifsError(null);
+      setLatestRunLoading(true);
+      setLatestRunError(null);
       try {
-        const items = await fetchInAppNotifications(50);
-        if (!cancelled) setNotifs(items);
+        const [items, run] = await Promise.all([
+          fetchInAppNotifications(50),
+          fetchLatestNotificationRun(),
+        ]);
+        if (!cancelled) {
+          setNotifs(items);
+          setLatestRun(run);
+        }
       } catch (e) {
         console.error('通知一覧の取得に失敗しました:', e);
         if (!cancelled) setNotifsError('通知の取得に失敗しました');
+        if (!cancelled) setLatestRunError('最新Cronの取得に失敗しました');
       } finally {
         if (!cancelled) setNotifsLoading(false);
+        if (!cancelled) setLatestRunLoading(false);
       }
     })();
 
@@ -442,14 +503,23 @@ export const Dashboard: React.FC = () => {
                 onClick={async () => {
                   setNotifsLoading(true);
                   setNotifsError(null);
+                  setLatestRunLoading(true);
+                  setLatestRunError(null);
+
                   try {
-                    const items = await fetchInAppNotifications(50);
+                    const [items, run] = await Promise.all([
+                      fetchInAppNotifications(50),
+                      fetchLatestNotificationRun(),
+                    ]);
                     setNotifs(items);
+                    setLatestRun(run);
                   } catch (e) {
                     console.error('通知の更新に失敗:', e);
-                    alert('通知の更新に失敗しました');
+                    setNotifsError('通知の更新に失敗しました');
+                    setLatestRunError('最新Cronの取得に失敗しました');
                   } finally {
                     setNotifsLoading(false);
+                    setLatestRunLoading(false);
                   }
                 }}
                 style={{
@@ -462,6 +532,180 @@ export const Dashboard: React.FC = () => {
               >
                 ↻ 更新
               </button>
+            </div>
+            {/* 🛠 最新Cron（内部用） */}
+            <div
+              style={{
+                marginBottom: '0.9rem',
+                borderRadius: '1rem',
+                border: '1px solid rgba(255,255,255,.12)',
+                background: 'rgba(255,255,255,.04)',
+                padding: '0.85rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>
+                  🛠 最新Cron（監査）
+                </div>
+
+                <button
+                  onClick={() => setShowRunDetails((p) => !p)}
+                  style={{
+                    height: '2.2rem',
+                    padding: '0 0.75rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid rgba(255,255,255,.15)',
+                    background: 'rgba(255,255,255,.06)',
+                    color: 'white',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {showRunDetails ? '閉じる' : '開く'}
+                </button>
+              </div>
+
+              {latestRunLoading && (
+                <div style={{ marginTop: '0.6rem', opacity: 0.7 }}>
+                  読み込み中...
+                </div>
+              )}
+              {latestRunError && (
+                <div style={{ marginTop: '0.6rem', color: '#ff8a8a' }}>
+                  {latestRunError}
+                </div>
+              )}
+
+              {!latestRunLoading && !latestRunError && showRunDetails && latestRun?.found && (
+                (() => {
+                  const r = latestRun.run;
+                  const decisionCounts = r.stats?.payload?.decision_counts ?? {};
+                  const entries = Object.entries(decisionCounts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+
+                  const sent = entries.filter(([k]) => k.startsWith('sent:'));
+                  const skipped = entries.filter(([k]) => k.startsWith('skipped:'));
+                  const other = entries.filter(([k]) => !k.startsWith('sent:') && !k.startsWith('skipped:'));
+
+                  const topN = (xs: [string, number][], n: number) =>
+                    showAllReasons ? xs : xs.slice(0, n);
+
+                  const Row = ({ k, v }: { k: string; v: number }) => (
+                    <div
+                      key={k}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        padding: '0.35rem 0',
+                        borderTop: '1px solid rgba(255,255,255,.06)',
+                      }}
+                    >
+                      <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.78rem', opacity: 0.9 }}>
+                        {k}
+                      </div>
+                      <div style={{ fontWeight: 800 }}>{v}</div>
+                    </div>
+                  );
+
+                  return (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                        run_id: <b>{r.id}</b> / status: <b>{r.status}</b>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: '0.25rem' }}>
+                        started: {r.started_at ? new Date(r.started_at).toLocaleString() : '-'}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+                        {[
+                          ['users_processed', r.users_processed],
+                          ['users_with_candidates', r.users_with_candidates],
+                          ['due_total', r.due_candidates_total],
+                          ['morning_total', r.morning_candidates_total],
+                        ].map(([k, v]) => (
+                          <div
+                            key={String(k)}
+                            style={{
+                              padding: '0.35rem 0.55rem',
+                              borderRadius: '0.75rem',
+                              border: '1px solid rgba(255,255,255,.12)',
+                              background: 'rgba(255,255,255,.04)',
+                              fontSize: '0.78rem',
+                            }}
+                          >
+                            <span style={{ opacity: 0.7 }}>{k}:</span> <b>{v}</b>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ marginTop: '0.8rem', fontWeight: 800 }}>decision_counts</div>
+
+                      {entries.length === 0 && (
+                        <div style={{ marginTop: '0.4rem', opacity: 0.7 }}>
+                          （データなし）
+                        </div>
+                      )}
+
+                      {sent.length > 0 && (
+                        <div style={{ marginTop: '0.6rem' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, opacity: 0.85 }}>
+                            ✅ sent
+                          </div>
+                          {topN(sent, 5).map(([k, v]) => <Row key={k} k={k} v={v} />)}
+                        </div>
+                      )}
+
+                      {skipped.length > 0 && (
+                        <div style={{ marginTop: '0.6rem' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, opacity: 0.85 }}>
+                            ⛔ skipped
+                          </div>
+                          {topN(skipped, 8).map(([k, v]) => <Row key={k} k={k} v={v} />)}
+                        </div>
+                      )}
+
+                      {other.length > 0 && (
+                        <div style={{ marginTop: '0.6rem' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, opacity: 0.85 }}>
+                            ℹ️ other
+                          </div>
+                          {topN(other, 5).map(([k, v]) => <Row key={k} k={k} v={v} />)}
+                        </div>
+                      )}
+
+                      {entries.length > 10 && (
+                        <button
+                          onClick={() => setShowAllReasons((p) => !p)}
+                          style={{
+                            marginTop: '0.7rem',
+                            width: '100%',
+                            padding: '0.55rem 0.75rem',
+                            borderRadius: '0.85rem',
+                            border: '1px solid rgba(255,255,255,.15)',
+                            background: 'rgba(255,255,255,.06)',
+                            color: 'white',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {showAllReasons ? '上位だけ表示' : 'もっと見る'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+
+              {!latestRunLoading && !latestRunError && showRunDetails && latestRun && !latestRun.found && (
+                <div style={{ marginTop: '0.6rem', opacity: 0.7 }}>
+                  NotificationRun が見つかりません
+                </div>
+              )}
             </div>
 
             {notifsLoading && <p style={{ opacity: 0.7 }}>読み込み中...</p>}

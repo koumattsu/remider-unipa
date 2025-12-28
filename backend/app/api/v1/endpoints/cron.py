@@ -591,7 +591,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 "decision_counts": decision_counts,
             },
         }
-
         run.line_sent = line_sent
         run.line_failed = line_failed
 

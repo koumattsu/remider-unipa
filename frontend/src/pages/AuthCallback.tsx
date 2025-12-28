@@ -1,3 +1,5 @@
+// frontend/src/pages/AuthCallback.tsx
+
 import { useEffect, useState } from 'react';
 
 export const AuthCallback = () => {

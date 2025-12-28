@@ -569,12 +569,17 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.webpush_deactivated = webpush_deactivated
 
         run.stats = {
-            "build": "2025-12-25-cron-v2",
-            "now_utc": started_at_utc.isoformat(),
-            "users_total": users_total,
-            "users_processed": users_processed,
-            "users_with_candidates": users_with_candidates,
-            "snapshot": snapshot,
+            "v": 1,
+            "kind": "notification_run_stats",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "payload": {
+                "build": "...",
+                "now_utc": "...",
+                "users_total": ...,
+                "users_processed": ...,
+                "users_with_candidates": ...,
+                "snapshot": snapshot,
+            },
         }
 
         run.line_sent = line_sent

@@ -45,17 +45,13 @@ def list_notification_runs(
         ]
     }
 
-
-@router.get("/notification-runs/{run_id}")
-def get_notification_run(
-    run_id: int,
-    db: Session = Depends(get_db),
-):
-    r = db.query(NotificationRun).filter(NotificationRun.id == run_id).first()
+@router.get("/notification-runs/latest")
+def latest_notification_run(db: Session = Depends(get_db)):
+    r = db.query(NotificationRun).order_by(NotificationRun.id.desc()).first()
     if not r:
         raise HTTPException(status_code=404, detail="not found")
 
-    return {
+    run = {
         "id": r.id,
         "status": r.status,
         "error_summary": r.error_summary,
@@ -70,11 +66,17 @@ def get_notification_run(
         "line_failed": r.line_failed,
         "started_at": r.started_at.isoformat() if r.started_at else None,
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+        "stats": r.stats,  # ← snapshot契約があるならここで載せる
     }
 
-@router.get("/notification-runs/latest")
-def latest_notification_run(db: Session = Depends(get_db)):
-    r = db.query(NotificationRun).order_by(NotificationRun.id.desc()).first()
+    return {"found": True, "run": run}
+
+@router.get("/notification-runs/{run_id}")
+def get_notification_run(
+    run_id: int,
+    db: Session = Depends(get_db),
+):
+    r = db.query(NotificationRun).filter(NotificationRun.id == run_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="not found")
 

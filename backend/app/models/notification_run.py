@@ -24,21 +24,15 @@ class NotificationRun(Base):
     )
 
     error_summary = Column(Text, nullable=True)
-
     users_processed = Column(Integer, nullable=False, default=0)
-
     due_candidates_total = Column(Integer, nullable=False, default=0)
     morning_candidates_total = Column(Integer, nullable=False, default=0)
-
     inapp_created = Column(Integer, nullable=False, default=0)
-
     webpush_sent = Column(Integer, nullable=False, default=0)
     webpush_failed = Column(Integer, nullable=False, default=0)
     webpush_deactivated = Column(Integer, nullable=False, default=0)
-
     line_sent = Column(Integer, nullable=False, default=0)
     line_failed = Column(Integer, nullable=False, default=0)
-
     started_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

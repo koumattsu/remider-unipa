@@ -266,7 +266,7 @@ def backfill_task_notification_logs_deadline_at_send(db: Session = Depends(get_d
     ).scalar() or 0
     return {"status": "ok", "dialect": dialect, "updated": updated, "null_remaining": int(null_count)}
 
-@router.get("/notification-runs/latest")
+@router.get("/migrate/notification-runs/latest")
 def get_latest_notification_run(db: Session = Depends(get_db)):
     """
     観測用（read-only）

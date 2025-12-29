@@ -274,7 +274,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
             cands = collect_notification_candidates(
                 db,
                 user_id=user_id,
-                offsets_hours=normalized_offsets,
+                raw_offsets=raw_offsets,
+                plan=getattr(user, "plan", "free"),
+                now_utc=now_utc,
                 run_id=run.id,
             )
             # ✅ reason 集計（notification.py 側の logger と同一コード体系）
@@ -374,7 +376,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 **(n.extra or {}),
                                 "webpush": {
                                     "status": delivery_status,
-                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "at": now_utc.isoformat(),
                                     "sent": sent_n,
                                     "failed": failed_n,
                                     "deactivated": deactivated_n,
@@ -389,7 +391,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 **(n.extra or {}),
                                 "webpush": {
                                     "status": "failed",
-                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "at": now_utc.isoformat(),
                                     "sent": 0,
                                     "failed": 1,
                                     "deactivated": 0,
@@ -487,7 +489,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 **(n.extra or {}),
                                 "webpush": {
                                     "status": delivery_status,
-                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "at": now_utc.isoformat(),
                                     "sent": sent_n,
                                     "failed": failed_n,
                                     "deactivated": deactivated_n,
@@ -502,7 +504,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 **(n.extra or {}),
                                 "webpush": {
                                     "status": "failed",
-                                    "at": datetime.now(timezone.utc).isoformat(),
+                                    "at": now_utc.isoformat(),
                                     "sent": 0,
                                     "failed": 1,
                                     "deactivated": 0,
@@ -550,7 +552,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.users_processed = users_processed
         run.users_total = users_total
         run.users_with_candidates = users_with_candidates
-        run.duration_ms = int((datetime.now(timezone.utc) - started_at_utc).total_seconds() * 1000)
+        run.duration_ms = int((now_utc - started_at_utc).total_seconds() * 1000)
         run.due_candidates_total = due_candidates_total
         run.morning_candidates_total = morning_candidates_total
         run.inapp_created = inapp_created
@@ -587,14 +589,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
             webpush_deactivated = int(events["deactivated"])
 
             snapshot = {
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": now_utc.isoformat(),
                 "inapp_total": inapp_total,
                 "webpush_events": events,
             }
         except Exception as e:
             # snapshot 失敗でcron全体を落とさない（監査ログは残す）
             snapshot = {
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": now_utc.isoformat(),
                 "error": (f"{type(e).__name__}: {str(e)}")[:300],
             }
 
@@ -605,7 +607,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.stats = {
             "v": 1,
             "kind": "notification_run_stats",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": now_utc.isoformat(),
             "payload": {
                 "build": "2025-12-25-cron-v2",
                 "now_utc": started_at_utc.isoformat(),
@@ -637,8 +639,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 # 候補ゼロなど：正常
                 run.status = "success"
 
-        run.finished_at = datetime.now(timezone.utc)
-
+        run.finished_at = now_utc
         db.add(run)
         db.commit()
 
@@ -907,3 +908,32 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
         db.commit()
 
     return created
+
+def normalize_offsets_for_plan(
+    *,
+    raw_offsets: list[int] | None,
+    plan: str | None,
+) -> list[int]:
+    """
+    SSOT:
+    - free プランは [1] 固定
+    - int化 / <=0 除外 / 重複排除（順序維持）
+    """
+    if plan == "free":
+        offsets = [1]
+    else:
+        offsets = raw_offsets or []
+
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for x in offsets:
+        try:
+            h = int(x)
+        except (TypeError, ValueError):
+            continue
+        if h <= 0 or h in seen:
+            continue
+        seen.add(h)
+        normalized.append(h)
+
+    return normalized

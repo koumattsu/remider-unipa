@@ -52,6 +52,7 @@ def try_mark_notification_as_sent(
     deadline_utc: datetime,
     offset_hours: int,
     *,
+    sent_at_utc: datetime,
     run_id: int | None = None,
 ) -> bool:
     # ✅ 送信前ロックは「このトランザクション内」で確保する（commitは呼び出し側でまとめて行う）
@@ -65,7 +66,7 @@ def try_mark_notification_as_sent(
                 deadline_at_send=deadline_utc,
                 offset_hours=offset_hours,
                 run_id=run_id,
-                sent_at=datetime.now(timezone.utc),
+                sent_at=sent_at_utc,
             )
             db.add(log)
             db.flush()  # ✅ ここで unique 制約を評価させる
@@ -237,12 +238,12 @@ def decide_notification_and_lock(
     # ✅ ロックは “送るべき” と判定できた場合のみ
     deadline_utc = to_utc(task.deadline)
     if not try_mark_notification_as_sent(
-        db, user_id, task.id, deadline_utc, int(offset_hours), run_id=run_id
+        db, user_id, task.id, deadline_utc, int(offset_hours),
+        sent_at_utc=now_utc,
+        run_id=run_id
     ):
         return NotificationDecision(False, "skipped:already_locked", d.effective_offsets)
-
     return d
-
 
 def has_notification_been_sent(
     db: Session,
@@ -288,6 +289,7 @@ def get_tasks_due_in_offsets(
     user_id: int,
     offsets: List[int],
     *,
+    now_utc: datetime,
     run_id: int | None = None,
     debug: Dict[str, int] | None = None,
 ) -> Dict[int, List[Task]]:
@@ -296,7 +298,7 @@ def get_tasks_due_in_offsets(
     - overrides.reminder_offsets_hours があればそれを優先
     - overrides が無ければ引数 offsets を採用
     """
-    now_utc = datetime.now(timezone.utc)
+    # ✅ now_utc は呼び出し元が必ず注入する（SSOT固定）
 
     # offsets を正規化
     normalized: List[int] = []
@@ -415,6 +417,7 @@ def get_tasks_due_in_hours(
     user_id: int,
     hours: int,
     *,
+    now_utc: datetime,
     run_id: int | None = None,
 ) -> List[Task]:
     """
@@ -425,6 +428,7 @@ def get_tasks_due_in_hours(
         db,
         user_id=user_id,
         offsets=[hours],
+        now_utc=now_utc,
         run_id=run_id,
     )
     return due_map.get(hours, [])
@@ -437,13 +441,13 @@ def get_tasks_due_today_morning(
     db: Session,
     user_id: int,
     *,
+    now_utc: datetime,
     run_id: int | None = None,
     debug: Dict[str, int] | None = None,
 ) -> List[Task]:
     """
     ✅ 内部UTC、判定はJSTの「今日」
     """
-    now_utc = datetime.now(timezone.utc)
     today_jst = now_utc.astimezone(JST).date()
     now_jst = now_utc.astimezone(JST)
     start_jst = datetime.combine(today_jst, time(0, 0, 0, tzinfo=JST))
@@ -496,7 +500,11 @@ def get_tasks_due_today_morning(
         deadline_utc = to_utc(task.deadline)
 
         if label_date == today_jst:
-            if try_mark_notification_as_sent(db, user_id, task.id, deadline_utc, 0, run_id=run_id):
+            if try_mark_notification_as_sent(
+                db, user_id, task.id, deadline_utc, 0,
+                sent_at_utc=now_utc,
+                run_id=run_id
+            ):
                 if debug is not None:
                     debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
                     debug[f"task_reason:{task.id}"] = decision.reason
@@ -512,29 +520,76 @@ class NotificationCandidates:
     morning: List[Task]                   # 朝通知タスク
     debug: Dict[str, int]                 # 数だけ（ログ用）
 
-def collect_notification_candidates(
-    db: Session,
-    user_id: int,
-    offsets_hours: List[int],
+def normalize_offsets_for_plan(
     *,
-    run_id: int | None = None,
-) -> NotificationCandidates:
-    # offsets を正規化
-    normalized_offsets: List[int] = []
-    for x in offsets_hours or []:
+    raw_offsets: list[int] | None,
+    plan: str | None,
+) -> list[int]:
+    """
+    SSOT:
+    - free は [1] 固定（朝通知は別ロジック）
+    - int化 / <=0除外 / 重複排除（順序維持）
+    """
+    offsets = raw_offsets or []
+
+    if (plan or "free") == "free":
+        offsets = [1]
+
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for x in offsets:
         try:
             h = int(x)
         except (TypeError, ValueError):
             continue
-        if h > 0:
-            normalized_offsets.append(h)      
+        if h <= 0:
+            continue
+        if h in seen:
+            continue
+        seen.add(h)
+        normalized.append(h)
 
+    return normalized
+
+def collect_notification_candidates(
+    db: Session,
+    user_id: int,
+    offsets_hours: List[int] | None,
+    *,
+    raw_offsets: List[int] | None = None,
+    plan: str | None = None,
+    now_utc: datetime,
+    run_id: int | None = None,
+) -> NotificationCandidates:
+    # ✅ cron以外（API/手動/管理）から呼ばれても動くように
+    # テストは now_utc を渡して固定できる
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+
+    # ✅ SSOT入口：plan + raw_offsets が来たらそれを唯一の真実として採用
+    if raw_offsets is not None or plan is not None:
+        normalized_offsets = normalize_offsets_for_plan(
+            raw_offsets=list(raw_offsets or []),
+            plan=plan,
+        )
+    else:
+        # 互換：従来の offsets_hours を正規化
+        normalized_offsets: List[int] = []
+        for x in offsets_hours or []:
+            try:
+                h = int(x)
+            except (TypeError, ValueError):
+                continue
+            if h > 0:
+                normalized_offsets.append(h)    
+         
     debug: Dict[str, int] = {"offsets_count": len(normalized_offsets)}        
 
     due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
         db,
         user_id=user_id,
         offsets=normalized_offsets,
+        now_utc=now_utc,
         run_id=run_id,
         debug=debug,
     )
@@ -542,6 +597,7 @@ def collect_notification_candidates(
     morning_tasks = get_tasks_due_today_morning(
         db,
         user_id=user_id,
+        now_utc=now_utc,
         run_id=run_id,
         debug=debug,
     )

@@ -10,7 +10,6 @@ from app.db.base import Base
 import app.models  # noqa: F401  # ← Base.metadata に全モデル登録させる
 from app.models.task_notification_log import TaskNotificationLog
 
-
 def _insert_minimal_row(db, table, values: dict):
     """
     できるだけ推測せず、必須カラムだけ埋めて INSERT する。
@@ -109,8 +108,6 @@ def test_task_notification_log_contract__unique_by_user_task_deadline_offset(db)
         deadline_at_send=d1,
         offset_hours=3,
     )
-    db.add(a)
-    db.commit()
 
     b = TaskNotificationLog(
         user_id=1,
@@ -118,7 +115,8 @@ def test_task_notification_log_contract__unique_by_user_task_deadline_offset(db)
         deadline_at_send=d1,
         offset_hours=3,
     )
-    db.add(b)
+
+    db.add_all([a, b])
 
     with pytest.raises(IntegrityError):
         db.commit()
@@ -158,8 +156,10 @@ def test_task_notification_log_contract__different_deadline_is_allowed(db):
         offset_hours=3,
     )
     db.add_all([a, b])
-    db.commit()
 
+    # ✅ 新契約：deadline_at_send が違っても NG（lock は offset 単位で一意）
+    with pytest.raises(IntegrityError):
+        db.commit()
 
 def test_task_notification_log_contract__different_offset_is_allowed(db):
     users = Base.metadata.tables["users"]

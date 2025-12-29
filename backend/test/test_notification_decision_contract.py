@@ -10,7 +10,6 @@ from sqlalchemy.exc import IntegrityError
 from app.models.task import Task
 from app.services import notification as notif
 
-
 # -----------------------------
 # Mini DB / Query (test-local)
 # -----------------------------
@@ -175,7 +174,7 @@ def test_notification_decision_contract__done_past_and_dedupe(fixed_now):
     )
 
     # --- 1st run: due は t_due のみ、past/done は除外 ---
-    c1 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], run_id=1)
+    c1 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], now_utc=now, run_id=1)
 
     assert 1 in c1.due_in_hours
     assert [t.id for t in c1.due_in_hours[1]] == [10]
@@ -189,7 +188,7 @@ def test_notification_decision_contract__done_past_and_dedupe(fixed_now):
     assert 12 not in [t.id for t in c1.morning]
 
     # --- 2nd run: 同じ deadline + offset は dedupe され、t_due は出てこない ---
-    c2 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], run_id=2)
+    c2 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], now_utc=now, run_id=2)
 
     # 2回目はロック済みなので空になる（dedupe 契約）
     assert c2.due_in_hours.get(1, []) == []

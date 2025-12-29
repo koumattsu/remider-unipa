@@ -241,34 +241,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
             evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
 
-            raw_offsets = setting.reminder_offsets_hours
-            offsets_hours = raw_offsets or []
+            # user の通知設定（すでに上で取得してるはず。なければ取得）
+            # ns = db.query(NotificationSetting).filter(...).first()
 
-            # ✅ backend側で無料/有料制約を保証（唯一の真実）
-            # free: 1時間前のみ（朝は別ロジック）
-            if getattr(user, "plan", "free") == "free":
-                offsets_hours = [1]
-            # int化 + <=0除外 + 重複排除（順序維持）
-            normalized_offsets: list[int] = []
-            seen: set[int] = set()
-            for x in offsets_hours:
-                try:
-                    h = int(x)
-                except (TypeError, ValueError):
-                    continue
-                if h <= 0:
-                    continue
-                if h in seen:
-                    continue
-                seen.add(h)
-                normalized_offsets.append(h)
-
-            print("[daily] user_id=", user_id,
-                "raw_offsets=", raw_offsets,
-                "offsets_hours=", offsets_hours,
-                "normalized_offsets=", normalized_offsets,
-                "enable_morning=", setting.enable_morning_notification,
-                "digest_time=", setting.daily_digest_time)
+            raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])
+            # 安全網：空ならデフォルト1時間前
+            if not raw_offsets:
+                raw_offsets = [1]
 
             # ✅ 判定も送信も「正規化後 offset」で統一
             cands = collect_notification_candidates(
@@ -300,12 +279,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if had_any_candidate:
                 users_with_candidates += 1
 
-            for h in normalized_offsets:
-                print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
+            offsets = sorted(cands.due_in_hours.keys())
 
+            for h in offsets:
+                print("[daily] user_id=", user_id, "due_count@", h, "=", len(cands.due_in_hours.get(h, [])))
             # ---------- ① 「○時間前」通知 ----------
-            # ✅ 送信ループも正規化済みのoffsetで回す（判定とズレないようにする）
-            offsets = normalized_offsets
 
             for hours in offsets:
                 tasks_3h = cands.due_in_hours.get(hours, [])
@@ -908,32 +886,3 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
         db.commit()
 
     return created
-
-def normalize_offsets_for_plan(
-    *,
-    raw_offsets: list[int] | None,
-    plan: str | None,
-) -> list[int]:
-    """
-    SSOT:
-    - free プランは [1] 固定
-    - int化 / <=0 除外 / 重複排除（順序維持）
-    """
-    if plan == "free":
-        offsets = [1]
-    else:
-        offsets = raw_offsets or []
-
-    normalized: list[int] = []
-    seen: set[int] = set()
-    for x in offsets:
-        try:
-            h = int(x)
-        except (TypeError, ValueError):
-            continue
-        if h <= 0 or h in seen:
-            continue
-        seen.add(h)
-        normalized.append(h)
-
-    return normalized

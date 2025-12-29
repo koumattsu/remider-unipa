@@ -5,6 +5,7 @@ from typing import Optional, Literal
 from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
+from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
 Bucket = Literal["week", "month"]
 
@@ -139,6 +140,100 @@ def build_outcome_missed_by_course(
             "timezone": "Asia/Tokyo",
             "from": from_deadline,
             "to": to_deadline,
+        },
+        "items": items,
+    }
+
+def build_outcome_training_set(
+    db: Session,
+    *,
+    user_id: int,
+    feature_version: str,
+    from_deadline: Optional[datetime],
+    to_deadline: Optional[datetime],
+    limit: int,
+) -> dict:
+    """
+    ✅ 教師データSSOT（read-only）
+    - OutcomeLog（教師ラベル）× FeatureSnapshot（特徴量資産）を束ねる
+    - JOINせずに 2クエリ + map（FakeSession / テスト容易性 / 事故回避）
+    - from/to は deadline 基準（UTCのdatetimeを想定）
+    """
+    # 1) ラベル（OutcomeLog）
+    q = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
+
+    if from_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline >= from_deadline)
+    if to_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
+
+    logs = (
+        q.order_by(TaskOutcomeLog.deadline.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not logs:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "version": feature_version,
+                "from": from_deadline,
+                "to": to_deadline,
+                "limit": limit,
+            },
+            "items": [],
+        }
+
+    # 2) 特徴量（FeatureSnapshot）
+    #    UNIQUE(user_id, task_id, deadline, feature_version) 前提で 1件に決まる
+    task_ids = [l.task_id for l in logs]
+    deadlines = [l.deadline for l in logs]
+
+    fq = (
+        db.query(OutcomeFeatureSnapshot)
+        .filter(OutcomeFeatureSnapshot.user_id == user_id)
+        .filter(OutcomeFeatureSnapshot.feature_version == feature_version)
+        .filter(OutcomeFeatureSnapshot.task_id.in_(task_ids))
+        .filter(OutcomeFeatureSnapshot.deadline.in_(deadlines))
+    )
+
+    # from/to も同じ条件を入れておく（安全側）
+    if from_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline >= from_deadline)
+    if to_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline <= to_deadline)
+
+    snaps = fq.all()
+
+    snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
+        (s.task_id, s.deadline): s for s in snaps
+    }
+
+    # 3) 返却（ログ順を維持して決定的に）
+    items: list[dict] = []
+    for l in logs:
+        s = snap_map.get((l.task_id, l.deadline))
+        if s is None:
+            # ✅ 特徴量が無いものは training から除外（学習不能なので）
+            continue
+        items.append(
+            {
+                "task_id": l.task_id,
+                "deadline": l.deadline,
+                "outcome": l.outcome,
+                "feature_version": s.feature_version,
+                "features": s.features,
+            }
+        )
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "version": feature_version,
+            "from": from_deadline,
+            "to": to_deadline,
+            "limit": limit,
         },
         "items": items,
     }

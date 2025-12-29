@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.services.outcome_analytics import build_outcome_summary, build_outcome_missed_by_course
+from app.services.outcome_analytics import (
+    build_outcome_summary,
+    build_outcome_missed_by_course,
+    build_outcome_training_set,
+)
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
 router = APIRouter()
@@ -98,3 +102,27 @@ def list_outcome_feature_snapshots(
             for r in rows
         ],
     }
+
+@router.get("/outcomes/training", response_model=dict)
+def get_outcome_training_set(
+    version: str = Query("v1"),
+    from_: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    OutcomeLog（教師ラベル）× OutcomeFeatureSnapshot（特徴量）を束ねて返す（read-only）
+    - from/to は deadline 基準
+    - version は feature_version（例: v1）
+    - features のキーは固定しない（進化耐性）
+    """
+    return build_outcome_training_set(
+        db,
+        user_id=current_user.id,
+        feature_version=version,
+        from_deadline=from_,
+        to_deadline=to,
+        limit=limit,
+    )

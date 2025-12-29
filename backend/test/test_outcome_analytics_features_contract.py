@@ -12,7 +12,6 @@ def test_outcome_analytics_features_contract(client):
     res = client.get("/api/v1/analytics/outcomes/features", params={"version": "v1", "limit": 10})
     assert res.status_code == 200
 
-
     data = res.json()
     assert isinstance(data, dict)
     assert set(data.keys()) == {"range", "items"}

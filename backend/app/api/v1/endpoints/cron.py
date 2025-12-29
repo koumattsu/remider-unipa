@@ -838,34 +838,22 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
     due_tasks = (
         db.query(Task)
-        .outerjoin(
-            Outcome,
-            and_(
-                Outcome.user_id == Task.user_id,
-                Outcome.task_id == Task.id,
-                Outcome.deadline == Task.deadline,
-            ),
-        )
         .filter(Task.user_id == user_id)
         .filter(Task.deadline.isnot(None))
         .filter(Task.deadline <= now_utc)
-        .filter(Outcome.id.is_(None))  # ✅ Outcome 未評価のみ
         .all()
     )
     if not due_tasks:
         return 0
 
     created = 0
-
     for t in due_tasks:
         deadline = t.deadline
         # ③ outcome 判定（SSOT純関数）
         outcome = decide_task_outcome(t, at_utc=now_utc)
-
         # （現状仕様を変えない：missed なら should_notify を落とす）
         if outcome == "missed":
             t.should_notify = False
-
         locked = try_mark_outcome_as_evaluated(
             db,
             user_id=user_id,

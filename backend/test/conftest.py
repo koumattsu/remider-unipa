@@ -347,7 +347,6 @@ class FakeSession:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             q._items = self.tasks
             return q
-
         raise AssertionError(f"Unexpected model: {model}")
 
     def add(self, obj):

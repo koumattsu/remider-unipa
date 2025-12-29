@@ -184,8 +184,10 @@ def test_notification_decision_contract__done_past_and_dedupe(fixed_now):
     assert 11 not in flat1
     assert 12 not in flat1
 
-    # morning 側にも done は入らない（仕様の安全網）
-    assert 12 not in [t.id for t in c1.morning]
+    # morning は「朝窓(05:00-10:00 JST)のときだけ」候補化される
+    # fixed_now=12:00 UTC (=21:00 JST) なのでここでは空が正しい
+    assert c1.morning == []
+    assert c1.debug.get("decision.skipped:not_morning_window", 0) >= 1
 
     # --- 2nd run: 同じ deadline + offset は dedupe され、t_due は出てこない ---
     c2 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], now_utc=now, run_id=2)

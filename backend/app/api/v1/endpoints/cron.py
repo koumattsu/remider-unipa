@@ -11,7 +11,7 @@ from app.models.user import User
 from app.models.task import Task
 from app.models.in_app_notification import InAppNotification
 from app.models.weekly_task import WeeklyTask
-from app.models.notification_setting import NotificationSetting  # ★ 追加
+from app.models.notification_setting import NotificationSetting 
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.notification_run import NotificationRun 
 from app.services.notification import (
@@ -25,7 +25,8 @@ from app.services.line_client import (
 )
 from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 from app.services.webpush_sender import WebPushSender
-from app.services.webpush_aggregate import calc_webpush_events_for_run
+from app.services.outcome_decision import decide_task_outcome
+from app.services.outcome_log_lock import try_mark_outcome_as_evaluated
 
 router = APIRouter()
 
@@ -241,7 +242,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
             evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
 
-            # user の通知設定（すでに上で取得してるはず。なければ取得）
             # ns = db.query(NotificationSetting).filter(...).first()
 
             raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])
@@ -847,39 +847,24 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
     for t in due_tasks:
         deadline = t.deadline
+        # ③ outcome 判定（SSOT純関数）
+        outcome = decide_task_outcome(t, at_utc=now_utc)
 
-        # ② すでに評価済み（同じ締切に対して二重保存しない）
-        exists = (
-            db.query(TaskOutcomeLog.id)
-            .filter(
-                and_(
-                    TaskOutcomeLog.user_id == user_id,
-                    TaskOutcomeLog.task_id == t.id,
-                    TaskOutcomeLog.deadline == deadline,
-                )
-            )
-            .first()
-        )
-        if exists:
-            continue
-
-        # ③ outcome 判定（completed_at が deadline までにあれば done）
-        completed_at = t.completed_at
-        outcome = "done" if (completed_at is not None and completed_at <= deadline) else "missed"
+        # （現状仕様を変えない：missed なら should_notify を落とす）
         if outcome == "missed":
             t.should_notify = False
-        db.add(
-            TaskOutcomeLog(
-                user_id=user_id,
-                task_id=t.id,
-                deadline=deadline,      # tasks.deadline をコピーして固定
-                outcome=outcome,
-                evaluated_at=now_utc,   # cron実行時刻（UTC）
-            )
+
+        locked = try_mark_outcome_as_evaluated(
+            db,
+            user_id=user_id,
+            task_id=t.id,
+            deadline_utc=deadline,
+            outcome=outcome,
+            evaluated_at_utc=now_utc,
         )
-        created += 1
+        if locked:
+            created += 1
 
     if created:
         db.commit()
-
     return created

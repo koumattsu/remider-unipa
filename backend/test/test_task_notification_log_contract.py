@@ -156,7 +156,6 @@ def test_task_notification_log_contract__different_deadline_is_allowed(db):
         offset_hours=3,
     )
     db.add_all([a, b])
-
     # ✅ 契約：deadline_at_send が違えば OK（締切変更に強いログ）
     db.flush()
 

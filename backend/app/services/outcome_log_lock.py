@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-
 from app.models.task_outcome_log import TaskOutcomeLog
 
 def _utcnow() -> datetime:
@@ -38,7 +37,6 @@ def try_mark_outcome_as_evaluated(
         outcome=outcome,
         evaluated_at=evaluated_at_utc,
     )
-
     try:
         with db.begin_nested():
             db.add(log)

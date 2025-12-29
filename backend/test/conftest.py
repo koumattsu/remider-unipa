@@ -16,6 +16,9 @@ from app.models.in_app_notification import InAppNotification
 from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
+from app.models.task import Task
+from app.models.task_outcome_log import TaskOutcomeLog
+from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -182,6 +185,70 @@ class FakeSession:
                 extra=None,  # unknown
             ),
         ]
+        # ✅ Task（course_nameラベル用）
+        self.tasks = [
+            Task(
+                id=10,
+                user_id=1,
+                title="t1",
+                course_name="線形代数",
+                deadline=now,
+                memo=None,
+                is_done=False,
+                completed_at=None,
+                should_notify=True,
+                auto_notify_disabled_by_done=False,
+                weekly_task_id=None,
+                deleted_at=None,
+            ),
+            Task(
+                id=11,
+                user_id=1,
+                title="t2",
+                course_name="電磁気",
+                deadline=now,
+                memo=None,
+                is_done=False,
+                completed_at=None,
+                should_notify=True,
+                auto_notify_disabled_by_done=False,
+                weekly_task_id=None,
+                deleted_at=None,
+            ),
+        ]
+        # ✅ OutcomeLog（分析用）
+        self.outcome_logs = [
+            TaskOutcomeLog(
+                id=201,
+                user_id=1,
+                task_id=10,
+                deadline=datetime(2025, 1, 6, tzinfo=timezone.utc),
+                outcome="done",
+                evaluated_at=datetime(2025, 1, 6, tzinfo=timezone.utc),
+                created_at=datetime(2025, 1, 6, tzinfo=timezone.utc),
+            ),
+            TaskOutcomeLog(
+                id=202,
+                user_id=1,
+                task_id=11,
+                deadline=datetime(2025, 1, 7, tzinfo=timezone.utc),
+                outcome="missed",
+                evaluated_at=datetime(2025, 1, 7, tzinfo=timezone.utc),
+                created_at=datetime(2025, 1, 7, tzinfo=timezone.utc),
+            ),
+        ]
+        # ✅ Feature Snapshot（検証API用）
+        self.feature_rows = [
+            OutcomeFeatureSnapshot(
+                id=301,
+                user_id=1,
+                task_id=10,
+                deadline=now,
+                feature_version="v1",
+                features={"deadline_dow_jst": 0, "deadline_hour_jst": 9, "has_memo": False},
+                created_at=now,
+            )
+        ]
 
         # ✅ 集計API（/notifications/in-app/summary）の group_by が期待する形
         self.group_rows = [("sent", 1), ("failed", 1), (None, 1)]
@@ -267,6 +334,19 @@ class FakeSession:
                     return _FakeSetting()
 
             return _Q()
+        
+        if model is TaskOutcomeLog:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = self.outcome_logs
+            return q
+        if model is OutcomeFeatureSnapshot:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = self.feature_rows
+            return q
+        if model is Task:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = self.tasks
+            return q
 
         raise AssertionError(f"Unexpected model: {model}")
 

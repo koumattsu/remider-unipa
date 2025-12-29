@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone, time
 from typing import Dict
 from fastapi import APIRouter, Depends, Query
 import re
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import and_, func
 from app.db.session import get_db
 from app.models.user import User
@@ -27,6 +27,8 @@ from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 from app.services.webpush_sender import WebPushSender
 from app.services.outcome_decision import decide_task_outcome
 from app.services.outcome_log_lock import try_mark_outcome_as_evaluated
+from app.services.outcome_features import extract_outcome_features, FEATURE_VERSION
+from app.services.outcome_feature_lock import try_mark_outcome_feature_as_saved
 
 router = APIRouter()
 
@@ -832,12 +834,22 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
     戻り値: 今回追加したログ件数
     """
-    # ① 締切到達済みタスク（deadlineはtimezone aware想定）
+    Outcome = aliased(TaskOutcomeLog)
+
     due_tasks = (
         db.query(Task)
+        .outerjoin(
+            Outcome,
+            and_(
+                Outcome.user_id == Task.user_id,
+                Outcome.task_id == Task.id,
+                Outcome.deadline == Task.deadline,
+            ),
+        )
         .filter(Task.user_id == user_id)
         .filter(Task.deadline.isnot(None))
         .filter(Task.deadline <= now_utc)
+        .filter(Outcome.id.is_(None))  # ✅ Outcome 未評価のみ
         .all()
     )
     if not due_tasks:
@@ -863,6 +875,16 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
             evaluated_at_utc=now_utc,
         )
         if locked:
+            # ✅ Feature Snapshot（資産）: Outcome確定と同一トランザクションで保存
+            features = extract_outcome_features(t)
+            try_mark_outcome_feature_as_saved(
+                db,
+                user_id=user_id,
+                task_id=t.id,
+                deadline_utc=deadline,
+                feature_version=FEATURE_VERSION,
+                features=features,
+            )
             created += 1
 
     if created:

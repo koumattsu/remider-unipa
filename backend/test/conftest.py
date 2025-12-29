@@ -38,19 +38,55 @@ class FakeQuery:
         s = " ".join([str(a) for a in args])
         if "dismissed_at" in s and ("IS NOT" in s or "is not" in s):
             self._is_dismissed_query = True
-        # ✅ 通常の where 条件（例: NotificationRun.id == 999999）を拾う
+
         for a in args:
-            # SQLAlchemy BinaryExpression (left == right)
             left = getattr(a, "left", None)
             right = getattr(a, "right", None)
-            if left is None or right is None:
-                continue
-            key = getattr(left, "key", None) or getattr(left, "name", None)
-            # right は BindParameter になってることが多い
-            val = getattr(right, "value", None)
-            if key is not None and val is not None:
-                self._eq_filters[key] = val
+            op = getattr(a, "operator", None)
+
+            # --- 1) (=) existing behavior ---
+            if left is not None and right is not None:
+                key = getattr(left, "key", None) or getattr(left, "name", None)
+                val = getattr(right, "value", None)
+                if key is not None and val is not None:
+                    self._eq_filters[key] = val
+                    continue
+
+            # --- 2) IN (...) ---
+            # SQLAlchemy: <col> IN (__[POSTCOMPILE_...])
+            # a.right.value に list が入ることが多い
+            if left is not None:
+                key = getattr(left, "key", None) or getattr(left, "name", None)
+                if key is not None:
+                    rv = getattr(getattr(a, "right", None), "value", None)
+                    if isinstance(rv, (list, tuple, set)):
+                        if not hasattr(self, "_in_filters"):
+                            self._in_filters = {}
+                        self._in_filters[key] = set(rv)
+                        continue
+
+            # --- 3) >= / <= ---
+            # right.value に datetime などが入る
+            if left is not None and right is not None:
+                key = getattr(left, "key", None) or getattr(left, "name", None)
+                val = getattr(right, "value", None)
+                if key is None or val is None:
+                    continue
+
+                op_str = str(op) if op is not None else str(a)
+                if ">=" in op_str:
+                    if not hasattr(self, "_ge_filters"):
+                        self._ge_filters = {}
+                    self._ge_filters[key] = val
+                    continue
+                if "<=" in op_str:
+                    if not hasattr(self, "_le_filters"):
+                        self._le_filters = {}
+                    self._le_filters[key] = val
+                    continue
+
         return self
+
 
     def with_entities(self, *ents):
         # ✅ (status, cnt) のように複数カラムなら集計モード
@@ -99,18 +135,51 @@ class FakeQuery:
         return self._apply_filters(getattr(self, "_items", []))
     
     def _apply_filters(self, items):
-        if not self._eq_filters:
+        if not self._eq_filters and not hasattr(self, "_in_filters") and not hasattr(self, "_ge_filters") and not hasattr(self, "_le_filters"):
             return items
+
+        in_filters = getattr(self, "_in_filters", {})
+        ge_filters = getattr(self, "_ge_filters", {})
+        le_filters = getattr(self, "_le_filters", {})
+
         out = []
         for it in items:
             ok = True
+
+            # (=)
             for k, v in self._eq_filters.items():
                 if getattr(it, k, None) != v:
                     ok = False
                     break
+            if not ok:
+                continue
+
+            # IN
+            for k, vs in in_filters.items():
+                if getattr(it, k, None) not in vs:
+                    ok = False
+                    break
+            if not ok:
+                continue
+
+            # >=
+            for k, v in ge_filters.items():
+                x = getattr(it, k, None)
+                if x is None or x < v:
+                    ok = False
+                    break
+            if not ok:
+                continue
+
+            # <=
+            for k, v in le_filters.items():
+                x = getattr(it, k, None)
+                if x is None or x > v:
+                    ok = False
+                    break
             if ok:
                 out.append(it)
-        return out
+
   
     def limit(self, *args, **kwargs):
         return self
@@ -332,7 +401,6 @@ class FakeSession:
 
                 def one_or_none(self):
                     return _FakeSetting()
-
             return _Q()
         
         if model is TaskOutcomeLog:

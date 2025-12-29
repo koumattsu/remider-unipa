@@ -1,3 +1,5 @@
+# backend/app/services/outcome_analytics.py
+
 from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -18,6 +20,20 @@ def _bucket_start(d, bucket: Bucket):
         return d.replace(day=1)
     # week: Monday start
     return d - timedelta(days=d.weekday())
+
+def _bucket_end(start, bucket: Bucket):
+    """
+    period_end は exclusive（JST日付）
+    - week: 次の週の月曜
+    - month: 翌月の1日
+    """
+    if bucket == "month":
+        # start は必ず月初の date
+        if start.month == 12:
+            return start.replace(year=start.year + 1, month=1, day=1)
+        return start.replace(month=start.month + 1, day=1)
+    # week
+    return start + timedelta(days=7)
 
 def build_outcome_summary(
     db: Session,
@@ -65,9 +81,14 @@ def build_outcome_summary(
         missed = agg[period_start]["missed"]
         done_rate = (done / total) if total > 0 else 0.0
 
+        # JST日付（YYYY-MM-DD）で end を計算（exclusive）
+        start_d = datetime.fromisoformat(period_start).date()
+        period_end = _bucket_end(start_d, bucket).isoformat()
+
         items.append(
             {
                 "period_start": period_start,
+                "period_end": period_end,
                 "total": total,
                 "done": done,
                 "missed": missed,
@@ -104,10 +125,8 @@ def build_outcome_missed_by_course(
     if to_deadline is not None:
         q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
 
-    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all()
-
-    # ✅ ラベル付け用: task_id -> course_name
-    tasks = db.query(Task).filter(Task.user_id == user_id).all()
+    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all() or []
+    tasks = db.query(Task).filter(Task.user_id == user_id).all() or []
     task_course: dict[int, str] = {t.id: t.course_name for t in tasks}
     agg: dict[str, dict[str, int]] = {}
     for log in logs:
@@ -167,11 +186,8 @@ def build_outcome_training_set(
     if to_deadline is not None:
         q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
 
-    logs = (
-        q.order_by(TaskOutcomeLog.deadline.desc())
-        .limit(limit)
-        .all()
-    )
+    logs = q.order_by(TaskOutcomeLog.deadline.desc()).limit(limit).all() or []
+    snaps = fq.all() or []
 
     if not logs:
         return {
@@ -203,8 +219,6 @@ def build_outcome_training_set(
         fq = fq.filter(OutcomeFeatureSnapshot.deadline >= from_deadline)
     if to_deadline is not None:
         fq = fq.filter(OutcomeFeatureSnapshot.deadline <= to_deadline)
-
-    snaps = fq.all()
 
     snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
         (s.task_id, s.deadline): s for s in snaps

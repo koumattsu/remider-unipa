@@ -563,7 +563,7 @@ def normalize_offsets_for_plan(
 def collect_notification_candidates(
     db: Session,
     user_id: int,
-    offsets_hours: List[int] | None,
+    offsets_hours: List[int] | None = None,  # ← デフォルトを付ける
     *,
     raw_offsets: List[int] | None = None,
     plan: str | None = None,

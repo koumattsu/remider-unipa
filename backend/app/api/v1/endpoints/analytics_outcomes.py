@@ -81,8 +81,8 @@ def list_outcome_feature_snapshots(
         q.order_by(OutcomeFeatureSnapshot.created_at.desc())
         .limit(limit)
         .all()
-    )
-
+    ) or []
+    
     return {
         "range": {
             "timezone": "Asia/Tokyo",

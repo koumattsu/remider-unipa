@@ -68,7 +68,6 @@ def latest_notification_run(db: Session = Depends(get_db)):
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
         "stats": r.stats,  # ← snapshot契約があるならここで載せる
     }
-
     return {"found": True, "run": run}
 
 @router.get("/notification-runs/{run_id}")

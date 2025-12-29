@@ -11,6 +11,7 @@ from app.services.outcome_analytics import (
     build_outcome_summary,
     build_outcome_missed_by_course,
     build_outcome_training_set,
+    build_outcome_risk_by_deadline_time, 
 )
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
@@ -82,7 +83,7 @@ def list_outcome_feature_snapshots(
         .limit(limit)
         .all()
     ) or []
-    
+
     return {
         "range": {
             "timezone": "Asia/Tokyo",
@@ -125,4 +126,23 @@ def get_outcome_training_set(
         from_deadline=from_,
         to_deadline=to,
         limit=limit,
+    )
+
+@router.get("/outcomes/risk-time", response_model=dict)
+def get_outcome_risk_time(
+    from_: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    OutcomeLog を唯一の真実として、締切の曜日×時間帯ごとの missed率を返す（read-only）
+    - from/to は deadline 基準
+    - JSTの曜日/時刻で集計
+    """
+    return build_outcome_risk_by_deadline_time(
+        db,
+        user_id=current_user.id,
+        from_deadline=from_,
+        to_deadline=to,
     )

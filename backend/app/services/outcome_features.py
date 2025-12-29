@@ -1,20 +1,17 @@
-from __future__ import annotations
+# backend/services/outcome_features.py
 
+from __future__ import annotations
 import hmac
 import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 from app.core.config import settings
 from app.models.task import Task
 
-
 FEATURE_VERSION = "v1"
-
 
 def _hmac_sha256(text: str, secret: str) -> str:
     return hmac.new(secret.encode("utf-8"), text.encode("utf-8"), hashlib.sha256).hexdigest()
-
 
 def extract_outcome_features(task: Task) -> dict:
     """

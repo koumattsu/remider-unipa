@@ -156,9 +156,11 @@ def _upsert_in_app_notification(
     )
     db.add(n)
     try:
-        db.flush()  # ✅ Unique制約で最終チェック（並列でも壊れない）
+        with db.begin_nested() as nested:
+            db.flush()  # ✅ Unique制約で最終チェック（並列でも壊れない）
     except IntegrityError:
-        db.rollback()  # ✅ その通知1件のINSERT失敗を無害化
+        # ✅ SAVEPOINT だけ rollback（外側TXは生かす）
+        nested.rollback()
         return None
     return n
 
@@ -242,10 +244,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
             materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
 
             # ✅ OutcomeLog：締切到達時点の結果を1回だけ確定保存（通知とは独立）
-            evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
+            outcomes_created = evaluate_task_outcomes(db, user_id=user_id, now_utc=now_utc)
+            if outcomes_created:
+                # ✅ OutcomeLog + FeatureSnapshot を同一トランザクションで確定
+                db.commit()
 
             # ns = db.query(NotificationSetting).filter(...).first()
-
             raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])
 
             # ✅ 判定も送信も「正規化後 offset」で統一
@@ -834,12 +838,9 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
     戻り値: 今回追加したログ件数
     """
-    Outcome = aliased(TaskOutcomeLog)
-
     due_tasks = (
         db.query(Task)
         .filter(Task.user_id == user_id)
-        .filter(Task.deadline.isnot(None))
         .filter(Task.deadline <= now_utc)
         .all()
     )
@@ -870,6 +871,5 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
             )
             created += 1
 
-    if created:
-        db.commit()
+    # ✅ commit は呼び出し側（cron）に任せる：同一トランザクションを崩さない
     return created

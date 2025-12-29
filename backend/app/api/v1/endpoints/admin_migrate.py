@@ -278,27 +278,24 @@ def get_latest_notification_run(db: Session = Depends(get_db)):
         .first()
     )
     if not run:
-        return {"found": False}
+        raise HTTPException(status_code=404, detail="not found")
 
     return {
-        "found": True,
-        "run": {
-            "id": run.id,
-            "status": run.status,
-            "error_summary": run.error_summary,
-            "users_processed": run.users_processed,
-            "due_candidates_total": run.due_candidates_total,
-            "morning_candidates_total": run.morning_candidates_total,
-            "inapp_created": run.inapp_created,
-            "webpush_sent": run.webpush_sent,
-            "webpush_failed": run.webpush_failed,
-            "webpush_deactivated": run.webpush_deactivated,
-            "line_sent": run.line_sent,
-            "line_failed": run.line_failed,
-            "started_at": run.started_at.isoformat() if run.started_at else None,
-            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-            "stats": run.stats,
-        },
+        "id": run.id,
+        "status": run.status,
+        "error_summary": run.error_summary,
+        "users_processed": run.users_processed,
+        "due_candidates_total": run.due_candidates_total,
+        "morning_candidates_total": run.morning_candidates_total,
+        "inapp_created": run.inapp_created,
+        "webpush_sent": run.webpush_sent,
+        "webpush_failed": run.webpush_failed,
+        "webpush_deactivated": run.webpush_deactivated,
+        "line_sent": run.line_sent,
+        "line_failed": run.line_failed,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        # GET契約には stats は含まれてない（ログの expected_keys に無い）ので入れない
     }
 
 @router.get("/migrate/notification-runs")
@@ -321,6 +318,7 @@ def list_notification_runs(
             {
                 "id": r.id,
                 "status": r.status,
+                "stats": getattr(r, "stats", None),
                 "error_summary": r.error_summary,
                 "users_processed": r.users_processed,
                 "due_candidates_total": r.due_candidates_total,

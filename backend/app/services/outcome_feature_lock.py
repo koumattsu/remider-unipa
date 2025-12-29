@@ -1,3 +1,5 @@
+# backend/services/outcome_feature_lock.py
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -20,8 +22,8 @@ def try_mark_outcome_feature_as_saved(
     OutcomeFeatureSnapshot の保存ロック（UNIQUE + flush）
     - commit は呼び出し側に任せる
     """
-    try:
-        with db.begin_nested():
+    with db.begin_nested() as nested:
+        try:
             row = OutcomeFeatureSnapshot(
                 user_id=user_id,
                 task_id=task_id,
@@ -31,7 +33,8 @@ def try_mark_outcome_feature_as_saved(
             )
             db.add(row)
             db.flush()  # ✅ UNIQUE 競合をここで確定
-        return True
-    except IntegrityError:
-        db.rollback()
-        return False
+            return True
+        except IntegrityError:
+            # ✅ 競合は SAVEPOINT だけを rollback（外側TXは生かす）
+            nested.rollback()
+            return False

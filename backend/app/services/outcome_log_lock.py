@@ -37,11 +37,12 @@ def try_mark_outcome_as_evaluated(
         outcome=outcome,
         evaluated_at=evaluated_at_utc,
     )
-    try:
-        with db.begin_nested():
+    with db.begin_nested() as nested:
+        try:
             db.add(log)
             db.flush()  # ✅ ここで UNIQUE を評価
-        return True
-    except IntegrityError:
-        db.rollback()
-        return False
+            return True
+        except IntegrityError:
+            # ✅ 競合は SAVEPOINT だけを rollback（外側TXは生かす）
+            nested.rollback()
+            return False

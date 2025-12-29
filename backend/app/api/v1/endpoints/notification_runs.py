@@ -75,7 +75,10 @@ def get_notification_run(
     run_id: int,
     db: Session = Depends(get_db),
 ):
-    r = db.query(NotificationRun).filter(NotificationRun.id == run_id).first()
+    # ✅ FakeSessionでも壊れないように「all()→手動検索」
+    runs = db.query(NotificationRun).all() or []
+    r = next((x for x in runs if int(getattr(x, "id", -1)) == int(run_id)), None)
+
     if not r:
         raise HTTPException(status_code=404, detail="not found")
 

@@ -55,7 +55,7 @@ def build_outcome_summary(
     if to_deadline is not None:
         q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
 
-    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all()
+    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all() or []
 
     agg: dict[str, dict[str, int]] = {}
 
@@ -187,7 +187,6 @@ def build_outcome_training_set(
         q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
 
     logs = q.order_by(TaskOutcomeLog.deadline.desc()).limit(limit).all() or []
-    snaps = fq.all() or []
 
     if not logs:
         return {
@@ -202,7 +201,6 @@ def build_outcome_training_set(
         }
 
     # 2) 特徴量（FeatureSnapshot）
-    #    UNIQUE(user_id, task_id, deadline, feature_version) 前提で 1件に決まる
     task_ids = [l.task_id for l in logs]
     deadlines = [l.deadline for l in logs]
 
@@ -220,6 +218,7 @@ def build_outcome_training_set(
     if to_deadline is not None:
         fq = fq.filter(OutcomeFeatureSnapshot.deadline <= to_deadline)
 
+    snaps = fq.all() or []
     snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
         (s.task_id, s.deadline): s for s in snaps
     }
@@ -248,6 +247,66 @@ def build_outcome_training_set(
             "from": from_deadline,
             "to": to_deadline,
             "limit": limit,
+        },
+        "items": items,
+    }
+
+def build_outcome_risk_by_deadline_time(
+    db: Session,
+    *,
+    user_id: int,
+    from_deadline: Optional[datetime],
+    to_deadline: Optional[datetime],
+) -> dict:
+    """
+    ✅ 危険帯分析SSOT（read-only）
+    - OutcomeLog を唯一の真実として、deadline の JST曜日×時間帯 で missed率を集計
+    - UIで「落ちやすい締切時間」を出すための集計
+    """
+    q = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
+
+    if from_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline >= from_deadline)
+    if to_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
+
+    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all() or []
+
+    agg: dict[tuple[int, int], dict[str, int]] = {}  # (dow, hour) -> counts
+    jst = ZoneInfo("Asia/Tokyo")
+
+    for log in logs:
+        d = log.deadline.astimezone(jst)
+        key = (int(d.weekday()), int(d.hour))
+        if key not in agg:
+            agg[key] = {"total": 0, "missed": 0}
+        agg[key]["total"] += 1
+        if log.outcome != "done":
+            agg[key]["missed"] += 1
+
+    items: list[dict] = []
+    for (dow, hour), c in agg.items():
+        total = c["total"]
+        missed = c["missed"]
+        missed_rate = (missed / total) if total > 0 else 0.0
+        items.append(
+            {
+                "deadline_dow_jst": dow,   # 0=Mon..6
+                "deadline_hour_jst": hour, # 0..23
+                "total": total,
+                "missed": missed,
+                "missed_rate": round(missed_rate, 4),
+            }
+        )
+
+    # ✅ 決定的ソート（UI/監査/テスト向け）
+    items.sort(key=lambda x: (-x["missed_rate"], -x["missed"], -x["total"], x["deadline_dow_jst"], x["deadline_hour_jst"]))
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "from": from_deadline,
+            "to": to_deadline,
         },
         "items": items,
     }

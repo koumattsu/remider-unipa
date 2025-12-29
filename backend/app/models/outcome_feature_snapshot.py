@@ -1,3 +1,5 @@
+# backend/app/models/outcome_feature_snapshot.py
+
 from sqlalchemy import (
     Column,
     Integer,
@@ -10,7 +12,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 from app.db.base import Base
-
 
 class OutcomeFeatureSnapshot(Base):
     """

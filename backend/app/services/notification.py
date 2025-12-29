@@ -16,6 +16,9 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger(__name__)
 JST = timezone(timedelta(hours=9))
 
+# ✅ SSOT契約：朝通知は offset_hours=0 として扱う
+MORNING_OFFSET_HOURS = 0
+
 # ================================
 # UTC変換ヘルパー（最重要）
 # ================================
@@ -91,9 +94,6 @@ def is_notification_candidate(
     weekly_is_active: bool | None,
     now_utc: datetime,
 ) -> bool:
-    # ⓪ ソフトデリートは即除外（将来価値のため）
-    if task.deleted_at is not None:
-        return False
     """
     ✅ 通知対象の共通判定（集約）
 
@@ -102,6 +102,9 @@ def is_notification_candidate(
     - weekly由来ならテンプレが active のときだけ（幽霊通知止血）
     - 24:00補正込みの締切が「過去」なら除外
     """
+    # ⓪ ソフトデリートは即除外（将来価値のため）
+    if task.deleted_at is not None:
+        return False
     # ① 完了は除外
     if task.is_done:
         return False
@@ -172,9 +175,12 @@ def decide_notification(
         else:
             effective_offsets = ro
 
+    # ✅ 朝通知（offset_hours=0）は Phase2（窓判定）に入れない
+    # - “今日の朝に出す候補か” は get_tasks_due_today_morning() 側で label_date==today_jst で確定する
+    if offset_hours == 0:
+        return NotificationDecision(True, "candidate:morning", effective_offsets)
+
     # Phase 2（SSOT拡張）：
-    # - offset_hours が指定されている場合は「そのoffsetで今送るべきか」まで判定する
-    # - DBロックは呼び出し側で実施（try_mark_notification_as_sent）
     if offset_hours is not None:
         try:
             h = int(offset_hours)
@@ -223,7 +229,6 @@ def decide_notification_and_lock(
     - should_send=True のときだけ try_mark_notification_as_sent() で送信前ロックを獲得する
     - ロック獲得できなければ skipped:already_locked
     """
-
     d = decide_notification(
         task=task,
         weekly_is_active=weekly_is_active,
@@ -271,15 +276,14 @@ def mark_notification_as_sent(
     deadline_utc: datetime,
     offset_hours: int,
 ) -> None:
-    log = TaskNotificationLog(
-        user_id=user_id,
-        task_id=task_id,
-        deadline_at_send=deadline_utc,  # ✅ 追加
-        offset_hours=offset_hours,
-        sent_at=datetime.now(timezone.utc),
+    raise RuntimeError(
+        "mark_notification_as_sent is deprecated. "
+        "Use try_mark_notification_as_sent() via SSOT instead."
     )
-    db.add(log)
-    db.commit()
+    # --- legacy code below (kept for reference; unreachable) ---
+    # log = TaskNotificationLog(...)
+    # db.add(log)
+    # db.commit()
 
 from collections import defaultdict
 from typing import DefaultDict
@@ -352,7 +356,6 @@ def get_tasks_due_in_offsets(
             override=override,
             base_offsets=normalized,
         )
-
         if not decision.should_send:
             if debug is not None:
                 k = f"decision.{decision.reason}"
@@ -403,7 +406,9 @@ def get_tasks_due_in_offsets(
             )
             if debug is not None:
                 debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
-                debug[f"task_reason:{task.id}"] = decision.reason
+                # ✅ 監査用：taskごとの reason は上書きせずカウント（曖昧さを排除）
+                rk = f"task_reason:{task.id}:{decision.reason}"
+                debug[rk] = debug.get(rk, 0) + 1
             due_map[h].append(task)
 
     return dict(due_map)
@@ -450,9 +455,12 @@ def get_tasks_due_today_morning(
     """
     today_jst = now_utc.astimezone(JST).date()
     now_jst = now_utc.astimezone(JST)
-    start_jst = datetime.combine(today_jst, time(0, 0, 0, tzinfo=JST))
-    end_jst = datetime.combine(today_jst, time(23, 59, 59, tzinfo=JST))
-
+    # ✅ 朝通知は「朝の時間帯」だけ候補化する（SSOT入口から呼ばれても漏れないように）
+    # cron.py の is_morning_window と同等の考え方
+    if not (time(5, 0) <= now_jst.time() <= time(10, 0)):
+        if debug is not None:
+            debug["decision.skipped:not_morning_window"] = debug.get("decision.skipped:not_morning_window", 0) + 1
+        return []
     candidates = (
         db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
@@ -477,13 +485,13 @@ def get_tasks_due_today_morning(
             )
             .first()
         )
-
+        # ✅ 朝通知も Phase1 SSOT を必ず通す
         decision = decide_notification(
             task=task,
             weekly_is_active=weekly_is_active,
             now_utc=now_utc,
             override=override,
-            base_offsets=[],      # ✅ 朝は使わない
+            base_offsets=[],
             offset_hours=0,       # ✅ 朝通知 = 0
         )
         if not decision.should_send:
@@ -501,13 +509,14 @@ def get_tasks_due_today_morning(
 
         if label_date == today_jst:
             if try_mark_notification_as_sent(
-                db, user_id, task.id, deadline_utc, 0,
+                db, user_id, task.id, deadline_utc, MORNING_OFFSET_HOURS,
                 sent_at_utc=now_utc,
                 run_id=run_id
             ):
                 if debug is not None:
                     debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
-                    debug[f"task_reason:{task.id}"] = decision.reason
+                    rk = f"task_reason:{task.id}:{decision.reason}"
+                    debug[rk] = debug.get(rk, 0) + 1
                 result.append(task)
     return result
 
@@ -583,8 +592,10 @@ def collect_notification_candidates(
             if h > 0:
                 normalized_offsets.append(h)    
          
-    debug: Dict[str, int] = {"offsets_count": len(normalized_offsets)}        
-
+    debug: Dict[str, int] = {
+        "offsets_count": len(normalized_offsets),
+        "offsets_raw_count": len(list(raw_offsets or [])) if (raw_offsets is not None) else -1,
+    }
     due_map: Dict[int, List[Task]] = get_tasks_due_in_offsets(
         db,
         user_id=user_id,

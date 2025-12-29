@@ -245,9 +245,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ns = db.query(NotificationSetting).filter(...).first()
 
             raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])
-            # 安全網：空ならデフォルト1時間前
-            if not raw_offsets:
-                raw_offsets = [1]
 
             # ✅ 判定も送信も「正規化後 offset」で統一
             cands = collect_notification_candidates(

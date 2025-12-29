@@ -157,9 +157,8 @@ def test_task_notification_log_contract__different_deadline_is_allowed(db):
     )
     db.add_all([a, b])
 
-    # ✅ 新契約：deadline_at_send が違っても NG（lock は offset 単位で一意）
-    with pytest.raises(IntegrityError):
-        db.commit()
+    # ✅ 契約：deadline_at_send が違えば OK（締切変更に強いログ）
+    db.flush()
 
 def test_task_notification_log_contract__different_offset_is_allowed(db):
     users = Base.metadata.tables["users"]

@@ -32,6 +32,7 @@ class TaskNotificationLog(Base):
         UniqueConstraint(
             "user_id",
             "task_id",
+            "deadline_at_send",
             "offset_hours",
             name="uq_task_notification_user_task_deadline_offset",
         ),
@@ -39,10 +40,10 @@ class TaskNotificationLog(Base):
             "ix_task_notif_user_task_deadline_at_send_offset",
             "user_id",
             "task_id",
+            "deadline_at_send",
             "offset_hours",
         ),
     )
-
     id = Column(Integer, primary_key=True, index=True)
 
     user_id = Column(

@@ -12,6 +12,7 @@ from app.services.outcome_analytics import (
     build_outcome_missed_by_course,
     build_outcome_training_set,
     build_outcome_missed_by_feature,
+    build_outcome_course_x_feature,
 )
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
@@ -151,4 +152,31 @@ def get_outcome_missed_by_feature(
         from_deadline=from_,
         to_deadline=to,
         limit=limit,
+    )
+
+@router.get("/outcomes/course-x-feature", response_model=dict)
+def get_outcome_course_x_feature(
+    version: str = Query("v1"),
+    from_: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = Query(None),
+    limit: int = Query(2000, ge=1, le=20000),
+    course_hash: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    OutcomeLog（教師ラベル）× OutcomeFeatureSnapshot（特徴量）から
+    course × feature の missed率 を返す（read-only）
+    - from/to は deadline 基準
+    - version は feature_version（例: v1）
+    - JOINせずに map で束ねる（事故回避 / FakeSession耐性）
+    """
+    return build_outcome_course_x_feature(
+        db,
+        user_id=current_user.id,
+        feature_version=version,
+        from_deadline=from_,
+        to_deadline=to,
+        limit=limit,
+        course_hash=course_hash,
     )

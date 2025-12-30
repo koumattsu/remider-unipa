@@ -61,6 +61,20 @@ export const analyticsOutcomesApi = {
     );
     return res.data;
   },
+  // ✅ 追加：course × feature の missed率（Priority 3-C）
+  async getCourseXFeature(params: {
+    version?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    course_hash?: string;
+  }): Promise<OutcomesCourseXFeatureResponse> {
+    const res = await apiClient.get<OutcomesCourseXFeatureResponse>(
+      '/analytics/outcomes/course-x-feature',
+      { params },
+    );
+    return res.data;
+  },
 };
 
 export type OutcomesByFeatureRow = {
@@ -74,4 +88,18 @@ export type OutcomesByFeatureRow = {
 export type OutcomesByFeatureResponse = {
   range: OutcomesRange & { version?: string | null; limit?: number | null };
   items: OutcomesByFeatureRow[];
+};
+
+export type OutcomesCourseXFeatureRow = {
+  course_hash: string;
+  feature_key: string;
+  feature_value: string; // backendが string 化して返す仕様（壊れにくい）
+  total: number;
+  missed: number;
+  missed_rate: number; // 0-1 or 0-100 は表示側で防御
+};
+
+export type OutcomesCourseXFeatureResponse = {
+  range: OutcomesRange & { version?: string | null; limit?: number | null; course_hash?: string | null };
+  items: OutcomesCourseXFeatureRow[];
 };

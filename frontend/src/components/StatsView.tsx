@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { outcomesApi, OutcomeLog } from '../api/outcomes';
-import { analyticsOutcomesApi, Bucket, OutcomesByCourseRow, OutcomesSummaryItem,  OutcomesByFeatureRow } from '../api/analyticsOutcomes';
+import {
+  analyticsOutcomesApi,
+  Bucket,
+  OutcomesByCourseRow,
+  OutcomesSummaryItem,
+  OutcomesByFeatureRow,
+  OutcomesCourseXFeatureRow,
+} from '../api/analyticsOutcomes';
 import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
 import { Task } from '../types';
@@ -31,6 +38,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [latestRunSummary, setLatestRunSummary] = useState<RunSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [courseXWeek, setCourseXWeek] = useState<OutcomesCourseXFeatureRow[] | null>(null);
+  const [courseXMonth, setCourseXMonth] = useState<OutcomesCourseXFeatureRow[] | null>(null);
+  const [selectedCourseHash, setSelectedCourseHash] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -48,18 +58,26 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-        const fromOutcomes = startOfMonth.toISOString();
-        const toOutcomes = endOfMonth.toISOString();
+        const endOfToday = new Date(startOfToday);
+        endOfToday.setDate(endOfToday.getDate() + 1);
+
+        const endOfMonthEnd = new Date(endOfMonth);
+        endOfMonthEnd.setHours(23, 59, 59, 999);
+
+        // ✅ analytics 用（deadline基準）
+        const fromOutcomesWeek = startOfWeek.toISOString();
+        const toOutcomesWeek = endOfToday.toISOString();
+
+        const fromOutcomesMonth = startOfMonth.toISOString();
+        const toOutcomesMonth = endOfMonthEnd.toISOString();
 
         // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
         const fromNotifs = startOfWeek.toISOString();
-        const endOfToday = new Date(startOfToday);
-        endOfToday.setDate(endOfToday.getDate() + 1);
         const toNotifs = endOfToday.toISOString();
 
-        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM] = await Promise.all([
+        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM] = await Promise.all([
           // フォールバック用（既存挙動）
-          outcomesApi.list({ from: fromOutcomes, to: toOutcomes }),
+          outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
 
           // 既存（通知反応）
           fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }),
@@ -67,34 +85,43 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
           // 既存（run summary）
           run?.id ? fetchRunSummary(run.id).catch(() => null) : Promise.resolve(null),
 
-          // ✅ 新: analytics summary（週/月）: backendは {range, items[]} なので items[0] を採用
           analyticsOutcomesApi
-            .getSummary({ bucket: 'week', from: fromOutcomes, to: toOutcomes })
+            .getSummary({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek })
             .then((x) => x.items?.[0] ?? null)
             .catch(() => null),
           analyticsOutcomesApi
-            .getSummary({ bucket: 'month', from: fromOutcomes, to: toOutcomes })
+            .getSummary({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth })
             .then((x) => x.items?.[0] ?? null)
             .catch(() => null),
-          // ✅ 新: by-course（週/月）
+
           analyticsOutcomesApi
-            .getByCourse({ bucket: 'week', from: fromOutcomes, to: toOutcomes })
+            .getByCourse({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek })
             .then((x) => x.items)
             .catch(() => null),
           analyticsOutcomesApi
-            .getByCourse({ bucket: 'month', from: fromOutcomes, to: toOutcomes })
+            .getByCourse({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth })
             .then((x) => x.items)
             .catch(() => null),
-          // ✅ 新: feature別 missed率（週/月）
+
           analyticsOutcomesApi
-            .getMissedByFeature({ version: 'v1', from: fromOutcomes, to: toOutcomes, limit: 2000 })
+            .getMissedByFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 2000 })
             .then((x) => x.items)
             .catch(() => null),
           analyticsOutcomesApi
-            .getMissedByFeature({ version: 'v1', from: fromOutcomes, to: toOutcomes, limit: 2000 })
+            .getMissedByFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 2000 })
             .then((x) => x.items)
             .catch(() => null),
-        ]);
+
+          // ✅ Priority 3-C: course × feature
+          analyticsOutcomesApi
+            .getCourseXFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 20000 })
+            .then((x) => x.items)
+            .catch(() => null),
+          analyticsOutcomesApi
+            .getCourseXFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 20000 })
+            .then((x) => x.items)
+            .catch(() => null),
+        ]);    
 
         if (!mounted) return;
 
@@ -108,6 +135,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         setByCourseMonth(byM);
         setByFeatureWeek(featW);
         setByFeatureMonth(featM);
+        setCourseXWeek(cxW);
+        setCourseXMonth(cxM);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message ?? 'failed to load outcomes');
@@ -157,6 +186,49 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const chosenSummary = bucket === 'week' ? summaryWeek : summaryMonth;
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
+  const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
+
+  const courseHashList = useMemo(() => {
+    const xs = chosenCourseX ?? [];
+    const s = new Set<string>();
+    for (const r of xs) s.add(r.course_hash);
+    return Array.from(s);
+  }, [chosenCourseX]);
+
+  const courseTotals = useMemo(() => {
+    const xs = chosenCourseX ?? [];
+    const m = new Map<string, { total: number; missed: number }>();
+    for (const r of xs) {
+      const cur = m.get(r.course_hash) ?? { total: 0, missed: 0 };
+      cur.total += r.total;
+      cur.missed += r.missed;
+      m.set(r.course_hash, cur);
+    }
+    return m;
+  }, [chosenCourseX]);
+
+  const worstCourseHash = useMemo(() => {
+    let best: { ch: string; rate: number } | null = null;
+    for (const [ch, c] of courseTotals.entries()) {
+      const rate = c.total > 0 ? c.missed / c.total : 0;
+      if (!best || rate > best.rate) best = { ch, rate };
+    }
+    return best?.ch ?? null;
+  }, [courseTotals]);
+
+  useEffect(() => {
+    if (selectedCourseHash) return;
+    if (worstCourseHash) setSelectedCourseHash(worstCourseHash);
+    else if (courseHashList[0]) setSelectedCourseHash(courseHashList[0]);
+  }, [selectedCourseHash, worstCourseHash, courseHashList]);
+
+  const reasons = useMemo(() => {
+    if (!chosenCourseX || !selectedCourseHash) return [];
+    return [...chosenCourseX]
+      .filter((r) => r.course_hash === selectedCourseHash)
+      .sort((a, b) => toPercent(b.missed_rate) - toPercent(a.missed_rate))
+      .slice(0, 5);
+  }, [chosenCourseX, selectedCourseHash]);
 
   // ✅ 表示用にソート（missed_rate desc）
   const sortedByFeature = useMemo(() => {
@@ -170,18 +242,35 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const labelFeatureKey = (k: string) => {
     const m: Record<string, string> = {
       deadline_is_weekend: '週末締切',
-      deadline_is_night: '夜締切',
-      deadline_is_morning: '朝締切',
-      deadline_days_ahead_bucket: '締切までの日数帯',
-      deadline_hour_bucket: '締切の時間帯',
-      // ここは増やしたくなったら追加（表示だけ）
+      deadline_dow_jst: '締切の曜日（JST）',
+      deadline_hour_jst: '締切の時刻（JST）',
+      title_len_bucket: 'タイトル長',
+      has_memo: 'メモあり',
+      is_weekly_task: '週次タスク由来',
     };
     return m[k] ?? k;
   };
 
-  const labelFeatureValue = (v: OutcomesByFeatureRow['feature_value']) => {
-    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  const labelFeatureValue = (v: OutcomesByFeatureRow['feature_value'], key?: string) => {
     if (v == null) return '—';
+
+    if (key === 'deadline_dow_jst') {
+      const n = Number(v);
+      const days = ['月', '火', '水', '木', '金', '土', '日'];
+      return Number.isFinite(n) && n >= 0 && n <= 6 ? days[n] : String(v);
+    }
+
+    if (key === 'deadline_hour_jst') {
+      const h = Number(v);
+      if (!Number.isFinite(h)) return String(v);
+      if (h <= 5) return `深夜（${h}時）`;
+      if (h <= 10) return `朝（${h}時）`;
+      if (h <= 16) return `昼（${h}時）`;
+      if (h <= 21) return `夜（${h}時）`;
+      return `深夜（${h}時）`;
+    }
+
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
     return String(v);
   };
 
@@ -312,11 +401,99 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
           <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
             落ちやすい特徴（feature別 missed率）
           </div>
+          {/* ✅ Priority 3-C: course × feature（理由表示） */}
+          <div
+            style={{
+              marginTop: '0.9rem',
+              padding: '1rem 1.1rem',
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,.12)',
+              background:
+                'radial-gradient(circle at 20% 0%, rgba(34,197,94,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+              color: 'rgba(255,255,255,.92)',
+            }}
+          >
+            <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
+              授業ごとの「落ちやすい理由」（course × feature）
+            </div>
+
+            <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
+              analytics/outcomes/course-x-feature（read-only SSOT）
+            </div>
+
+            {courseHashList.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>（まだ集計対象がありません）</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.65rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9 }}>対象授業:</div>
+                  <select
+                    value={selectedCourseHash ?? ''}
+                    onChange={(e) => setSelectedCourseHash(e.target.value || null)}
+                    style={{
+                      flex: 1,
+                      padding: '0.55rem 0.7rem',
+                      borderRadius: 14,
+                      border: '1px solid rgba(255,255,255,.12)',
+                      background: 'rgba(255,255,255,.06)',
+                      color: 'rgba(255,255,255,.92)',
+                      fontWeight: 800,
+                      outline: 'none',
+                    }}
+                  >
+                    {courseHashList.map((ch) => {
+                      const c = courseTotals.get(ch) ?? { total: 0, missed: 0 };
+                      const rate = c.total > 0 ? Math.round((c.missed / c.total) * 100) : 0;
+                      return (
+                        <option key={ch} value={ch}>
+                          {labelCourse(ch)}（missed {c.missed}/{c.total} = {rate}%）
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {reasons.length === 0 ? (
+                  <div style={{ opacity: 0.7 }}>（この授業の理由データがありません）</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    {reasons.map((r, idx) => (
+                      <div
+                        key={`${r.course_hash}-${r.feature_key}-${r.feature_value}-${idx}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          padding: '0.5rem 0',
+                          borderTop: '1px solid rgba(255,255,255,.08)',
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 800 }}>
+                            #{idx + 1} {labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                            missed {r.missed}/{r.total}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+                          {toPercent(r.missed_rate)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
 
           {worstFeature && (
             <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
               いちばん要注意：
-              {labelFeatureKey(worstFeature.feature_key)} = {labelFeatureValue(worstFeature.feature_value)}（
+              {labelFeatureKey(worstFeature.feature_key)} = {labelFeatureValue(worstFeature.feature_value, worstFeature.feature_key)}（
               {toPercent(worstFeature.missed_rate)}% / missed {worstFeature.missed}/{worstFeature.total}
               ）
             </div>
@@ -343,7 +520,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
                 >
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>
-                      #{idx + 1} {labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value)}
+                      #{idx + 1} {labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}
                     </div>
                     <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
                       missed {r.missed}/{r.total}

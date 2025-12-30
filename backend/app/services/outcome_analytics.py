@@ -364,3 +364,141 @@ def build_outcome_missed_by_feature(
         },
         "items": items,
     }
+
+def build_outcome_course_x_feature(
+    db: Session,
+    *,
+    user_id: int,
+    feature_version: str,
+    from_deadline: Optional[datetime],
+    to_deadline: Optional[datetime],
+    limit: int,
+    course_hash: Optional[str] = None,
+) -> dict:
+    """
+    ✅ course × feature の missed率（read-only）
+    - OutcomeLog（真実）× FeatureSnapshot（資産）を (task_id, deadline) map で束ねる
+    - JOINしない（事故回避 / FakeSession耐性）
+    - course_hash は features["course_hash"] を軸にする（v1想定）
+    """
+    # 1) OutcomeLog（母集団）
+    q = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
+
+    if from_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline >= from_deadline)
+    if to_deadline is not None:
+        q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
+
+    logs = q.order_by(TaskOutcomeLog.deadline.desc()).limit(limit).all() or []
+    if not logs:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "version": feature_version,
+                "from": from_deadline,
+                "to": to_deadline,
+                "limit": limit,
+                "course_hash": course_hash,
+            },
+            "items": [],
+        }
+
+    # 2) FeatureSnapshot
+    task_ids = [l.task_id for l in logs]
+    deadlines = [l.deadline for l in logs]
+
+    fq = (
+        db.query(OutcomeFeatureSnapshot)
+        .filter(OutcomeFeatureSnapshot.user_id == user_id)
+        .filter(OutcomeFeatureSnapshot.feature_version == feature_version)
+        .filter(OutcomeFeatureSnapshot.task_id.in_(task_ids))
+        .filter(OutcomeFeatureSnapshot.deadline.in_(deadlines))
+    )
+    if from_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline >= from_deadline)
+    if to_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline <= to_deadline)
+
+    snaps = fq.all() or []
+    snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
+        (s.task_id, s.deadline): s for s in snaps
+    }
+
+    # 3) 集計
+    # course_hash -> feature_key -> feature_value -> counts
+    agg: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
+
+    excluded_keys = {"course_hash"}  # ✅ course軸として使うので feature側からは除外
+
+    for l in logs:
+        s = snap_map.get((l.task_id, l.deadline))
+        if s is None:
+            continue
+
+        features = s.features or {}
+        ch = features.get("course_hash")
+        if not ch:
+            # ✅ course_hash がないスナップは cross から除外（仕様固定）
+            continue
+        ch = str(ch)
+        if course_hash and ch != course_hash:
+            continue
+
+        if ch not in agg:
+            agg[ch] = {}
+
+        for k, v in features.items():
+            if k in excluded_keys:
+                continue
+            vv = str(v).lower() if isinstance(v, bool) else str(v)
+
+            if k not in agg[ch]:
+                agg[ch][k] = {}
+            if vv not in agg[ch][k]:
+                agg[ch][k][vv] = {"total": 0, "missed": 0}
+
+            agg[ch][k][vv]["total"] += 1
+            if l.outcome != "done":
+                agg[ch][k][vv]["missed"] += 1
+
+    items: list[dict] = []
+    for ch, by_key in agg.items():
+        for k, by_val in by_key.items():
+            for vv, c in by_val.items():
+                total = c["total"]
+                missed = c["missed"]
+                missed_rate = (missed / total) if total > 0 else 0.0
+                items.append(
+                    {
+                        "course_hash": ch,
+                        "feature_key": k,
+                        "feature_value": vv,
+                        "total": total,
+                        "missed": missed,
+                        "missed_rate": round(missed_rate, 4),
+                    }
+                )
+
+    # ✅ 決定的ソート（監査/テスト/表示安定）
+    items.sort(
+        key=lambda x: (
+            -x["missed_rate"],
+            -x["missed"],
+            -x["total"],
+            x["course_hash"],
+            x["feature_key"],
+            x["feature_value"],
+        )
+    )
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "version": feature_version,
+            "from": from_deadline,
+            "to": to_deadline,
+            "limit": limit,
+            "course_hash": course_hash,
+        },
+        "items": items,
+    }

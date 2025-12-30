@@ -1,6 +1,4 @@
-# backend/test/test_analytics_actions_effectiveness_contract.py
-
-def test_actions_effectiveness_contract(client):
+def test_actions_effectiveness_by_feature_contract(client):
     # まずイベントを1件作る
     r = client.post(
         "/api/v1/analytics/actions/applied",
@@ -8,8 +6,8 @@ def test_actions_effectiveness_contract(client):
     )
     assert r.status_code == 200
 
-    # effectiveness を叩く
-    res = client.get("/api/v1/analytics/actions/effectiveness")
+    # by-feature を叩く
+    res = client.get("/api/v1/analytics/actions/effectiveness/by-feature", params={"version": "v1"})
     assert res.status_code == 200
 
     data = res.json()
@@ -18,7 +16,7 @@ def test_actions_effectiveness_contract(client):
 
     rng = data["range"]
     assert isinstance(rng, dict)
-    for k in ["timezone", "from", "to", "window_days", "min_total", "limit_events"]:
+    for k in ["timezone", "version", "from", "to", "window_days", "min_total", "limit_events", "limit_samples_per_event"]:
         assert k in rng
 
     items = data["items"]
@@ -32,16 +30,16 @@ def test_actions_effectiveness_contract(client):
     # row shape を固定（破壊的変更検知）
     assert set(row.keys()) == {
         "action_id",
-        "applied_count",
-        "measured_count",
-        "improved_count",
+        "feature_key",
+        "feature_value",
+        "total_events",
+        "improved_events",
         "improved_rate",
-        "avg_delta_missed_rate",
     }
 
     assert isinstance(row["action_id"], str)
-    assert isinstance(row["applied_count"], int) and row["applied_count"] >= 1
-    assert isinstance(row["measured_count"], int) and row["measured_count"] >= 0
-    assert isinstance(row["improved_count"], int) and row["improved_count"] >= 0
+    assert isinstance(row["feature_key"], str)
+    assert isinstance(row["feature_value"], str)
+    assert isinstance(row["total_events"], int) and row["total_events"] >= 0
+    assert isinstance(row["improved_events"], int) and row["improved_events"] >= 0
     assert isinstance(row["improved_rate"], float)
-    assert isinstance(row["avg_delta_missed_rate"], float)

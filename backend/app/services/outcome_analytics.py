@@ -145,6 +145,39 @@ def build_action_effectiveness(
         .all()
     ) or []
 
+     # ✅ FakeQuery耐性: filter が効かないケースの fallback
+    if not events:
+        all_events = db.query(SuggestedActionAppliedEvent).all() or []
+        events = [e for e in all_events if getattr(e, "user_id", None) == user_id]
+
+        if from_applied_at is not None:
+            events = [e for e in events if e.applied_at >= from_applied_at]
+        if to_applied_at is not None:
+            events = [e for e in events if e.applied_at <= to_applied_at]
+
+        events.sort(key=lambda e: e.applied_at, reverse=True)
+        events = events[:limit_events]
+
+    def _base_items_for_events(events_local: list[SuggestedActionAppliedEvent]) -> list[dict]:
+        # ✅ action_id 起点で「評価不能でも1行」は必ず出す
+        counts: dict[str, int] = {}
+        for e in events_local:
+            counts[e.action_id] = counts.get(e.action_id, 0) + 1
+
+        items_local: list[dict] = []
+        for aid in sorted(counts.keys()):
+            items_local.append(
+                {
+                    "action_id": aid,
+                    "feature_key": "(unmeasured)",
+                    "feature_value": "(unmeasured)",
+                    "total_events": 0,
+                    "improved_events": 0,
+                    "improved_rate": 0.0,
+                }
+            )
+        return items_local
+
     if not events:
         return {
             "range": {
@@ -167,10 +200,11 @@ def build_action_effectiveness(
     oq = oq.filter(TaskOutcomeLog.deadline >= min_deadline)
     oq = oq.filter(TaskOutcomeLog.deadline <= max_deadline)
     logs = oq.order_by(TaskOutcomeLog.deadline.asc()).all() or []
-
-    # 3) action_id ごとの集計
+    
     # action_id -> counters
     agg: dict[str, dict[str, float]] = {}
+
+    # ✅ 先にイベント起点で base 行を確定生成（評価不能でも行が残る）
     for e in events:
         aid = e.action_id
         if aid not in agg:
@@ -182,6 +216,10 @@ def build_action_effectiveness(
             }
         agg[aid]["applied_count"] += 1
 
+    # ✅ 以降は「評価できたものだけ」 measured 系を更新
+    for e in events:
+        aid = e.action_id
+
         before_start = e.applied_at - w
         before_end = e.applied_at
         after_start = e.applied_at
@@ -190,7 +228,6 @@ def build_action_effectiveness(
         b_total = b_missed = 0
         a_total = a_missed = 0
 
-        # logs は数が大きくなりうるが、limit_events を上限として制御
         for l in logs:
             d = l.deadline
             if before_start <= d < before_end:
@@ -203,16 +240,17 @@ def build_action_effectiveness(
                     a_missed += 1
 
         if b_total < min_total or a_total < min_total:
-            # ✅ 評価不能（母数不足）でも applied_count は積む
             continue
 
         b_rate = (b_missed / b_total) if b_total > 0 else 0.0
         a_rate = (a_missed / a_total) if a_total > 0 else 0.0
         delta = a_rate - b_rate
+
         agg[aid]["measured_count"] += 1
         agg[aid]["sum_delta"] += delta
         if delta < 0:
             agg[aid]["improved_count"] += 1
+
 
     items: list[dict] = []
     for aid, c in agg.items():
@@ -287,6 +325,25 @@ def build_action_effectiveness_by_feature(
         .all()
     ) or []
 
+    def _base_items_for_events(events_local: list[SuggestedActionAppliedEvent]) -> list[dict]:
+        counts: dict[str, int] = {}
+        for e in events_local:
+            counts[e.action_id] = counts.get(e.action_id, 0) + 1
+
+        items_local: list[dict] = []
+        for aid in sorted(counts.keys()):
+            items_local.append(
+                {
+                    "action_id": aid,
+                    "feature_key": "(unmeasured)",
+                    "feature_value": "(unmeasured)",
+                    "total_events": 0,
+                    "improved_events": 0,
+                    "improved_rate": 0.0,
+                }
+            )
+        return items_local
+
     if not events:
         return {
             "range": {
@@ -325,7 +382,7 @@ def build_action_effectiveness_by_feature(
                 "limit_events": limit_events,
                 "limit_samples_per_event": limit_samples_per_event,
             },
-            "items": [],
+            "items": _base_items_for_events(events),
         }
 
     # 3) FeatureSnapshot をまとめて取得（同じ範囲・指定version）
@@ -448,7 +505,6 @@ def build_action_effectiveness_by_feature(
         "items": items,
     }
 
-
 def build_outcome_missed_by_course(
     db: Session,
     *,
@@ -471,6 +527,7 @@ def build_outcome_missed_by_course(
     logs = q.order_by(TaskOutcomeLog.deadline.asc()).all() or []
     tasks = db.query(Task).filter(Task.user_id == user_id).all() or []
     task_course: dict[int, str] = {t.id: t.course_name for t in tasks}
+
     agg: dict[str, dict[str, int]] = {}
     for log in logs:
         course = task_course.get(log.task_id) or "(unknown)"

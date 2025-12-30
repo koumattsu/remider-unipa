@@ -52,7 +52,10 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [beforeAfterError, setBeforeAfterError] = useState<string | null>(null);
   const [beforeSummary, setBeforeSummary] = useState<OutcomesSummaryItem | null>(null);
   const [afterSummary, setAfterSummary] = useState<OutcomesSummaryItem | null>(null);
-  const [actionEffectiveness, setActionEffectiveness] = useState<ActionEffectivenessItem[] | null>(null);
+  const [actionEffectiveness, setActionEffectiveness] = useState<Record<Bucket, ActionEffectivenessItem[] | null>>({
+    week: null,
+    month: null,
+  });
   const [actionEffectivenessError, setActionEffectivenessError] = useState<string | null>(null);
   const [actionEffectivenessLoading, setActionEffectivenessLoading] = useState(false);
 
@@ -89,56 +92,41 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         const fromNotifs = startOfWeek.toISOString();
         const toNotifs = endOfToday.toISOString();
 
-        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM, notifSetting, eff] = await Promise.all([
-          // フォールバック用（既存挙動）
+        const [
+          outcomeData, weeklySummary, runSummary,
+          sumW, sumM, byW, byM, featW, featM,
+          cxW, cxM,
+          notifSetting,
+          effItems,
+        ] = await Promise.all([
           outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
-
-          // 既存（通知反応）
           fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }),
-
-          // 既存（run summary）
           run?.id ? fetchRunSummary(run.id).catch(() => null) : Promise.resolve(null),
 
-          analyticsOutcomesApi
-            .getSummary({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek })
-            .then((x) => x.items?.[0] ?? null)
-            .catch(() => null),
-          analyticsOutcomesApi
-            .getSummary({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth })
-            .then((x) => x.items?.[0] ?? null)
-            .catch(() => null),
+          analyticsOutcomesApi.getSummary({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek }).then(x => x.items?.[0] ?? null).catch(() => null),
+          analyticsOutcomesApi.getSummary({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth }).then(x => x.items?.[0] ?? null).catch(() => null),
 
-          analyticsOutcomesApi
-            .getByCourse({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek })
-            .then((x) => x.items)
-            .catch(() => null),
-          analyticsOutcomesApi
-            .getByCourse({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth })
-            .then((x) => x.items)
-            .catch(() => null),
+          analyticsOutcomesApi.getByCourse({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getByCourse({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth }).then(x => x.items).catch(() => null),
 
-          analyticsOutcomesApi
-            .getMissedByFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 2000 })
-            .then((x) => x.items)
-            .catch(() => null),
-          analyticsOutcomesApi
-            .getMissedByFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 2000 })
-            .then((x) => x.items)
-            .catch(() => null),
+          analyticsOutcomesApi.getMissedByFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 2000 }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getMissedByFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 2000 }).then(x => x.items).catch(() => null),
 
-          // ✅ Priority 3-C: course × feature
-          analyticsOutcomesApi
-            .getCourseXFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 20000 })
-            .then((x) => x.items)
-            .catch(() => null),
-          analyticsOutcomesApi
-            .getCourseXFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 20000 })
-            .then((x) => x.items)
-            .catch(() => null),
+          analyticsOutcomesApi.getCourseXFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 20000 }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getCourseXFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 20000 }).then(x => x.items).catch(() => null),
+
           // ✅ 現在の通知設定（適用ボタン用）
-          settingsApi.getNotification().catch(() => null),  
-          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 }).then(x => x.items).catch(() => null),
-        ]);    
+          settingsApi.getNotification().catch(() => null),
+
+          // ✅ effectiveness（items配列だけ返す）
+          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 })
+            .then(x => x.items ?? [])
+            .catch(() => []),
+        ]);
+
+        // Promise.all の外で setState
+        setCurrentNotifSetting(notifSetting);
+        setActionEffectiveness(prev => ({ ...prev, week: effItems }));
 
         if (!mounted) return;
 
@@ -155,7 +143,6 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         setCourseXWeek(cxW);
         setCourseXMonth(cxM);
         setCurrentNotifSetting(notifSetting);
-        setActionEffectiveness(eff);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message ?? 'failed to load outcomes');
@@ -168,6 +155,31 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      // 既にその bucket が埋まってるなら何もしない
+      if (actionEffectiveness[bucket] !== null) return;
+
+      setActionEffectivenessLoading(true);
+      setActionEffectivenessError(null);
+      try {
+        const eff = await analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 });
+        if (!mounted) return;
+        setActionEffectiveness((prev) => ({ ...prev, [bucket]: eff.items }));
+      } catch (e: any) {
+        if (!mounted) return;
+        setActionEffectivenessError(e?.message ?? 'failed to load effectiveness');
+      } finally {
+        if (!mounted) return;
+        setActionEffectivenessLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [bucket, actionEffectiveness]);
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -206,6 +218,17 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
   const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
+  const chosenActionEffectiveness = actionEffectiveness[bucket] ?? [];
+  const sortedActionEffectiveness = useMemo(() => {
+  const xs = chosenActionEffectiveness ?? [];
+    return [...xs].sort((a, b) => {
+      const ar = Number(a.improved_rate ?? 0);
+      const br = Number(b.improved_rate ?? 0);
+      // improved_rate desc → 同率なら measured_count desc
+      if (br !== ar) return br - ar;
+      return Number(b.measured_count ?? 0) - Number(a.measured_count ?? 0);
+    });
+  }, [chosenActionEffectiveness]);
 
   const courseHashList = useMemo(() => {
     const xs = chosenCourseX ?? [];
@@ -367,30 +390,32 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       await settingsApi.updateNotification(patch);
       const refreshed = await settingsApi.getNotification().catch(() => null);
       if (refreshed) setCurrentNotifSetting(refreshed);
+
       // ✅ 適用イベントを資産として記録（OutcomeLogとは別レイヤ）
       await analyticsActionsApi.recordApplied({
         action_id: a.id,
         bucket,
         applied_at: new Date().toISOString(),
         payload: {
-          // 進化耐性: 自由dict（ただし生テキストは載せない方針）
           patch: patch,
-         reason_keys: a.reason_keys ?? [],
-       },
-     }).catch(() => null);
+          reason_keys: a.reason_keys ?? [],
+        },
+      }).catch(() => null);
+
       setApplyMessage('通知設定に提案を適用しました');
       setAppliedAt(new Date());
+
       // ✅ ついでに effectiveness を更新（read-only）
-     setActionEffectivenessLoading(true);
-     setActionEffectivenessError(null);
-     try {
-       const eff = await analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 });
-       setActionEffectiveness(eff.items);
-     } catch (e: any) {
-       setActionEffectivenessError(e?.message ?? 'failed to load effectiveness');
-     } finally {
-       setActionEffectivenessLoading(false);
-     }
+      setActionEffectivenessLoading(true);
+      setActionEffectivenessError(null);
+      try {
+        const eff = await analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 });
+        setActionEffectiveness(prev => ({ ...prev, [bucket]: eff.items ?? [] }));
+      } catch (e: any) {
+        setActionEffectivenessError(e?.message ?? 'failed to load effectiveness');
+      } finally {
+        setActionEffectivenessLoading(false);
+      }
     } catch (e: any) {
       setApplyError(e?.message ?? 'failed to apply');
       setApplyMessage('提案の適用に失敗しました');
@@ -838,7 +863,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
                             }}
                           >
                             <button
-                              onClick={() => applySuggestedAction(a.patch)}
+                              onClick={() => applySuggestedAction(a)}
                               disabled={applySaving || !currentNotifSetting}
                             >
                               {applySaving ? '適用中…' : 'この提案を適用'}
@@ -856,7 +881,52 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
               </>
             )}
           </div>
-
+          {/* ✅ Priority 4-B: action effectiveness（read-only / 監査用） */}
+          <div style={{ marginTop: '0.8rem' }}>
+            <div style={{ fontWeight: 800, marginBottom: '0.4rem' }}>
+              提案の効果（試験）
+            </div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
+              ※ OutcomeLog（締切到達時点の結果）だけで前後比較します。Outcome不足の提案も「行は残り」、measured=0 になります。
+            </div>
+            {actionEffectivenessLoading && (
+              <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
+            )}
+            {!actionEffectivenessLoading && actionEffectivenessError && (
+              <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
+                {actionEffectivenessError}
+              </div>
+            )}
+            {!actionEffectivenessLoading && !actionEffectivenessError && (
+              <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                {sortedActionEffectiveness.length === 0 ? (
+                  <div>まだデータがありません（適用イベントやOutcomeが貯まると出ます）</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.35rem' }}>
+                    {sortedActionEffectiveness.slice(0, 8).map((x) => (
+                      <div
+                        key={x.action_id}
+                        style={{
+                          padding: '0.55rem 0.65rem',
+                          borderRadius: 12,
+                          border: '1px solid rgba(255,255,255,.10)',
+                          background: 'rgba(255,255,255,.04)',
+                        }}
+                      >
+                        <div style={{ fontWeight: 750 }}>{x.action_id}</div>
+                        <div style={{ opacity: 0.8 }}>
+                          improved_rate: {Math.round((Number(x.improved_rate ?? 0) * 100) * 10) / 10}%
+                          {'  '} / measured: {Number(x.measured_count ?? 0)}
+                          {'  '} / applied: {Number(x.applied_count ?? 0)}
+                          {'  '} / avgΔmissed: {Number(x.avg_delta_missed_rate ?? 0)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           {worstFeature && (
             <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
               いちばん要注意：

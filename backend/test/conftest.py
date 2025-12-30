@@ -180,8 +180,8 @@ class FakeQuery:
                     break
             if ok:
                 out.append(it)
+        return out        
 
-  
     def limit(self, *args, **kwargs):
         return self
 
@@ -443,8 +443,10 @@ class FakeSession:
 
 @pytest.fixture()
 def client():
+    session = FakeSession()  # ✅ 同一テスト内で永続化させる（POST→GETで同じDB）
+
     def _override_get_db():
-        yield FakeSession()
+        yield session
 
     async def _override_get_current_user():
         return _DummyUser(1)

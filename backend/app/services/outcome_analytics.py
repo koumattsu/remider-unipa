@@ -251,18 +251,22 @@ def build_outcome_training_set(
         "items": items,
     }
 
-def build_outcome_risk_by_deadline_time(
+def build_outcome_missed_by_feature(
     db: Session,
     *,
     user_id: int,
+    feature_version: str,
     from_deadline: Optional[datetime],
     to_deadline: Optional[datetime],
+    limit: int,
 ) -> dict:
     """
-    ✅ 危険帯分析SSOT（read-only）
-    - OutcomeLog を唯一の真実として、deadline の JST曜日×時間帯 で missed率を集計
-    - UIで「落ちやすい締切時間」を出すための集計
+    ✅ feature別 missed率 SSOT（read-only）
+    - OutcomeLog（真実）× FeatureSnapshot（資産）を (task_id, deadline) map で束ねる
+    - JOINしない（事故回避 / FakeSession耐性）
+    - course_hash はカテゴリ爆発するのでデフォルト除外（必要なら別APIで）
     """
+    # 1) OutcomeLog（母集団）
     q = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
 
     if from_deadline is not None:
@@ -270,43 +274,93 @@ def build_outcome_risk_by_deadline_time(
     if to_deadline is not None:
         q = q.filter(TaskOutcomeLog.deadline <= to_deadline)
 
-    logs = q.order_by(TaskOutcomeLog.deadline.asc()).all() or []
+    logs = q.order_by(TaskOutcomeLog.deadline.desc()).limit(limit).all() or []
+    if not logs:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "version": feature_version,
+                "from": from_deadline,
+                "to": to_deadline,
+                "limit": limit,
+            },
+            "items": [],
+        }
 
-    agg: dict[tuple[int, int], dict[str, int]] = {}  # (dow, hour) -> counts
-    jst = ZoneInfo("Asia/Tokyo")
+    # 2) FeatureSnapshot（同じ (task_id, deadline) の v を取る）
+    task_ids = [l.task_id for l in logs]
+    deadlines = [l.deadline for l in logs]
 
-    for log in logs:
-        d = log.deadline.astimezone(jst)
-        key = (int(d.weekday()), int(d.hour))
-        if key not in agg:
-            agg[key] = {"total": 0, "missed": 0}
-        agg[key]["total"] += 1
-        if log.outcome != "done":
-            agg[key]["missed"] += 1
+    fq = (
+        db.query(OutcomeFeatureSnapshot)
+        .filter(OutcomeFeatureSnapshot.user_id == user_id)
+        .filter(OutcomeFeatureSnapshot.feature_version == feature_version)
+        .filter(OutcomeFeatureSnapshot.task_id.in_(task_ids))
+        .filter(OutcomeFeatureSnapshot.deadline.in_(deadlines))
+    )
+    if from_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline >= from_deadline)
+    if to_deadline is not None:
+        fq = fq.filter(OutcomeFeatureSnapshot.deadline <= to_deadline)
+
+    snaps = fq.all() or []
+    snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
+        (s.task_id, s.deadline): s for s in snaps
+    }
+
+    # 3) 集計
+    #    key -> value -> counts
+    agg: dict[str, dict[str, dict[str, int]]] = {}
+
+    excluded_keys = {"course_hash"}  # ✅ カテゴリ爆発を避ける
+
+    for l in logs:
+        s = snap_map.get((l.task_id, l.deadline))
+        if s is None:
+            # ✅ 特徴量が無いものは feature分析から除外
+            continue
+
+        features = s.features or {}
+        for k, v in features.items():
+            if k in excluded_keys:
+                continue
+            vv = str(v).lower() if isinstance(v, bool) else str(v)
+
+            if k not in agg:
+                agg[k] = {}
+            if vv not in agg[k]:
+                agg[k][vv] = {"total": 0, "missed": 0}
+
+            agg[k][vv]["total"] += 1
+            if l.outcome != "done":
+                agg[k][vv]["missed"] += 1
 
     items: list[dict] = []
-    for (dow, hour), c in agg.items():
-        total = c["total"]
-        missed = c["missed"]
-        missed_rate = (missed / total) if total > 0 else 0.0
-        items.append(
-            {
-                "deadline_dow_jst": dow,   # 0=Mon..6
-                "deadline_hour_jst": hour, # 0..23
-                "total": total,
-                "missed": missed,
-                "missed_rate": round(missed_rate, 4),
-            }
-        )
+    for k, by_val in agg.items():
+        for vv, c in by_val.items():
+            total = c["total"]
+            missed = c["missed"]
+            missed_rate = (missed / total) if total > 0 else 0.0
+            items.append(
+                {
+                    "feature_key": k,
+                    "feature_value": vv,
+                    "total": total,
+                    "missed": missed,
+                    "missed_rate": round(missed_rate, 4),
+                }
+            )
 
-    # ✅ 決定的ソート（UI/監査/テスト向け）
-    items.sort(key=lambda x: (-x["missed_rate"], -x["missed"], -x["total"], x["deadline_dow_jst"], x["deadline_hour_jst"]))
+    # ✅ 決定的ソート（監査/テスト/表示安定）
+    items.sort(key=lambda x: (-x["missed_rate"], -x["missed"], -x["total"], x["feature_key"], x["feature_value"]))
 
     return {
         "range": {
             "timezone": "Asia/Tokyo",
+            "version": feature_version,
             "from": from_deadline,
             "to": to_deadline,
+            "limit": limit,
         },
         "items": items,
     }

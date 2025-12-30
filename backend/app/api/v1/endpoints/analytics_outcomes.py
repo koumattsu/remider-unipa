@@ -11,7 +11,7 @@ from app.services.outcome_analytics import (
     build_outcome_summary,
     build_outcome_missed_by_course,
     build_outcome_training_set,
-    build_outcome_risk_by_deadline_time, 
+    build_outcome_missed_by_feature,
 )
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 
@@ -128,21 +128,27 @@ def get_outcome_training_set(
         limit=limit,
     )
 
-@router.get("/outcomes/risk-time", response_model=dict)
-def get_outcome_risk_time(
+@router.get("/outcomes/missed-by-feature", response_model=dict)
+def get_outcome_missed_by_feature(
+    version: str = Query("v1"),
     from_: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = Query(None),
+    limit: int = Query(200, ge=1, le=2000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    OutcomeLog を唯一の真実として、締切の曜日×時間帯ごとの missed率を返す（read-only）
+    OutcomeLog（教師ラベル）× OutcomeFeatureSnapshot（特徴量）から
+    feature別の missed率 を返す（read-only）
     - from/to は deadline 基準
-    - JSTの曜日/時刻で集計
+    - version は feature_version（例: v1）
+    - JOINせずに map で束ねる（事故回避）
     """
-    return build_outcome_risk_by_deadline_time(
+    return build_outcome_missed_by_feature(
         db,
         user_id=current_user.id,
+        feature_version=version,
         from_deadline=from_,
         to_deadline=to,
+        limit=limit,
     )

@@ -1,3 +1,5 @@
+// frontend/src/types/index.ts
+
 export interface User {
   id: number;
   line_user_id: string;

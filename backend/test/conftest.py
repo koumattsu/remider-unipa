@@ -19,6 +19,7 @@ from app.models.webpush_subscription import WebPushSubscription
 from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
+from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -217,6 +218,7 @@ class FakeSession:
     def __init__(self):
         self._added = []
         self._id_seq = 1000
+        self.action_events = []
         self.total = 5
         self.dismissed = 2
         from datetime import datetime, timezone
@@ -326,6 +328,11 @@ class FakeSession:
         if model is InAppNotification:
             q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=[])
             q._items = self.inapp_items
+            return q
+        if model is SuggestedActionAppliedEvent:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            # add() されたものが見えるようにする（DBっぽく）
+            q._items = [x for x in self._added if isinstance(x, SuggestedActionAppliedEvent)]
             return q
         if model is NotificationRun:
             q = FakeQuery(

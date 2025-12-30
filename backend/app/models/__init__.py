@@ -11,3 +11,4 @@ from app.models.webpush_subscription import WebPushSubscription  # noqa: F401
 from app.models.notification_run import NotificationRun  # noqa: F401
 from app.models.webpush_delivery import WebPushDelivery  # noqa: F401
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot  # noqa: F401
+from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent  # noqa: F401

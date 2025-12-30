@@ -3,6 +3,8 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes, in_app_notifications, webpush_subscriptions, notification_runs
 import app.api.v1.endpoints.analytics_outcomes as analytics_outcomes
+import app.api.v1.endpoints.analytics_actions as analytics_actions
+
 api_router = APIRouter()
 # 既存ルーター
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -43,6 +45,12 @@ api_router.include_router(
 # 📊 分析: OutcomeLog 集計（read-only）
 api_router.include_router(
     analytics_outcomes.router,
+    prefix="/analytics",
+    tags=["analytics"],
+)
+
+api_router.include_router(
+    analytics_actions.router,
     prefix="/analytics",
     tags=["analytics"],
 )

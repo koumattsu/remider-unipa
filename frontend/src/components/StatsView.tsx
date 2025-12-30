@@ -14,6 +14,7 @@ import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../ap
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
 import { Task, NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
+import { analyticsActionsApi, ActionEffectivenessItem } from '../api/analyticsActions';
 
 /**
  * StatsView（監査/分析ビュー）:
@@ -42,7 +43,6 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [courseXWeek, setCourseXWeek] = useState<OutcomesCourseXFeatureRow[] | null>(null);
   const [courseXMonth, setCourseXMonth] = useState<OutcomesCourseXFeatureRow[] | null>(null);
   const [selectedCourseHash, setSelectedCourseHash] = useState<string | null>(null);
-  // ✅ Priority 4-A: アクション適用のために現在の通知設定を保持（read-only取得→update）
   const [currentNotifSetting, setCurrentNotifSetting] = useState<NotificationSetting | null>(null);
   const [applySaving, setApplySaving] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -52,6 +52,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [beforeAfterError, setBeforeAfterError] = useState<string | null>(null);
   const [beforeSummary, setBeforeSummary] = useState<OutcomesSummaryItem | null>(null);
   const [afterSummary, setAfterSummary] = useState<OutcomesSummaryItem | null>(null);
+  const [actionEffectiveness, setActionEffectiveness] = useState<ActionEffectivenessItem[] | null>(null);
+  const [actionEffectivenessError, setActionEffectivenessError] = useState<string | null>(null);
+  const [actionEffectivenessLoading, setActionEffectivenessLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -86,7 +89,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         const fromNotifs = startOfWeek.toISOString();
         const toNotifs = endOfToday.toISOString();
 
-        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM, notifSetting] = await Promise.all([
+        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM, notifSetting, eff] = await Promise.all([
           // フォールバック用（既存挙動）
           outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
 
@@ -134,6 +137,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
             .catch(() => null),
           // ✅ 現在の通知設定（適用ボタン用）
           settingsApi.getNotification().catch(() => null),  
+          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 }).then(x => x.items).catch(() => null),
         ]);    
 
         if (!mounted) return;
@@ -151,6 +155,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         setCourseXWeek(cxW);
         setCourseXMonth(cxM);
         setCurrentNotifSetting(notifSetting);
+        setActionEffectiveness(eff);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message ?? 'failed to load outcomes');
@@ -349,7 +354,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     return actions;
   };
 
-  const applySuggestedAction = async (patch: NotificationSettingUpdate | null) => {
+  const applySuggestedAction = async (a: SuggestedAction) => {
+    const patch = a.patch;
     if (!patch) {
       setApplyError(null);
       setApplyMessage('これは手動アクションです（設定の自動適用はありません）');
@@ -361,8 +367,30 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       await settingsApi.updateNotification(patch);
       const refreshed = await settingsApi.getNotification().catch(() => null);
       if (refreshed) setCurrentNotifSetting(refreshed);
+      // ✅ 適用イベントを資産として記録（OutcomeLogとは別レイヤ）
+      await analyticsActionsApi.recordApplied({
+        action_id: a.id,
+        bucket,
+        applied_at: new Date().toISOString(),
+        payload: {
+          // 進化耐性: 自由dict（ただし生テキストは載せない方針）
+          patch: patch,
+         reason_keys: a.reason_keys ?? [],
+       },
+     }).catch(() => null);
       setApplyMessage('通知設定に提案を適用しました');
       setAppliedAt(new Date());
+      // ✅ ついでに effectiveness を更新（read-only）
+     setActionEffectivenessLoading(true);
+     setActionEffectivenessError(null);
+     try {
+       const eff = await analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 });
+       setActionEffectiveness(eff.items);
+     } catch (e: any) {
+       setActionEffectivenessError(e?.message ?? 'failed to load effectiveness');
+     } finally {
+       setActionEffectivenessLoading(false);
+     }
     } catch (e: any) {
       setApplyError(e?.message ?? 'failed to apply');
       setApplyMessage('提案の適用に失敗しました');

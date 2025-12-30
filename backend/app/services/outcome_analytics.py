@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
+from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
 
 Bucket = Literal["week", "month"]
 
@@ -105,6 +106,348 @@ def build_outcome_summary(
         },
         "items": items,
     }
+
+def build_action_effectiveness(
+    db: Session,
+    *,
+    user_id: int,
+    from_applied_at: Optional[datetime],
+    to_applied_at: Optional[datetime],
+    window_days: int,
+    min_total: int,
+    limit_events: int,
+) -> dict:
+    """
+    ✅ SuggestedAction の効果を OutcomeLog（SSOT）で評価する（read-only）
+    - 介入ログ: SuggestedActionAppliedEvent（資産）
+    - 結果: TaskOutcomeLog（唯一の真実）
+    - v0: reason_keys 等の「提案ロジック」には触れない（推測しない）
+
+    評価方法（v0）:
+    - event.applied_at を境に
+      before: [applied_at - window_days, applied_at)
+      after : [applied_at, applied_at + window_days)
+    - 指標: missed_rate_after - missed_rate_before（負なら改善）
+    - min_total: before/after の total が両方 min_total 以上のときだけ measured とする
+    """
+    # 1) 介入イベント（資産）
+    q = db.query(SuggestedActionAppliedEvent).filter(
+        SuggestedActionAppliedEvent.user_id == user_id
+    )
+    if from_applied_at is not None:
+        q = q.filter(SuggestedActionAppliedEvent.applied_at >= from_applied_at)
+    if to_applied_at is not None:
+        q = q.filter(SuggestedActionAppliedEvent.applied_at <= to_applied_at)
+
+    events = (
+        q.order_by(SuggestedActionAppliedEvent.applied_at.desc())
+        .limit(limit_events)
+        .all()
+    ) or []
+
+    if not events:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "from": from_applied_at,
+                "to": to_applied_at,
+                "window_days": window_days,
+                "min_total": min_total,
+                "limit_events": limit_events,
+            },
+            "items": [],
+        }
+
+    # 2) 必要な OutcomeLog をまとめて取得（JOINせずに 2クエリ + python 集計）
+    w = timedelta(days=window_days)
+    min_deadline = min(e.applied_at for e in events) - w
+    max_deadline = max(e.applied_at for e in events) + w
+
+    oq = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
+    oq = oq.filter(TaskOutcomeLog.deadline >= min_deadline)
+    oq = oq.filter(TaskOutcomeLog.deadline <= max_deadline)
+    logs = oq.order_by(TaskOutcomeLog.deadline.asc()).all() or []
+
+    # 3) action_id ごとの集計
+    # action_id -> counters
+    agg: dict[str, dict[str, float]] = {}
+    for e in events:
+        aid = e.action_id
+        if aid not in agg:
+            agg[aid] = {
+                "applied_count": 0,
+                "measured_count": 0,
+                "improved_count": 0,
+                "sum_delta": 0.0,
+            }
+        agg[aid]["applied_count"] += 1
+
+        before_start = e.applied_at - w
+        before_end = e.applied_at
+        after_start = e.applied_at
+        after_end = e.applied_at + w
+
+        b_total = b_missed = 0
+        a_total = a_missed = 0
+
+        # logs は数が大きくなりうるが、limit_events を上限として制御
+        for l in logs:
+            d = l.deadline
+            if before_start <= d < before_end:
+                b_total += 1
+                if l.outcome != "done":
+                    b_missed += 1
+            elif after_start <= d < after_end:
+                a_total += 1
+                if l.outcome != "done":
+                    a_missed += 1
+
+        if b_total < min_total or a_total < min_total:
+            # ✅ 評価不能（母数不足）でも applied_count は積む
+            continue
+
+        b_rate = (b_missed / b_total) if b_total > 0 else 0.0
+        a_rate = (a_missed / a_total) if a_total > 0 else 0.0
+        delta = a_rate - b_rate
+        agg[aid]["measured_count"] += 1
+        agg[aid]["sum_delta"] += delta
+        if delta < 0:
+            agg[aid]["improved_count"] += 1
+
+    items: list[dict] = []
+    for aid, c in agg.items():
+        applied_count = int(c["applied_count"])
+        measured_count = int(c["measured_count"])
+        improved_count = int(c["improved_count"])
+        improved_rate = (improved_count / measured_count) if measured_count > 0 else 0.0
+        avg_delta = (c["sum_delta"] / measured_count) if measured_count > 0 else 0.0
+        items.append(
+            {
+                "action_id": aid,
+                "applied_count": applied_count,
+                "measured_count": measured_count,
+                "improved_count": improved_count,
+                "improved_rate": round(improved_rate, 4),
+                "avg_delta_missed_rate": round(avg_delta, 4),
+            }
+        )
+
+    # ✅ 決定的ソート（監査/表示安定）
+    items.sort(
+        key=lambda x: (
+            -x["measured_count"],
+            -x["applied_count"],
+            x["action_id"],
+        )
+    )
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "from": from_applied_at,
+            "to": to_applied_at,
+            "window_days": window_days,
+            "min_total": min_total,
+            "limit_events": limit_events,
+        },
+        "items": items,
+    }
+
+def build_action_effectiveness_by_feature(
+    db: Session,
+    *,
+    user_id: int,
+    feature_version: str,
+    from_applied_at: Optional[datetime],
+    to_applied_at: Optional[datetime],
+    window_days: int,
+    min_total: int,
+    limit_events: int,
+    limit_samples_per_event: int,
+) -> dict:
+    """
+    ✅ action × feature の「効きやすさ」を返す（read-only）
+    - SSOT: TaskOutcomeLog（前後比較は v0 と同じ）
+    - 条件: applied_at 直前 window の OutcomeFeatureSnapshot（資産）
+    - JOINせずに 2クエリ + map
+    - v1: 提案ロジック(reason_keys等)には触れない
+    """
+    # 1) 介入イベント
+    q = db.query(SuggestedActionAppliedEvent).filter(
+        SuggestedActionAppliedEvent.user_id == user_id
+    )
+    if from_applied_at is not None:
+        q = q.filter(SuggestedActionAppliedEvent.applied_at >= from_applied_at)
+    if to_applied_at is not None:
+        q = q.filter(SuggestedActionAppliedEvent.applied_at <= to_applied_at)
+
+    events = (
+        q.order_by(SuggestedActionAppliedEvent.applied_at.desc())
+        .limit(limit_events)
+        .all()
+    ) or []
+
+    if not events:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "version": feature_version,
+                "from": from_applied_at,
+                "to": to_applied_at,
+                "window_days": window_days,
+                "min_total": min_total,
+                "limit_events": limit_events,
+                "limit_samples_per_event": limit_samples_per_event,
+            },
+            "items": [],
+        }
+
+    w = timedelta(days=window_days)
+
+    # 2) 必要な OutcomeLog をまとめて取得（before/after 両方）
+    min_deadline = min(e.applied_at for e in events) - w
+    max_deadline = max(e.applied_at for e in events) + w
+
+    oq = db.query(TaskOutcomeLog).filter(TaskOutcomeLog.user_id == user_id)
+    oq = oq.filter(TaskOutcomeLog.deadline >= min_deadline)
+    oq = oq.filter(TaskOutcomeLog.deadline <= max_deadline)
+    logs = oq.order_by(TaskOutcomeLog.deadline.asc()).all() or []
+
+    if not logs:
+        return {
+            "range": {
+                "timezone": "Asia/Tokyo",
+                "version": feature_version,
+                "from": from_applied_at,
+                "to": to_applied_at,
+                "window_days": window_days,
+                "min_total": min_total,
+                "limit_events": limit_events,
+                "limit_samples_per_event": limit_samples_per_event,
+            },
+            "items": [],
+        }
+
+    # 3) FeatureSnapshot をまとめて取得（同じ範囲・指定version）
+    task_ids = [l.task_id for l in logs]
+    deadlines = [l.deadline for l in logs]
+    fq = (
+        db.query(OutcomeFeatureSnapshot)
+        .filter(OutcomeFeatureSnapshot.user_id == user_id)
+        .filter(OutcomeFeatureSnapshot.feature_version == feature_version)
+        .filter(OutcomeFeatureSnapshot.task_id.in_(task_ids))
+        .filter(OutcomeFeatureSnapshot.deadline.in_(deadlines))
+    )
+    snaps = fq.all() or []
+    snap_map: dict[tuple[int, datetime], OutcomeFeatureSnapshot] = {
+        (s.task_id, s.deadline): s for s in snaps
+    }
+
+    excluded_keys = {"course_hash"}  # v1: 爆発回避（既存方針に合わせる）
+
+    # 4) 集計: (action_id, feature_key, feature_value) -> counts
+    # 値は "見かけたイベント数" ベース（サンプル数で水増ししない）
+    agg: dict[tuple[str, str, str], dict[str, int]] = {}
+
+    for e in events:
+        aid = e.action_id
+        before_start = e.applied_at - w
+        before_end = e.applied_at
+        after_start = e.applied_at
+        after_end = e.applied_at + w
+
+        # v0 と同じ: 前後の missed_rate を計算
+        b_total = b_missed = 0
+        a_total = a_missed = 0
+        for l in logs:
+            d = l.deadline
+            if before_start <= d < before_end:
+                b_total += 1
+                if l.outcome != "done":
+                    b_missed += 1
+            elif after_start <= d < after_end:
+                a_total += 1
+                if l.outcome != "done":
+                    a_missed += 1
+
+        if b_total < min_total or a_total < min_total:
+            continue
+
+        b_rate = (b_missed / b_total) if b_total > 0 else 0.0
+        a_rate = (a_missed / a_total) if a_total > 0 else 0.0
+        improved = (a_rate - b_rate) < 0
+
+        # “条件”として、before window の FeatureSnapshot を最大 N 件だけサンプル
+        #  - 直近を優先（deadline降順）
+        before_logs = [l for l in logs if before_start <= l.deadline < before_end]
+        before_logs.sort(key=lambda x: x.deadline, reverse=True)
+        before_logs = before_logs[: max(1, int(limit_samples_per_event))]
+
+        # イベント内で同じ feature 値を何度も数えない（イベント単位で重複排除）
+        seen: set[tuple[str, str]] = set()
+        for l in before_logs:
+            s = snap_map.get((l.task_id, l.deadline))
+            if s is None:
+                continue
+            features = s.features or {}
+            for k, v in features.items():
+                if k in excluded_keys:
+                    continue
+                vv = str(v).lower() if isinstance(v, bool) else str(v)
+                key2 = (k, vv)
+                if key2 in seen:
+                    continue
+                seen.add(key2)
+
+                agg_key = (aid, k, vv)
+                if agg_key not in agg:
+                    agg[agg_key] = {"total_events": 0, "improved_events": 0}
+                agg[agg_key]["total_events"] += 1
+                if improved:
+                    agg[agg_key]["improved_events"] += 1
+
+    items: list[dict] = []
+    for (aid, k, vv), c in agg.items():
+        total_events = c["total_events"]
+        improved_events = c["improved_events"]
+        improved_rate = (improved_events / total_events) if total_events > 0 else 0.0
+        items.append(
+            {
+                "action_id": aid,
+                "feature_key": k,
+                "feature_value": vv,
+                "total_events": total_events,
+                "improved_events": improved_events,
+                "improved_rate": round(improved_rate, 4),
+            }
+        )
+
+    # ✅ 決定的ソート（監査/表示安定）
+    items.sort(
+        key=lambda x: (
+            -x["improved_rate"],
+            -x["improved_events"],
+            -x["total_events"],
+            x["action_id"],
+            x["feature_key"],
+            x["feature_value"],
+        )
+    )
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "version": feature_version,
+            "from": from_applied_at,
+            "to": to_applied_at,
+            "window_days": window_days,
+            "min_total": min_total,
+            "limit_events": limit_events,
+            "limit_samples_per_event": limit_samples_per_event,
+        },
+        "items": items,
+    }
+
 
 def build_outcome_missed_by_course(
     db: Session,

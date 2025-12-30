@@ -41,11 +41,12 @@ export interface NotificationSetting {
   reminder_offsets_hours: number[];
   daily_digest_time: string;
   enable_morning_notification: boolean;
+  enable_webpush: boolean;
 }
 
 export interface NotificationSettingUpdate {
   reminder_offsets_hours: number[];
   daily_digest_time: string;
-  enable_morning_notification?: boolean;
+  enable_morning_notification: boolean;
+  enable_webpush: boolean;
 }
-

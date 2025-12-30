@@ -12,7 +12,8 @@ import {
 } from '../api/analyticsOutcomes';
 import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
-import { Task } from '../types';
+import { Task, NotificationSetting, NotificationSettingUpdate } from '../types';
+import { settingsApi } from '../api/settings';
 
 /**
  * StatsView（監査/分析ビュー）:
@@ -41,6 +42,16 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [courseXWeek, setCourseXWeek] = useState<OutcomesCourseXFeatureRow[] | null>(null);
   const [courseXMonth, setCourseXMonth] = useState<OutcomesCourseXFeatureRow[] | null>(null);
   const [selectedCourseHash, setSelectedCourseHash] = useState<string | null>(null);
+  // ✅ Priority 4-A: アクション適用のために現在の通知設定を保持（read-only取得→update）
+  const [currentNotifSetting, setCurrentNotifSetting] = useState<NotificationSetting | null>(null);
+  const [applySaving, setApplySaving] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyMessage, setApplyMessage] = useState<string | null>(null);
+  const [appliedAt, setAppliedAt] = useState<Date | null>(null);
+  const [beforeAfterLoading, setBeforeAfterLoading] = useState(false);
+  const [beforeAfterError, setBeforeAfterError] = useState<string | null>(null);
+  const [beforeSummary, setBeforeSummary] = useState<OutcomesSummaryItem | null>(null);
+  const [afterSummary, setAfterSummary] = useState<OutcomesSummaryItem | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -75,7 +86,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         const fromNotifs = startOfWeek.toISOString();
         const toNotifs = endOfToday.toISOString();
 
-        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM] = await Promise.all([
+        const [outcomeData, weeklySummary, runSummary, sumW, sumM, byW, byM, featW, featM, cxW, cxM, notifSetting] = await Promise.all([
           // フォールバック用（既存挙動）
           outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
 
@@ -121,6 +132,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
             .getCourseXFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 20000 })
             .then((x) => x.items)
             .catch(() => null),
+          // ✅ 現在の通知設定（適用ボタン用）
+          settingsApi.getNotification().catch(() => null),  
         ]);    
 
         if (!mounted) return;
@@ -137,6 +150,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
         setByFeatureMonth(featM);
         setCourseXWeek(cxW);
         setCourseXMonth(cxM);
+        setCurrentNotifSetting(notifSetting);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message ?? 'failed to load outcomes');
@@ -230,6 +244,182 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       .slice(0, 5);
   }, [chosenCourseX, selectedCourseHash]);
 
+  type SuggestedAction = {
+    id: string;
+    title: string;
+    description: string;
+    // null の場合は「手動アクション」（ボタン非表示）
+    patch: NotificationSettingUpdate | null;
+    reason_keys?: string[];
+  };
+
+  const asBool = (v: any): boolean | null => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if (s === 'true') return true;
+      if (s === 'false') return false;
+    }
+    return null;
+  };
+
+  const asNumber = (v: any): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const buildSuggestedActions = (rows: OutcomesCourseXFeatureRow[]): SuggestedAction[] => {
+    const actions: SuggestedAction[] = [];
+
+    // 現在値（無ければ安全デフォルト）
+    const base: NotificationSettingUpdate = {
+      reminder_offsets_hours: currentNotifSetting?.reminder_offsets_hours ?? [],
+      daily_digest_time: currentNotifSetting?.daily_digest_time ?? '08:00',
+      enable_morning_notification:
+        currentNotifSetting?.enable_morning_notification !== undefined
+          ? currentNotifSetting.enable_morning_notification
+          : true,
+      enable_webpush: currentNotifSetting?.enable_webpush ?? false,
+    };
+
+    const hasWeekend = rows.some(
+      (r) => r.feature_key === 'deadline_is_weekend' && asBool(r.feature_value) === true
+    );
+
+    const hasLateNight = rows.some((r) => {
+      if (r.feature_key !== 'deadline_hour_jst') return false;
+      const h = asNumber(r.feature_value);
+      return h !== null && h >= 0 && h <= 5;
+    });
+
+    const hasNoMemo = rows.some(
+      (r) => r.feature_key === 'has_memo' && asBool(r.feature_value) === false
+    );
+
+    if (hasWeekend) {
+      actions.push({
+        id: 'weekend_enable_morning',
+        title: '週末締切が多い → 朝通知をON（継続チェックの起点を作る）',
+        description: '週末締切が原因で missed が多いため、朝通知をONにして着手トリガーを作ります。',
+        reason_keys: ['deadline_is_weekend', 'deadline_dow_jst'],
+        patch: {
+          ...base,
+          enable_morning_notification: true,
+        },
+      });
+    }
+
+    if (hasLateNight) {
+      actions.push({
+        id: 'latenight_enable_webpush_and_1h',
+        title: '深夜締切が多い → Web Push と 1時間前通知をON',
+        description: '深夜締切は見落としやすいので、アプリ通知（Web Push）と1時間前通知で拾います。',
+        reason_keys: ['deadline_hour_jst'],
+        patch: {
+          ...base,
+          enable_webpush: true,
+          reminder_offsets_hours: [1],
+        },
+      });
+    }
+
+    if (hasNoMemo) {
+      actions.push({
+        id: 'add_memo',
+        title: 'メモ無しが多い → タスクに1行メモを追加',
+        description: '「何をやるか」を1行で書くと、完了率が上がりやすいです（これは手動アクション）。',
+        reason_keys: ['has_memo'],
+        patch: null,
+      });
+    }
+
+    // 何も引っかからない場合も、最低1個は出す（空UI回避）
+    if (actions.length === 0) {
+      actions.push({
+        id: 'generic',
+        title: 'まずは 1時間前通知（無料の基本）をONにする',
+        description: '最小の介入で取りこぼしを減らします。',
+        patch: {
+          ...base,
+          reminder_offsets_hours: [1],
+        },
+      });
+    }
+
+    return actions;
+  };
+
+  const applySuggestedAction = async (patch: NotificationSettingUpdate | null) => {
+    if (!patch) {
+      setApplyError(null);
+      setApplyMessage('これは手動アクションです（設定の自動適用はありません）');
+      return;
+    }
+    setApplyError(null);
+    setApplySaving(true);
+    try {
+      await settingsApi.updateNotification(patch);
+      const refreshed = await settingsApi.getNotification().catch(() => null);
+      if (refreshed) setCurrentNotifSetting(refreshed);
+      setApplyMessage('通知設定に提案を適用しました');
+      setAppliedAt(new Date());
+    } catch (e: any) {
+      setApplyError(e?.message ?? 'failed to apply');
+      setApplyMessage('提案の適用に失敗しました');
+    } finally {
+      setApplySaving(false);
+    }
+  };
+
+  const evidenceForAction = (a: SuggestedAction, rows: OutcomesCourseXFeatureRow[]) => {
+    const keys = a.reason_keys ?? [];
+    if (keys.length === 0) return [];
+
+    return [...rows]
+      .filter((r) => keys.includes(r.feature_key))
+      .sort((x, y) => toPercent(y.missed_rate) - toPercent(x.missed_rate))
+      .slice(0, 3);
+  };
+
+  const suggestedActions = useMemo(() => {
+    if (!reasons || reasons.length === 0) return [];
+    return buildSuggestedActions(reasons);
+  }, [reasons, currentNotifSetting]);
+  // ✅ Priority 3-D: 適用前/後の達成率を比較（read-only）
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!appliedAt) return;
+      setBeforeAfterError(null);
+      setBeforeAfterLoading(true);
+      try {
+        const { before, after } = buildBeforeAfterRange(appliedAt, bucket);
+        const [b, a] = await Promise.all([
+          analyticsOutcomesApi
+            .getSummary({ bucket, from: before.from, to: before.to })
+            .then((x) => x.items?.[0] ?? null)
+            .catch(() => null),
+          analyticsOutcomesApi
+            .getSummary({ bucket, from: after.from, to: after.to })
+            .then((x) => x.items?.[0] ?? null)
+            .catch(() => null),
+        ]);
+        if (!mounted) return;
+        setBeforeSummary(b);
+        setAfterSummary(a);
+      } catch (e: any) {
+        if (!mounted) return;
+        setBeforeAfterError(e?.message ?? 'failed to load before/after');
+      } finally {
+        if (!mounted) return;
+        setBeforeAfterLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [appliedAt, bucket]);
+
   // ✅ 表示用にソート（missed_rate desc）
   const sortedByFeature = useMemo(() => {
     if (!chosenByFeature) return null;
@@ -279,6 +469,30 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
     return n <= 1 ? Math.round(n * 100) : Math.round(n);
+  };
+
+  const missedRateOf = (s: OutcomesSummaryItem | null) => {
+    if (!s) return 0;
+    const total = Number(s.total ?? 0);
+    const missed = Number(s.missed ?? 0);
+    if (!Number.isFinite(total) || total <= 0) return 0;
+    return Math.round((missed / total) * 100);
+  };
+
+  // appliedAt を境に「同じ長さ」の before/after を作る（week=7d, month=30d）
+  const buildBeforeAfterRange = (dt: Date, b: Bucket) => {
+    const windowDays = b === 'week' ? 7 : 30;
+    const ms = windowDays * 24 * 60 * 60 * 1000;
+    const t = dt.getTime();
+    const beforeFrom = new Date(t - ms);
+    const beforeTo = new Date(t);
+    const afterFrom = new Date(t);
+    // after は「今」までに丸める（未来を取りに行かない）
+    const afterTo = new Date(Math.min(Date.now(), t + ms));
+    return {
+      before: { from: beforeFrom.toISOString(), to: beforeTo.toISOString() },
+      after: { from: afterFrom.toISOString(), to: afterTo.toISOString() },
+    };
   };
 
   const courseKeyOf = (r: OutcomesByCourseRow) =>
@@ -486,6 +700,131 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
                     ))}
                   </div>
                 )}
+                <div style={{ marginTop: '0.85rem' }}>
+                  <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>
+                    おすすめアクション
+                  </div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.6rem' }}>
+                    ※ course×feature の結果から提案（SSOT追加なし）
+                  </div>
+                  {/* ✅ Priority 3-D: Before/After */}
+                  {appliedAt && (
+                    <div
+                      style={{
+                        marginBottom: '0.6rem',
+                        padding: '0.7rem 0.85rem',
+                        borderRadius: 14,
+                        border: '1px solid rgba(255,255,255,.10)',
+                        background: 'rgba(255,255,255,.04)',
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
+                        改善の見える化（Before/After）
+                      </div>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.35rem' }}>
+                        適用時刻: {appliedAt.toLocaleString()}
+                      </div>
+                      {beforeAfterLoading ? (
+                        <div style={{ opacity: 0.7 }}>集計中…</div>
+                      ) : beforeAfterError ? (
+                        <div style={{ color: 'rgba(252,165,165,.9)' }}>failed: {beforeAfterError}</div>
+                      ) : (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, opacity: 0.9 }}>Before</div>
+                            <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                              missed率: {missedRateOf(beforeSummary)}%（{beforeSummary?.missed ?? 0}/{beforeSummary?.total ?? 0}）
+                            </div>
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, opacity: 0.9 }}>After</div>
+                            <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                              missed率: {missedRateOf(afterSummary)}%（{afterSummary?.missed ?? 0}/{afterSummary?.total ?? 0}）
+                            </div>
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+                            {missedRateOf(afterSummary) - missedRateOf(beforeSummary) >= 0 ? '+' : ''}
+                            {missedRateOf(afterSummary) - missedRateOf(beforeSummary)}pt
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {applyError && (
+                    <div
+                      style={{
+                        color: 'rgba(252,165,165,.9)',
+                        fontSize: '0.85rem',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      failed: {applyError}
+                    </div>
+                  )}
+
+                  {applyMessage && (
+                    <div style={{ color: 'rgba(187,247,208,.95)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                      {applyMessage}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {suggestedActions.map((a) => (
+                      <div
+                        key={a.id}
+                        style={{
+                          border: '1px solid rgba(255,255,255,.10)',
+                          borderRadius: 14,
+                          padding: '0.75rem 0.85rem',
+                          background: 'rgba(255,255,255,.05)',
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
+                          {a.title}
+                        </div>
+                        <div style={{ fontSize: '0.82rem', opacity: 0.75 }}>
+                          {a.description}
+                        </div>
+                        {(() => {
+                          const ev = evidenceForAction(a, reasons);
+                          if (!ev || ev.length === 0) return null;
+                          return (
+                            <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.85 }}>
+                              <div style={{ fontWeight: 800, opacity: 0.9, marginBottom: '0.25rem' }}>根拠</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                {ev.map((r, idx) => (
+                                  <div key={`${a.id}-ev-${r.feature_key}-${String(r.feature_value)}-${idx}`} style={{ opacity: 0.85 }}>
+                                    ・{labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}（missed {r.missed}/{r.total} = {toPercent(r.missed_rate)}%）
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {a.patch ? (
+                          <div
+                            style={{
+                              marginTop: '0.55rem',
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                            }}
+                          >
+                            <button
+                              onClick={() => applySuggestedAction(a.patch)}
+                              disabled={applySaving || !currentNotifSetting}
+                            >
+                              {applySaving ? '適用中…' : 'この提案を適用'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.65 }}>
+                            （手動アクション）
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </>
             )}
           </div>

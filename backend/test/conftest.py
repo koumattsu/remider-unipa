@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from app.main import app
 from app.db.session import get_db
 from app.core.security import get_current_user
+from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
 from app.models.in_app_notification import InAppNotification
 from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
@@ -333,6 +334,11 @@ class FakeSession:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             # add() されたものが見えるようにする（DBっぽく）
             q._items = [x for x in self._added if isinstance(x, SuggestedActionAppliedEvent)]
+            return q
+        if model is ActionEffectivenessSnapshot:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            # add() されたものが見えるようにする（DBっぽく）
+            q._items = [x for x in self._added if isinstance(x, ActionEffectivenessSnapshot)]
             return q
         if model is NotificationRun:
             q = FakeQuery(

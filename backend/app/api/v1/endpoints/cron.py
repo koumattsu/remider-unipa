@@ -12,8 +12,11 @@ from app.models.task import Task
 from app.models.in_app_notification import InAppNotification
 from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting 
-from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.notification_run import NotificationRun 
+from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
+from app.services.outcome_analytics import (
+    build_action_effectiveness,
+)
 from app.services.notification import (
     collect_notification_candidates,
     to_utc,
@@ -56,6 +59,35 @@ async def debug_migrate_notification_setting(db: Session = Depends(get_db)):
     except Exception as e:
         # すでにカラムがある場合などはここに来る
         return {"status": "error", "message": str(e)}
+    
+@router.post("/debug-migrate-action-effectiveness-snapshots")
+async def debug_migrate_action_effectiveness_snapshots(db: Session = Depends(get_db)):
+    """
+    一度だけ実行する想定:
+    action_effectiveness_snapshots テーブルを作る（Alembic無し運用のため）
+    """
+    try:
+        db.execute(text("""
+        CREATE TABLE IF NOT EXISTS action_effectiveness_snapshots (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          bucket VARCHAR(16) NOT NULL,
+          window_days INTEGER NOT NULL,
+          min_total INTEGER NOT NULL,
+          limit_events INTEGER NOT NULL,
+          action_id VARCHAR(128) NOT NULL,
+          applied_count INTEGER NOT NULL,
+          measured_count INTEGER NOT NULL,
+          improved_count INTEGER NOT NULL,
+          improved_rate DOUBLE PRECISION NOT NULL,
+          avg_delta_missed_rate DOUBLE PRECISION NOT NULL,
+          captured_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        """))
+        db.commit()
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}    
 
 # ユーザーごとの通知設定を取得 or デフォルトで作成
 def get_or_create_notification_setting(db: Session, user_id: int) -> NotificationSetting:
@@ -229,7 +261,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
         users_total = len(users)
         VALID_LINE_UID = re.compile(r"^U[0-9a-f]{32}$")
 
-
         for user in users:
             user_id = user.id
             line_user_id = user.line_user_id  # NoneでもOK
@@ -248,6 +279,41 @@ async def run_daily_job(db: Session = Depends(get_db)):
             if outcomes_created:
                 # ✅ OutcomeLog + FeatureSnapshot を同一トランザクションで確定
                 db.commit()
+
+            # - 例外で cron 全体を落とさない（監査ログは残す）
+            try:
+                eff = build_action_effectiveness(
+                    db,
+                    user_id=user_id,
+                    from_applied_at=None,
+                    to_applied_at=None,
+                    window_days=7,
+                    min_total=5,
+                    limit_events=500,
+                )
+
+                items = list((eff or {}).get("items") or [])
+                # 何も無い日は保存しない（ゴミ資産を増やさない）
+                if items:
+                    for x in items:
+                        s = ActionEffectivenessSnapshot(
+                            user_id=user_id,
+                            bucket="week",
+                            window_days=int((eff["range"] or {}).get("window_days", 7)),
+                            min_total=int((eff["range"] or {}).get("min_total", 5)),
+                            limit_events=int((eff["range"] or {}).get("limit_events", 500)),
+                            action_id=str(x.get("action_id")),
+                            applied_count=int(x.get("applied_count", 0)),
+                            measured_count=int(x.get("measured_count", 0)),
+                            improved_count=int(x.get("improved_count", 0)),
+                            improved_rate=float(x.get("improved_rate", 0.0)),
+                            avg_delta_missed_rate=float(x.get("avg_delta_missed_rate", 0.0)),
+                        )
+                        db.add(s)
+                    db.commit()
+            except Exception as e:
+                print("[CRON] action effectiveness snapshot failed:", str(e))
+                db.rollback()    
 
             # ns = db.query(NotificationSetting).filter(...).first()
             raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])

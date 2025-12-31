@@ -8,6 +8,7 @@ from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
+from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot 
 from app.services.outcome_analytics import (
     build_action_effectiveness,
     build_action_effectiveness_by_feature,
@@ -135,3 +136,64 @@ def get_actions_effectiveness_by_feature(
         limit_events=limit_events,
         limit_samples_per_event=limit_samples_per_event,
     )
+
+@router.get("/actions/effectiveness/snapshots", response_model=dict)
+def list_action_effectiveness_snapshots(
+    from_: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = Query(None),
+    action_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    ✅ ActionEffectivenessSnapshot の履歴を返す（read-only / 監査資産）
+    - OutcomeLog（SSOT）から派生した「過去の評価」をそのまま参照
+    - 再計算せず、履歴を壊さない
+    """
+    q = db.query(ActionEffectivenessSnapshot).filter(
+        ActionEffectivenessSnapshot.user_id == current_user.id
+    )
+
+    if from_ is not None:
+        q = q.filter(ActionEffectivenessSnapshot.captured_at >= from_)
+    if to is not None:
+        q = q.filter(ActionEffectivenessSnapshot.captured_at <= to)
+    if action_id:
+        q = q.filter(ActionEffectivenessSnapshot.action_id == action_id)
+
+    rows = (
+        q.order_by(
+            ActionEffectivenessSnapshot.captured_at.desc(),
+            ActionEffectivenessSnapshot.action_id.asc(),
+        )
+        .limit(limit)
+        .all()
+    ) or []
+
+    return {
+        "range": {
+            "timezone": "Asia/Tokyo",
+            "from": from_,
+            "to": to,
+            "limit": limit,
+            "action_id": action_id,
+        },
+        "items": [
+            {
+                "id": r.id,
+                "captured_at": r.captured_at,
+                "bucket": r.bucket,
+                "window_days": r.window_days,
+                "min_total": r.min_total,
+                "limit_events": r.limit_events,
+                "action_id": r.action_id,
+                "applied_count": r.applied_count,
+                "measured_count": r.measured_count,
+                "improved_count": r.improved_count,
+                "improved_rate": r.improved_rate,
+                "avg_delta_missed_rate": r.avg_delta_missed_rate,
+            }
+            for r in rows
+        ],
+    }

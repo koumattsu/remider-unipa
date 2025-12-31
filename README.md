@@ -5,6 +5,15 @@
 
 ---
 
+## Documentation
+
+This project is designed with **auditability, explainability, and long-term M&A resilience**
+as first-class requirements.
+
+- [Analytics Architecture](docs/analytics-architecture.md)
+
+---
+
 ## 何ができるか（現状）
 
 ### 課題管理

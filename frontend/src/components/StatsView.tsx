@@ -16,10 +16,13 @@ import { Task, NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
 import {
   analyticsActionsApi,
+  ActionAppliedEvent,
   ActionEffectivenessItem,
   ActionEffectivenessByFeatureItem,
   ActionEffectivenessSnapshotItem,
 } from '../api/analyticsActions';
+import { SnapshotHeader } from './analytics/SnapshotHeader';
+import { SnapshotItemsTable } from './analytics/SnapshotItemsTable';
 
 /**
  * StatsView（監査/分析ビュー）:
@@ -53,6 +56,9 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
   const [appliedAt, setAppliedAt] = useState<Date | null>(null);
+  const [appliedEvents, setAppliedEvents] = useState<ActionAppliedEvent[] | null>(null);
+  const [appliedEventsLoading, setAppliedEventsLoading] = useState(false);
+  const [appliedEventsError, setAppliedEventsError] = useState<string | null>(null);
   const [beforeAfterLoading, setBeforeAfterLoading] = useState(false);
   const [beforeAfterError, setBeforeAfterError] = useState<string | null>(null);
   const [beforeSummary, setBeforeSummary] = useState<OutcomesSummaryItem | null>(null);
@@ -89,7 +95,6 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
     month: null,
   });
 
-// ✅ Priority 8-C②: effectiveness snapshots（read-only 資産）
 const [effectivenessSnapshots, setEffectivenessSnapshots] =
   useState<ActionEffectivenessSnapshotItem[] | null>(null);
 const [effectivenessSnapshotsError, setEffectivenessSnapshotsError] =
@@ -134,6 +139,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       mounted = false;
     };
   }, [bucket, actionEffectivenessByFeature]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -320,6 +326,31 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       mounted = false;
     };
   }, [bucket, actionEffectiveness]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setAppliedEventsLoading(true);
+      setAppliedEventsError(null);
+      try {
+        const res = await analyticsActionsApi.listApplied({
+          bucket,
+          limit: 20,
+        });
+        if (!mounted) return;
+        setAppliedEvents(res.items ?? []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setAppliedEventsError(e?.message ?? 'failed to load applied events');
+      } finally {
+        if (!mounted) return;
+        setAppliedEventsLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [bucket, appliedAt]);
 
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -998,6 +1029,72 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       )}
                     </div>
                   )}
+                  <div
+                    style={{
+                      marginTop: '0.75rem',
+                      padding: '0.7rem 0.85rem',
+                      borderRadius: 14,
+                      border: '1px solid rgba(255,255,255,.10)',
+                      background: 'rgba(255,255,255,.04)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
+                      適用履歴（直近）
+                    </div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.4rem' }}>
+                      analytics/actions/applied（確定資産 / 読み取り専用）
+                    </div>
+
+                    {appliedEventsLoading && (
+                      <div style={{ opacity: 0.7 }}>読み込み中…</div>
+                    )}
+
+                    {!appliedEventsLoading && appliedEventsError && (
+                      <div style={{ color: 'rgba(255,120,120,.95)' }}>
+                        {appliedEventsError}
+                      </div>
+                    )}
+
+                    {!appliedEventsLoading &&
+                      !appliedEventsError &&
+                      (!appliedEvents || appliedEvents.length === 0) && (
+                        <div style={{ opacity: 0.7 }}>
+                          （まだ適用履歴がありません）
+                        </div>
+                      )}
+
+                    {!appliedEventsLoading &&
+                      !appliedEventsError &&
+                      appliedEvents &&
+                      appliedEvents.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {appliedEvents.map((e) => (
+                            <div
+                              key={e.id}
+                              style={{
+                                padding: '0.45rem 0.6rem',
+                                borderRadius: 12,
+                                border: '1px solid rgba(255,255,255,.08)',
+                                background: 'rgba(255,255,255,.03)',
+                                fontSize: '0.8rem',
+                              }}
+                            >
+                              <div style={{ fontWeight: 800 }}>
+                                {e.action_id}
+                              </div>
+                              <div style={{ opacity: 0.75 }}>
+                                applied_at: {new Date(e.applied_at).toLocaleString()}
+                              </div>
+                              {e.payload?.reason_keys?.length > 0 && (
+                                <div style={{ opacity: 0.75 }}>
+                                  reason: {e.payload.reason_keys.join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
                   {applyError && (
                     <div
                       style={{
@@ -1115,13 +1212,18 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 const snap =
                   effectivenessSnapshots.find(s => s.id === selectedSnapshotId) ??
                   effectivenessSnapshots[0];
-                
-                // ✅ 9-B: 直前 snapshot（同bucket内の「1つ前」）を探す（表示だけ / 再計算なし）
-                const sorted = [...effectivenessSnapshots].sort(
-                  (a, b) => new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()
-                );
-                const idx = sorted.findIndex((s) => s.id === snap.id);
-                const prevSnap = idx >= 0 ? sorted[idx + 1] ?? null : null;
+
+                // - same bucket
+                // - computed_at が「1つ前」（直前）
+                const sortedSameBucket = [...effectivenessSnapshots]
+                  .filter((s) => s.bucket === snap.bucket) // ← bucket strict
+                  .sort(
+                    (a, b) =>
+                      new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()
+                  );
+
+                const idx = sortedSameBucket.findIndex((s) => s.id === snap.id);
+                const prevSnap = idx >= 0 ? sortedSameBucket[idx + 1] ?? null : null;
 
                 // ✅ action_id -> (rank, improved_rate, measured_count) を作る（表示だけ）
                 const rankMap = (items: ActionEffectivenessItem[]) => {
@@ -1144,142 +1246,51 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
                 const curRank = rankMap(snap.items);
                 const prevRank = prevSnap ? rankMap(prevSnap.items) : null;  
+                const asOfApplied = (() => {
+                  if (!appliedEvents || appliedEvents.length === 0) return null;
+                  const snapAt = new Date(snap.computed_at).getTime();
+
+                  return (
+                    appliedEvents
+                      .filter((e) => {
+                        const t = new Date(e.applied_at).getTime();
+                        return Number.isFinite(t) && t <= snapAt;
+                      })
+                      .sort(
+                        (a, b) =>
+                          new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()
+                      )[0] ?? null
+                  );
+                })();
 
                 return (
-                  <div
-                    style={{
-                      padding: '0.7rem 0.85rem',
-                      borderRadius: 14,
-                      border: '1px solid rgba(255,255,255,.10)',
-                      background: 'rgba(255,255,255,.04)',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    {/* ✅ 一覧（選択） */}
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 800, opacity: 0.9 }}>
-                        snapshot:
-                      </div>
-                      <select
-                        value={selectedSnapshotId ?? snap.id}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          setSelectedSnapshotId(Number.isFinite(n) ? n : null);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '0.45rem 0.6rem',
-                          borderRadius: 12,
-                          border: '1px solid rgba(255,255,255,.12)',
-                          background: 'rgba(255,255,255,.06)',
-                          color: 'rgba(255,255,255,.92)',
-                          fontWeight: 800,
-                          outline: 'none',
-                        }}
-                      >
-                        {effectivenessSnapshots.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {new Date(s.computed_at).toLocaleString()}（{s.bucket} / {s.items.length} actions / {s.range.window_days}d）
-                          </option>
-                        ))}
-                      </select>
+                  <>
+                    <SnapshotHeader
+                      snapshots={effectivenessSnapshots}
+                      selectedSnapshotId={selectedSnapshotId}
+                      onSelect={setSelectedSnapshotId}
+                      current={snap}
+                      previous={prevSnap}
+                      asOfApplied={asOfApplied}  
+                    />
+                    <div
+                      style={{
+                        padding: '0.7rem 0.85rem',
+                        borderRadius: 14,
+                        border: '1px solid rgba(255,255,255,.10)',
+                        background: 'rgba(255,255,255,.04)',
+                        fontSize: '0.85rem',
+                      }}
+                    >
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                      <div style={{ fontWeight: 900 }}>
-                        snapshot #{snap.id}（{snap.bucket}）
-                      </div>
-                      <div style={{ fontWeight: 800, opacity: 0.85 }}>
-                        computed_at: {new Date(snap.computed_at).toLocaleString()}
-                      </div>
-                    </div>
-                    {prevSnap && (
-                      <div style={{ marginTop: '0.15rem', fontSize: '0.75rem', opacity: 0.72 }}>
-                        compare_to: snapshot #{prevSnap.id} / computed_at: {new Date(prevSnap.computed_at).toLocaleString()}
-                      </div>
-                    )}
-                    <div style={{ opacity: 0.75 }}>
-                      window_days: {snap.range.window_days} / min_total: {snap.range.min_total} / limit_events: {snap.range.limit_events}
-                    </div>
-
-                    {(snap.range.from || snap.range.to || snap.range.timezone) && (
-                      <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.72 }}>
-                        range:
-                        {snap.range.from ? ` from ${new Date(snap.range.from).toLocaleString()}` : ''}
-                        {snap.range.to ? ` to ${new Date(snap.range.to).toLocaleString()}` : ''}
-                        {snap.range.timezone ? `（tz: ${snap.range.timezone}）` : ''}
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: '0.35rem', opacity: 0.8 }}>
-                      actions: {snap.items.length} 件
-                    </div>
-
-                    {/* ✅ 上位アクション（read-only） */}
-                    <div style={{ marginTop: '0.6rem', display: 'grid', gap: '0.35rem' }}>
-                      {[...snap.items]
-                        .sort((a, b) => {
-                          const ar = Number(a.improved_rate ?? 0);
-                          const br = Number(b.improved_rate ?? 0);
-                          if (br !== ar) return br - ar;
-                          return Number(b.measured_count ?? 0) - Number(a.measured_count ?? 0);
-                        })
-                        .slice(0, 8)
-                        .map((x) => (
-                          <div
-                            key={`snap-${snap.id}-${x.action_id}`}
-                            style={{
-                              padding: '0.55rem 0.65rem',
-                              borderRadius: 12,
-                              border: '1px solid rgba(255,255,255,.10)',
-                              background: 'rgba(255,255,255,.03)',
-                            }}
-                          >
-                            <div style={{ fontWeight: 750 }}>{x.action_id}</div>
-                            {(() => {
-                              const key = String(x.action_id);
-                              const cur = curRank.get(key) ?? null;
-                              const prev = prevRank?.get(key) ?? null;
-
-                              // Δrank: 前(小さいほど良い) → 今 で改善したら + 表示にしたい
-                              // 例) prev=10, cur=3 => +7
-                              const dRank = prev && cur ? (prev.rank - cur.rank) : null;
-
-                              // Δrate: improved_rate の差（%表示）。例) 0.12 -> 0.18 => +6.0%
-                              const dRate = prev && cur ? ((cur.improved - prev.improved) * 100) : null;
-
-                              if (!prevSnap || !prev || !cur) {
-                                return (
-                                  <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.7 }}>
-                                    （前回比較なし）
-                                  </div>
-                                );
-                              }
-
-                              const fmtSigned = (n: number, digits = 1) => {
-                                const x = Math.round(n * Math.pow(10, digits)) / Math.pow(10, digits);
-                                return `${x >= 0 ? '+' : ''}${x}`;
-                              };
-
-                              const fmtSignedInt = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
-
-                              return (
-                                <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.82 }}>
-                                  Δrank: {fmtSignedInt(dRank ?? 0)}（prev {prev.rank} → now {cur.rank}）
-                                  {'  '} / Δrate: {fmtSigned(dRate ?? 0, 1)}%
-                                  {'  '}（prev {Math.round(prev.improved * 1000) / 10}% → now {Math.round(cur.improved * 1000) / 10}%）
-                                </div>
-                              );
-                            })()}
-                            <div style={{ opacity: 0.8 }}>
-                              improved_rate: {Math.round(Number(x.improved_rate ?? 0) * 1000) / 10}%
-                              {'  '} / measured: {Number(x.measured_count ?? 0)}
-                              {'  '} / applied: {Number(x.applied_count ?? 0)}
-                              {'  '} / avgΔmissed: {Number(x.avg_delta_missed_rate ?? 0)}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
+                    <SnapshotItemsTable
+                      snapshotId={snap.id}
+                      items={snap.items}
+                      currentRankMap={curRank}
+                      previousRankMap={prevRank}
+                      hasPreviousSnapshot={!!prevSnap}
+                    />
+                  </>  
                 );
               })()}
           </div>

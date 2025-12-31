@@ -981,13 +981,13 @@ export const Dashboard: React.FC = () => {
   return (
     <div
       style={{
-        maxWidth: '420px',
+        width: '100%',
+        maxWidth: '960px',
         margin: '0 auto',
         padding: '0.9rem 1rem calc(5.2rem + env(safe-area-inset-bottom))',
         minHeight: '100dvh',
       }}
     >
-
       {/* ヘッダー（左上ハンバーガー） */}
       <header
         style={{

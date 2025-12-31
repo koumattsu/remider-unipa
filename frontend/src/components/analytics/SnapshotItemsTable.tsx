@@ -189,7 +189,7 @@ export const SnapshotItemsTable: React.FC<Props> = ({
             const fmtSignedInt = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
 
             return (
-                <div
+              <div
                 key={`snap-${snapshotId}-${x.action_id}`}
                 style={{
                     padding: '0.55rem 0.65rem',
@@ -198,7 +198,7 @@ export const SnapshotItemsTable: React.FC<Props> = ({
                     background: 'rgba(255,255,255,.03)',
                     opacity: isLowSample ? 0.55 : 1,
                 }}
-                >
+              >
                 <div style={{ fontWeight: 750, display: 'flex', alignItems: 'center', gap: 6 }}>
                     {isLowSample && (
                     <span
@@ -222,18 +222,17 @@ export const SnapshotItemsTable: React.FC<Props> = ({
                     {'  '}（prev {Math.round(prev.improved * 1000) / 10}% → now {Math.round(cur.improved * 1000) / 10}%）
                     </div>
                 )}
-
                 <div style={{ opacity: 0.8 }}>
                     improved_rate: {Math.round(Number(x.improved_rate ?? 0) * 1000) / 10}%
                     {'  '} / measured: {Number(x.measured_count ?? 0)}
                     {'  '} / applied: {Number(x.applied_count ?? 0)}
                     {'  '} / avgΔmissed: {Number(x.avg_delta_missed_rate ?? 0)}
                 </div>
-                </div>
+              </div>
             );
-            })}
+          })}
         </>
-        )}
+      )}
     </div>
   );
 };

@@ -131,8 +131,8 @@ const saveTaskNotificationOptions = (
   const [editHour, setEditHour] = useState('24');    // '01'〜'24'
   const [editMinute, setEditMinute] = useState('00'); // '00' or '30'
 
-  // スマホ判定
-  const [isMobile, setIsMobile] = useState(false);
+  // grid列数（breakpoints明示）
+  const [gridCols, setGridCols] = useState<1 | 2 | 3>(1);
 
   // ギアメニューをどのタスクに対して開いているか
   const [menuTaskId, setMenuTaskId] = useState<number | null>(null);
@@ -178,15 +178,26 @@ const saveTaskNotificationOptions = (
     });
   };
 
-
-
+  // PC/Tabletはカードをグリッド化（1/2/3列）
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 768px)');
-    const update = () => setIsMobile(mq.matches);
+
+    const mqTablet = window.matchMedia('(min-width: 768px)');   // 2列
+    const mqDesktop = window.matchMedia('(min-width: 1024px)'); // 3列
+
+    const update = () => {
+      if (mqDesktop.matches) return setGridCols(3);
+      if (mqTablet.matches) return setGridCols(2);
+      return setGridCols(1);
+    };
+
     update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
+    mqTablet.addEventListener('change', update);
+    mqDesktop.addEventListener('change', update);
+    return () => {
+      mqTablet.removeEventListener('change', update);
+      mqDesktop.removeEventListener('change', update);
+    };
   }, []);
 
   // 🔔 通知設定モーダルを開く
@@ -319,16 +330,6 @@ const saveTaskNotificationOptions = (
     );
   };
 
-  const toggleSelectAll = () => {
-    if (tasks.length === 0) {
-      setSelectedIds([]);
-      return;
-    }
-    const allSelected = tasks.every((t) => selectedIds.includes(t.id));
-    setSelectedIds(allSelected ? [] : tasks.map((t) => t.id));
-  };
-
-  
   const formatDeadline = (dateString: string) => {
     const date = new Date(dateString);
     const hours = date.getHours();
@@ -476,273 +477,44 @@ const saveTaskNotificationOptions = (
         </button>
       </div>
 
-      {/* PC / タブレット向け: テーブル表示 */}
-      {!isMobile && (
-        <div
-          style={{
-            overflowX: 'auto',
-            border: '1px solid #ddd',
-            borderRadius: '8px',
-          }}
-        >
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: '0.9rem',
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  backgroundColor: '#f8f9fa',
-                  textAlign: 'left',
-                }}
-              >
-                <th style={{ padding: '0.5rem', width: 40 }}>
-                  <input
-                    type="checkbox"
-                    onChange={toggleSelectAll}
-                    checked={
-                      tasks.length > 0 &&
-                      tasks.every((t) => selectedIds.includes(t.id))
-                    }
-                  />
-                </th>
-                <th style={{ padding: '0.5rem', minWidth: 140 }}>タイトル</th>
-                <th style={{ padding: '0.5rem', width: 120 }}>期限</th>
-                <th style={{ padding: '0.5rem', width: 80 }}>進捗</th>
-                <th style={{ padding: '0.5rem', minWidth: 160 }}>内容</th>
-                <th style={{ padding: '0.5rem', width: 80 }}>通知</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tasks.map((task) => {
-                const isSelected = selectedIds.includes(task.id);
+      {/* ✅ 全デバイス共通: 1タスク = 1カード（SSOT） */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns:
+            gridCols === 3
+              ? 'repeat(3, minmax(0, 1fr))'
+              : gridCols === 2
+              ? 'repeat(2, minmax(0, 1fr))'
+              : 'repeat(1, minmax(0, 1fr))',
+          gap: '0.75rem',
+          alignItems: 'stretch',
+        }}
+      >
+        {tasks.map((task) => {
+          const isSelected = selectedIds.includes(task.id);
 
-                const isDone = Boolean(task.is_done);
+          const isDone = Boolean(task.is_done);
 
-                const effectiveNotify = isVirtualTask(task)
-                  ? (notifyOverrides?.[task.id] ?? true) // 仮想はlocalStorage(親状態)
-                  : Boolean(task.should_notify);          // 実タスクはDB
+          const effectiveNotify = isVirtualTask(task)
+            ? (notifyOverrides?.[task.id] ?? true)
+            : Boolean(task.should_notify);
 
-                const baseMemo = task.memo || task.course_name || '';
+          const baseMemo = task.memo || task.course_name || '';
 
-                return (
-                  <tr
-                    key={task.id}
-                    style={{
-                      backgroundColor: isSelected ? '#e9f5ff' : 'white',
-                      borderTop: '1px solid #eee',
-                    }}
-                  >
-                    <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(task)}
-                      />
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      <EditableTextCell
-                        value={task.title}
-                        placeholder="タイトル"
-                        onSave={async (v) => {
-                          const trimmed = v.trim();
-                          if (!trimmed || trimmed === task.title) return;
-                          const prev = task.title;
-                          onTaskPatched?.(task.id, { title: trimmed });
-                            if (isVirtualTask(task)) return;
-                          try {
-                            await tasksApi.update(task.id, { title: trimmed });
-                          } catch {
-                            onTaskPatched?.(task.id, { title: prev }); // rollback
-                            alert('タイトルの更新に失敗しました');
-                          }
-                        }}
-                      />
-                    </td>
-                    <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
-                      <div
-                        style={{
-                          position: 'relative',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 4,
-                        }}
-                      >
-                        <span>
-                          {isOverdueView && '⚠️ '}
-                          {formatDeadline(task.deadline)}
-                        </span>
-                        {/* ⚙️ アイコンは仮タスクも含めて全タスクに表示 */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMenuTaskId(menuTaskId === task.id ? null : task.id)
-                          }
-                          aria-label="タスクのメニューを開く"
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: 2,
-                            fontSize: '1.1rem',
-                          }}
-                        >
-                          ⚙️
-                        </button>
-
-                        {/* ギアメニュー */}
-                        {menuTaskId === task.id && (
-                          <div
-                            className="glass-strong"
-                            style={{
-                              position: 'absolute',
-                              top: '110%',
-                              right: 0,
-                              minWidth: 120,
-                              borderRadius: 10,
-                              boxShadow: '0 12px 30px rgba(0,0,0,0.35)',
-                              zIndex: 40,
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {/* 実タスク / 仮タスク 共通で「編集」 */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                openEditModal(task);
-                                setMenuTaskId(null);
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '0.5rem 0.8rem',
-                                fontSize: '0.85rem',
-                                textAlign: 'left',
-                                border: 'none',
-                                background: 'transparent',
-                                color: 'rgba(255,255,255,.9)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              編集
-                            </button>
-
-                            {/* 「通知」はそのまま */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                openNotificationModal(task);
-                                setMenuTaskId(null);
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '0.5rem 0.8rem',
-                                fontSize: '0.85rem',
-                                textAlign: 'left',
-                                borderTop: '1px solid rgba(255,255,255,.12)',
-                                borderBottom: 'none',
-                                borderLeft: 'none',
-                                borderRight: 'none',
-                                background: 'white',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              通知
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-
-                    <td style={{ padding: '0.5rem' }}>
-                      <select
-                        value={isDone ? 'done' : 'todo'}
-                        onChange={(e) =>
-                          handleToggleDone(task, e.target.value === 'done')
-                        }
-                        style={{
-                          padding: '0.2rem 0.4rem',
-                          fontSize: '0.85rem',
-                          borderRadius: '4px',
-                          border: '1px solid #ccc',
-                        }}
-                      >
-                        <option value="todo">未</option>
-                        <option value="done">完</option>
-                      </select>
-                    </td>
-                    <td style={{ padding: '0.5rem', maxWidth: 260 }}>
-                      <EditableTextCell
-                        value={baseMemo}
-                        placeholder="内容"
-                        onSave={async (v) => {
-                          const trimmed = v.trim();
-                          if (trimmed === baseMemo) return;
-                          const prev = task.memo ?? '';
-                          onTaskPatched?.(task.id, { memo: trimmed });
-                            if (isVirtualTask(task)) return;
-                          try {
-                            await tasksApi.update(task.id, { memo: trimmed });
-                          } catch (e) {
-                            console.error('内容の更新に失敗しました:', e);
-                            onTaskPatched?.(task.id, { memo: prev }); // ← これで prev を使う
-                            alert('内容の更新に失敗しました');
-                          }
-                        }}
-                      />
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      <NotificationPill
-                        isOn={effectiveNotify}
-                        onToggle={() =>
-                          handleToggleNotify(task, !effectiveNotify)
-                        }
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* スマホ向け: 1タスク = 1カード */}
-      {isMobile && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
-          }}
-        >
-          {tasks.map((task) => {
-            const isSelected = selectedIds.includes(task.id);
-
-            const isDone = Boolean(task.is_done);
-
-            const effectiveNotify = isVirtualTask(task)
-              ? (notifyOverrides?.[task.id] ?? true)
-              : Boolean(task.should_notify);
-
-            const baseMemo = task.memo || task.course_name || '';
-
-            return (
-              <div
-                key={task.id}
-                style={{
-                  borderRadius: 18,
-                  padding: '0.85rem 0.95rem',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                  backdropFilter: 'blur(16px)',
-                  WebkitBackdropFilter: 'blur(16px)',
-                  boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
-                }}
-              >
+          return (
+            <div
+              key={task.id}
+              style={{
+                borderRadius: 18,
+                padding: '0.85rem 0.95rem',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
+              }}
+            >
                 {/* 1行目: チェックボックス + タイトル + ✏️ */}
                 <div
                   style={{
@@ -976,7 +748,6 @@ const saveTaskNotificationOptions = (
             );
           })}
         </div>
-      )}
 
       {/* 編集モーダル（カードのサイズを変えずに編集できるようにする） */}
       {editingTaskId !== null && (() => {

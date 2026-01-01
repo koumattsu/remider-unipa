@@ -1424,10 +1424,11 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
         <div
           style={{
             position: 'absolute',
-            top: '60%',
+            top: '100%',
             left: 0,
-            transform: 'translateY(-50%)',
+            marginTop: 6,
             zIndex: 20,
+            width: '100%',
           }}
         >
           <textarea
@@ -1445,14 +1446,19 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
             }}
             rows={lineCount}
             style={{
-              width: 'min(320px, 80vw)',
+              width: '100%',
+              maxWidth: '100%',
+              boxSizing: 'border-box',
               fontSize: '0.9rem',
               padding: '8px 10px',
               borderRadius: 12,
-              border: '1px solid #d1d5db',
+              border: '1px solid rgba(255,255,255,0.14)',
               outline: 'none',
-              backgroundColor: '#fff',
-              boxShadow: '0 12px 32px rgba(15,23,42,0.18)',
+              color: 'rgba(255,255,255,0.92)',
+              background: 'rgba(15,23,42,0.72)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              boxShadow: '0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08)',
               resize: 'vertical',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.4,

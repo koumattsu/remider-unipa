@@ -62,6 +62,14 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
         @media (prefers-reduced-motion: reduce) {
           .gauge-sheen, .gauge-pulse, .gauge-scan { animation: none !important; }
         }
+        @keyframes gaugeMeshDrift {
+          0% { background-position: 0 0, 0 0, 0 0; opacity: .14; }
+          50% { background-position: 160px 70px, -140px 40px, 90px -60px; opacity: .22; }
+          100% { background-position: 320px 140px, -280px 80px, 180px -120px; opacity: .14; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .gauge-mesh { animation: none !important; }
+        }
       `}</style>
       <div>
         <ProgressGauge
@@ -104,8 +112,53 @@ const ProgressGauge: React.FC<{
         border: '1px solid rgba(56,189,248,0.14)',
         boxShadow: '0 18px 46px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
         color: '#e5e7eb',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
+      {/* ✅ Loginっぽいネットワーク背景（CSSだけで再現） */}
+      <div
+        aria-hidden
+        className="gauge-mesh"
+        style={{
+          position: 'absolute',
+          inset: -2,
+          pointerEvents: 'none',
+
+          // 点（ノード） + 斜め線（リンク） + 霧（ネオン面）
+          backgroundImage: `
+            radial-gradient(circle at 20% 30%, rgba(56,189,248,0.38) 0 2px, transparent 3px),
+            radial-gradient(circle at 65% 40%, rgba(56,189,248,0.26) 0 2px, transparent 3px),
+            radial-gradient(circle at 80% 70%, rgba(59,130,246,0.28) 0 2px, transparent 3px),
+
+            linear-gradient(115deg, transparent 0%, rgba(56,189,248,0.10) 42%, transparent 72%),
+            linear-gradient(65deg, transparent 0%, rgba(59,130,246,0.09) 45%, transparent 74%),
+
+            radial-gradient(90% 70% at 22% 18%, rgba(56,189,248,0.12) 0%, transparent 60%)
+          `,
+          backgroundSize: `
+            260px 180px,
+            320px 220px,
+            360px 260px,
+
+            420px 260px,
+            460px 300px,
+
+            100% 100%
+          `,
+          backgroundRepeat: 'repeat',
+          mixBlendMode: 'screen',
+          opacity: 0.18,
+
+          // 上側が強く、下側は薄く（文字の可読性維持）
+          maskImage:
+            'radial-gradient(120% 80% at 25% 15%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.0) 88%)',
+          WebkitMaskImage:
+            'radial-gradient(120% 80% at 25% 15%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.0) 88%)',
+
+          animation: 'gaugeMeshDrift 11s ease-in-out infinite',
+        }}
+      />
       <div
         style={{
           display: 'flex',

@@ -1,6 +1,6 @@
 // frontend/src/components/TaskList.tsx
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
@@ -131,9 +131,6 @@ const saveTaskNotificationOptions = (
   const [editHour, setEditHour] = useState('24');    // '01'〜'24'
   const [editMinute, setEditMinute] = useState('00'); // '00' or '30'
 
-  // grid列数（breakpoints明示）
-  const [gridCols, setGridCols] = useState<1 | 2 | 3>(1);
-
   // ギアメニューをどのタスクに対して開いているか
   const [menuTaskId, setMenuTaskId] = useState<number | null>(null);
 
@@ -177,28 +174,6 @@ const saveTaskNotificationOptions = (
       };
     });
   };
-
-  // PC/Tabletはカードをグリッド化（1/2/3列）
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const mqTablet = window.matchMedia('(min-width: 768px)');   // 2列
-    const mqDesktop = window.matchMedia('(min-width: 1024px)'); // 3列
-
-    const update = () => {
-      if (mqDesktop.matches) return setGridCols(3);
-      if (mqTablet.matches) return setGridCols(2);
-      return setGridCols(1);
-    };
-
-    update();
-    mqTablet.addEventListener('change', update);
-    mqDesktop.addEventListener('change', update);
-    return () => {
-      mqTablet.removeEventListener('change', update);
-      mqDesktop.removeEventListener('change', update);
-    };
-  }, []);
 
   // 🔔 通知設定モーダルを開く
   const openNotificationModal = (task: Task) => {
@@ -446,6 +421,16 @@ const saveTaskNotificationOptions = (
 
   return (
     <div>
+      <style>{`
+      @keyframes doneShimmer {
+        0%   { transform: translateX(-35%); opacity: 0.12; }
+        50%  { transform: translateX(35%);  opacity: 0.28; }
+        100% { transform: translateX(-35%); opacity: 0.12; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .done-shimmer { animation: none !important; }
+      }
+    `}</style>
       {/* 上部：一括削除ボタン */}
       <div
         style={{
@@ -481,14 +466,12 @@ const saveTaskNotificationOptions = (
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns:
-            gridCols === 3
-              ? 'repeat(3, minmax(0, 1fr))'
-              : gridCols === 2
-              ? 'repeat(2, minmax(0, 1fr))'
-              : 'repeat(1, minmax(0, 1fr))',
-          gap: '0.75rem',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: '0.9rem',
           alignItems: 'stretch',
+          width: '100%',
+          maxWidth: 1100,
+          margin: '0 auto',
         }}
       >
         {tasks.map((task) => {
@@ -506,15 +489,49 @@ const saveTaskNotificationOptions = (
             <div
               key={task.id}
               style={{
+                position: 'relative',
+                overflow: 'hidden',
+
                 borderRadius: 18,
                 padding: '0.85rem 0.95rem',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.10)',
+
+                background: isDone
+                  ? 'rgba(255,255,255,0.035)'
+                  : 'rgba(255,255,255,0.06)',
+
+                border: isDone
+                  ? '1px solid rgba(56,189,248,0.35)'
+                  : '1px solid rgba(255,255,255,0.10)',
+
                 backdropFilter: 'blur(16px)',
                 WebkitBackdropFilter: 'blur(16px)',
-                boxShadow: '0 16px 44px rgba(0,0,0,0.45)',
+
+                boxShadow: isDone
+                  ? '0 12px 34px rgba(0,0,0,0.38)'
+                  : '0 16px 44px rgba(0,0,0,0.45)',
+
+                opacity: isDone ? 0.88 : 1,
+                transform: isDone ? 'translateY(0px)' : 'translateY(0px)',
+                transition:
+                  'border-color 220ms ease, background 220ms ease, box-shadow 220ms ease, opacity 220ms ease',
               }}
             >
+              {isDone && (
+                <div
+                  aria-hidden
+                  className="done-shimmer"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+                    background:
+                      'linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.10) 45%, transparent 70%)',
+                    transform: 'translateX(-30%)',
+                    animation: 'doneShimmer 3.6s ease-in-out infinite',
+                    mixBlendMode: 'screen',
+                  }}
+                />
+              )}
                 {/* 1行目: チェックボックス + タイトル + ✏️ */}
                 <div
                   style={{
@@ -547,6 +564,13 @@ const saveTaskNotificationOptions = (
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
+
+                        opacity: isDone ? 0.72 : 1,
+                        textDecoration: isDone ? 'line-through' : 'none',
+                        textDecorationThickness: isDone ? '2px' : undefined,
+                        textDecorationColor: isDone
+                          ? 'rgba(0, 212, 255, 0.55)'
+                          : undefined,
                       }}
                     >
                       {task.title || 'タイトル未設定'}

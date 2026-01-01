@@ -982,7 +982,7 @@ export const Dashboard: React.FC = () => {
     <div
       style={{
         width: '100%',
-        maxWidth: '960px',
+        maxWidth: 'clamp(420px, 92vw, 1100px)',
         margin: '0 auto',
         padding: '0.9rem 1rem calc(5.2rem + env(safe-area-inset-bottom))',
         minHeight: '100dvh',
@@ -1085,7 +1085,8 @@ export const Dashboard: React.FC = () => {
           right: 0,
           bottom: 0,
           margin: '0 auto',
-          maxWidth: '420px',
+          width: '100%',
+          maxWidth: 'clamp(420px, 92vw, 1100px)',
           padding: '0.55rem 1rem calc(0.55rem + env(safe-area-inset-bottom))',
           background: 'rgba(10, 12, 18, .72)',
           borderTop: '1px solid rgba(255,255,255,.10)',

@@ -92,6 +92,7 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [justDoneTaskId, setJustDoneTaskId] = useState<number | null>(null);
 
   // 🔔 タスク個別の通知設定（フロント限定で保持）
   const [localTaskNotificationOverrides, setLocalTaskNotificationOverrides] =
@@ -237,6 +238,17 @@ const saveTaskNotificationOptions = (
       auto_notify_disabled_by_done: nextAuto,
     });
 
+    // ✅ “完了になった瞬間だけ” 演出（reduced motion は CSS 側で無効化）
+    if (newIsDone === true) {
+      setJustDoneTaskId(task.id);
+      window.setTimeout(() => {
+        setJustDoneTaskId((prev) => (prev === task.id ? null : prev));
+      }, 900);
+    } else {
+      // 未完に戻したら瞬間演出は消す
+      setJustDoneTaskId((prev) => (prev === task.id ? null : prev));
+    }
+
     // 仮タスクはフロントだけで完結（API叩かない）
     if (isVirtualTask(task)) return;
     try {
@@ -253,6 +265,10 @@ const saveTaskNotificationOptions = (
         should_notify: prevNotify,
         auto_notify_disabled_by_done: prevAuto,
       });
+
+      // ✅ rollback 時は演出も戻す（事故防止）
+      setJustDoneTaskId((prev) => (prev === task.id ? null : prev));
+
       alert('課題の更新に失敗しました');
     }
   };
@@ -422,15 +438,24 @@ const saveTaskNotificationOptions = (
   return (
     <div>
       <style>{`
-      @keyframes doneShimmer {
-        0%   { transform: translateX(-35%); opacity: 0.12; }
-        50%  { transform: translateX(35%);  opacity: 0.28; }
-        100% { transform: translateX(-35%); opacity: 0.12; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .done-shimmer { animation: none !important; }
-      }
-    `}</style>
+        @keyframes doneShimmer {
+          0%   { transform: translateX(-35%); opacity: 0.10; }
+          50%  { transform: translateX(35%);  opacity: 0.22; }
+          100% { transform: translateX(-35%); opacity: 0.10; }
+        }
+
+        /* ✅ 完了になった瞬間だけ：ふわっとフェード＆微グロー（うるさくしない） */
+        @keyframes doneEnter {
+          0%   { opacity: 0.72; transform: translateY(1px); filter: brightness(1) saturate(1); }
+          60%  { opacity: 0.92; transform: translateY(0px); filter: brightness(1.06) saturate(1.08); }
+          100% { opacity: 0.88; transform: translateY(0px); filter: brightness(1) saturate(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .done-shimmer { animation: none !important; }
+          .done-just { animation: none !important; }
+        }
+      `}</style>
       {/* 上部：一括削除ボタン */}
       <div
         style={{
@@ -478,6 +503,7 @@ const saveTaskNotificationOptions = (
           const isSelected = selectedIds.includes(task.id);
 
           const isDone = Boolean(task.is_done);
+          const isJustDone = isDone && justDoneTaskId === task.id;
 
           const effectiveNotify = isVirtualTask(task)
             ? (notifyOverrides?.[task.id] ?? true)
@@ -488,6 +514,7 @@ const saveTaskNotificationOptions = (
           return (
             <div
               key={task.id}
+              className={`${isDone ? 'done-card' : ''} ${isJustDone ? 'done-just' : ''}`}
               style={{
                 position: 'relative',
                 overflow: 'hidden',
@@ -495,27 +522,49 @@ const saveTaskNotificationOptions = (
                 borderRadius: 18,
                 padding: '0.85rem 0.95rem',
 
+                // ✅ 完了は “薄い緑” に寄せて主役から外す（でも一目で分かる）
                 background: isDone
-                  ? 'rgba(255,255,255,0.035)'
+                  ? 'linear-gradient(180deg, rgba(34,197,94,0.09), rgba(255,255,255,0.03))'
                   : 'rgba(255,255,255,0.06)',
 
                 border: isDone
-                  ? '1px solid rgba(56,189,248,0.35)'
+                  ? '1px solid rgba(34,197,94,0.32)'
                   : '1px solid rgba(255,255,255,0.10)',
 
                 backdropFilter: 'blur(16px)',
                 WebkitBackdropFilter: 'blur(16px)',
 
                 boxShadow: isDone
-                  ? '0 12px 34px rgba(0,0,0,0.38)'
+                  ? '0 12px 34px rgba(0,0,0,0.36), 0 0 0 1px rgba(34,197,94,0.08)'
                   : '0 16px 44px rgba(0,0,0,0.45)',
 
                 opacity: isDone ? 0.88 : 1,
-                transform: isDone ? 'translateY(0px)' : 'translateY(0px)',
                 transition:
                   'border-color 220ms ease, background 220ms ease, box-shadow 220ms ease, opacity 220ms ease',
+
+                // ✅ “完了になった瞬間だけ” は className 側の animation で付与
+                animation: isJustDone ? 'doneEnter 900ms ease-out 1' : undefined,
               }}
             >
+              {isDone && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 5,
+                    background:
+                      'linear-gradient(180deg, rgba(34,197,94,0.0), rgba(34,197,94,0.65), rgba(34,197,94,0.0))',
+                    boxShadow: '0 0 18px rgba(34,197,94,0.22)',
+                    borderTopLeftRadius: 18,
+                    borderBottomLeftRadius: 18,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+
               {isDone && (
                 <div
                   aria-hidden
@@ -525,7 +574,7 @@ const saveTaskNotificationOptions = (
                     inset: 0,
                     pointerEvents: 'none',
                     background:
-                      'linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.10) 45%, transparent 70%)',
+                      'linear-gradient(120deg, transparent 0%, rgba(34,197,94,0.10) 40%, rgba(255,255,255,0.08) 55%, transparent 72%)',
                     transform: 'translateX(-30%)',
                     animation: 'doneShimmer 3.6s ease-in-out infinite',
                     mixBlendMode: 'screen',
@@ -557,6 +606,24 @@ const saveTaskNotificationOptions = (
                       onChange={() => toggleSelect(task)}
                       style={{ flexShrink: 0 }}
                     />
+                    {isDone && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: 9999,
+                          border: '1px solid rgba(34,197,94,0.35)',
+                          background: 'rgba(34,197,94,0.14)',
+                          color: 'rgba(214,255,232,0.92)',
+                          boxShadow: '0 8px 24px rgba(34,197,94,0.12)',
+                        }}
+                      >
+                        ✓ DONE
+                      </span>
+                    )}
                     <div
                       style={{
                         fontWeight: 600,
@@ -569,7 +636,7 @@ const saveTaskNotificationOptions = (
                         textDecoration: isDone ? 'line-through' : 'none',
                         textDecorationThickness: isDone ? '2px' : undefined,
                         textDecorationColor: isDone
-                          ? 'rgba(0, 212, 255, 0.55)'
+                          ? 'rgba(34,197,94,0.55)'
                           : undefined,
                       }}
                     >

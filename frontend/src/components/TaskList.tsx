@@ -582,32 +582,38 @@ const saveTaskNotificationOptions = (
                 />
               )}
               {isDone && (
-                  <div
-                    aria-hidden
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      pointerEvents: 'none',
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
 
-                      /* ✅ 完了カード専用の“質感レイヤ” */
-                      backgroundImage: `
-                        linear-gradient(
-                          0deg,
-                          rgba(34,197,94,0.045) 1px,
-                          transparent 1px
-                        ),
-                        linear-gradient(
-                          90deg,
-                          rgba(34,197,94,0.045) 1px,
-                          transparent 1px
-                        )
-                      `,
-                      backgroundSize: '14px 14px',
-                      opacity: 0.9,
-                      mixBlendMode: 'overlay',
-                    }}
-                  />
-                )}
+                    // ✅ ここを強める：線の濃さ + マス目を少し細かく + ブレンドをスクリーン寄りに
+                    backgroundImage: `
+                      linear-gradient(
+                        0deg,
+                        rgba(34,197,94,0.085) 1px,
+                        transparent 1px
+                      ),
+                      linear-gradient(
+                        90deg,
+                        rgba(34,197,94,0.085) 1px,
+                        transparent 1px
+                      )
+                    `,
+                    backgroundSize: '10px 10px',
+                    opacity: 1,
+                    mixBlendMode: 'screen',
+
+                    // ✅ “面の差”を少しだけ増やす（うるさくしない）
+                    maskImage:
+                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
+                    WebkitMaskImage:
+                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
+                  }}
+                />
+              )}
 
                 {/* 1行目: チェックボックス + タイトル + ✏️ */}
                 <div

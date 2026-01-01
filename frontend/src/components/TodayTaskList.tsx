@@ -46,29 +46,46 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
     <>
       <style>{`
         @keyframes gaugeSheen {
-          0% { transform: translateX(-40%); opacity: .0; }
-          25% { opacity: .35; }
-          50% { transform: translateX(40%); opacity: .0; }
-          100% { transform: translateX(40%); opacity: .0; }
+          0% { transform: translateX(-55%); opacity: 0; }
+          18% { opacity: .45; }
+          45% { transform: translateX(55%); opacity: 0; }
+          100% { transform: translateX(55%); opacity: 0; }
         }
+
         @keyframes gaugePulse {
           0%, 100% { filter: brightness(1) saturate(1); }
-          50% { filter: brightness(1.08) saturate(1.1); }
+          50% { filter: brightness(1.12) saturate(1.18); }
         }
+
         @keyframes gaugeScan {
-          0% { background-position: 0 0; opacity: .22; }
-          100% { background-position: 120px 0; opacity: .22; }
+          0% { background-position: 0 0; opacity: .18; }
+          100% { background-position: 160px 0; opacity: .18; }
         }
+
+        /* “粒子/線”っぽい背景をゆっくり流す */
+        @keyframes gaugeConstellationDrift {
+          0% { transform: translate3d(-2%, -1%, 0) scale(1); opacity: .22; }
+          50% { transform: translate3d(2%, 1%, 0) scale(1.02); opacity: .28; }
+          100% { transform: translate3d(-2%, -1%, 0) scale(1); opacity: .22; }
+        }
+
+        /* 点滅（粒子の“生きてる感”） */
+        @keyframes gaugeTwinkle {
+          0%, 100% { opacity: .22; }
+          50% { opacity: .42; }
+        }
+
+        /* 立体っぽい“内側の陰影”を呼吸 */
+        @keyframes gaugeDepthBreath {
+          0%, 100% { opacity: .55; }
+          50% { opacity: .72; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          .gauge-sheen, .gauge-pulse, .gauge-scan { animation: none !important; }
-        }
-        @keyframes gaugeMeshDrift {
-          0% { background-position: 0 0, 0 0, 0 0; opacity: .14; }
-          50% { background-position: 160px 70px, -140px 40px, 90px -60px; opacity: .22; }
-          100% { background-position: 320px 140px, -280px 80px, 180px -120px; opacity: .14; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .gauge-mesh { animation: none !important; }
+          .gauge-sheen, .gauge-pulse, .gauge-scan,
+          .gauge-constellation, .gauge-twinkle, .gauge-depth {
+            animation: none !important;
+          }
         }
       `}</style>
       <div>
@@ -102,69 +119,98 @@ const ProgressGauge: React.FC<{
   doneCount: number;
   totalCount: number;
 }> = ({ percent, doneCount, totalCount }) => {
+  const hasProgress = percent > 0;
+
   return (
     <div
       style={{
         marginBottom: '1rem',
-        padding: '0.9rem 1rem',
-        borderRadius: 16,
-        background: 'linear-gradient(135deg, rgba(2,6,23,0.92), rgba(15,23,42,0.86))',
-        border: '1px solid rgba(56,189,248,0.14)',
-        boxShadow: '0 18px 46px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
-        color: '#e5e7eb',
+        padding: '0.95rem 1rem',
+        borderRadius: 18,
         position: 'relative',
         overflow: 'hidden',
+        background:
+          'linear-gradient(135deg, rgba(2,6,23,0.92), rgba(15,23,42,0.86))',
+        border: '1px solid rgba(56,189,248,0.18)',
+        boxShadow:
+          '0 22px 60px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.06)',
+        color: '#e5e7eb',
       }}
     >
-      {/* ✅ Loginっぽいネットワーク背景（CSSだけで再現） */}
+      {/* 近未来 “粒子/線” っぽい背景（ログインの雰囲気をカード内に移植） */}
       <div
         aria-hidden
-        className="gauge-mesh"
+        className="gauge-constellation"
         style={{
           position: 'absolute',
-          inset: -2,
+          inset: -40,
           pointerEvents: 'none',
-
-          // 点（ノード） + 斜め線（リンク） + 霧（ネオン面）
-          backgroundImage: `
-            radial-gradient(circle at 20% 30%, rgba(56,189,248,0.38) 0 2px, transparent 3px),
-            radial-gradient(circle at 65% 40%, rgba(56,189,248,0.26) 0 2px, transparent 3px),
-            radial-gradient(circle at 80% 70%, rgba(59,130,246,0.28) 0 2px, transparent 3px),
-
-            linear-gradient(115deg, transparent 0%, rgba(56,189,248,0.10) 42%, transparent 72%),
-            linear-gradient(65deg, transparent 0%, rgba(59,130,246,0.09) 45%, transparent 74%),
-
-            radial-gradient(90% 70% at 22% 18%, rgba(56,189,248,0.12) 0%, transparent 60%)
-          `,
-          backgroundSize: `
-            260px 180px,
-            320px 220px,
-            360px 260px,
-
-            420px 260px,
-            460px 300px,
-
-            100% 100%
-          `,
-          backgroundRepeat: 'repeat',
           mixBlendMode: 'screen',
-          opacity: 0.18,
+          animation: 'gaugeConstellationDrift 7.2s ease-in-out infinite',
+          backgroundImage: `
+            /* dots */
+            radial-gradient(circle at 12% 28%, rgba(56,189,248,0.55) 0 2px, transparent 3px),
+            radial-gradient(circle at 22% 62%, rgba(56,189,248,0.42) 0 2px, transparent 3px),
+            radial-gradient(circle at 38% 18%, rgba(56,189,248,0.38) 0 2px, transparent 3px),
+            radial-gradient(circle at 58% 42%, rgba(56,189,248,0.46) 0 2px, transparent 3px),
+            radial-gradient(circle at 74% 24%, rgba(56,189,248,0.40) 0 2px, transparent 3px),
+            radial-gradient(circle at 82% 66%, rgba(56,189,248,0.48) 0 2px, transparent 3px),
 
-          // 上側が強く、下側は薄く（文字の可読性維持）
-          maskImage:
-            'radial-gradient(120% 80% at 25% 15%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.0) 88%)',
-          WebkitMaskImage:
-            'radial-gradient(120% 80% at 25% 15%, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.0) 88%)',
-
-          animation: 'gaugeMeshDrift 11s ease-in-out infinite',
+            /* lines */
+            linear-gradient(115deg, transparent 0%, rgba(56,189,248,0.16) 46%, transparent 52%),
+            linear-gradient(35deg,  transparent 0%, rgba(56,189,248,0.12) 46%, transparent 52%),
+            linear-gradient(165deg, transparent 0%, rgba(56,189,248,0.10) 46%, transparent 52%)
+          `,
+          filter: 'blur(0.2px)',
+          opacity: 0.28,
         }}
       />
+
+      {/* 粒子の点滅（もう1枚重ねて“動いてる感”を増やす） */}
+      <div
+        aria-hidden
+        className="gauge-twinkle"
+        style={{
+          position: 'absolute',
+          inset: -20,
+          pointerEvents: 'none',
+          mixBlendMode: 'screen',
+          animation: 'gaugeTwinkle 3.6s ease-in-out infinite',
+          backgroundImage: `
+            radial-gradient(circle at 18% 40%, rgba(147,197,253,0.35) 0 1.5px, transparent 3px),
+            radial-gradient(circle at 44% 68%, rgba(147,197,253,0.28) 0 1.5px, transparent 3px),
+            radial-gradient(circle at 66% 34%, rgba(147,197,253,0.30) 0 1.5px, transparent 3px),
+            radial-gradient(circle at 86% 48%, rgba(147,197,253,0.26) 0 1.5px, transparent 3px)
+          `,
+          opacity: 0.28,
+        }}
+      />
+
+      {/* カードの“内側陰影”で立体感を増やす */}
+      <div
+        aria-hidden
+        className="gauge-depth"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          animation: 'gaugeDepthBreath 4.8s ease-in-out infinite',
+          background:
+            'radial-gradient(110% 90% at 18% 12%, rgba(56,189,248,0.20) 0%, transparent 55%), radial-gradient(120% 100% at 88% 68%, rgba(37,99,235,0.18) 0%, transparent 55%)',
+          opacity: 0.62,
+          mixBlendMode: 'screen',
+        }}
+      />
+
+      {/* header */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          marginBottom: '0.5rem',
+          marginBottom: '0.55rem',
           fontSize: '0.9rem',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
         <span>今日のタスク達成率</span>
@@ -172,21 +218,26 @@ const ProgressGauge: React.FC<{
           {doneCount} / {totalCount} 件
         </span>
       </div>
+
+      {/* bar shell */}
       <div
         style={{
           width: '100%',
           height: 18,
           borderRadius: 9999,
-          background:
-            'linear-gradient(180deg, rgba(2,6,23,0.55), rgba(15,23,42,0.85))',
-          border: '1px solid rgba(56,189,248,0.18)',
           overflow: 'hidden',
           position: 'relative',
+          zIndex: 1,
+
+          /* “筒”っぽい質感（上が明るい/下が暗い） */
+          background:
+            'linear-gradient(180deg, rgba(2,6,23,0.35) 0%, rgba(15,23,42,0.92) 100%)',
+          border: '1px solid rgba(56,189,248,0.22)',
           boxShadow:
-            'inset 0 2px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)',
+            'inset 0 2px 12px rgba(0,0,0,0.58), inset 0 1px 0 rgba(255,255,255,0.08)',
         }}
       >
-        {/* scanline（近未来の薄い走査） */}
+        {/* scanline */}
         <div
           aria-hidden
           className="gauge-scan"
@@ -194,31 +245,53 @@ const ProgressGauge: React.FC<{
             position: 'absolute',
             inset: 0,
             backgroundImage:
-              'linear-gradient(90deg, rgba(56,189,248,0.0) 0%, rgba(56,189,248,0.10) 50%, rgba(56,189,248,0.0) 100%)',
-            backgroundSize: '120px 100%',
-            animation: 'gaugeScan 3.2s linear infinite',
+              'linear-gradient(90deg, rgba(56,189,248,0.0) 0%, rgba(56,189,248,0.12) 50%, rgba(56,189,248,0.0) 100%)',
+            backgroundSize: '160px 100%',
+            animation: 'gaugeScan 2.8s linear infinite',
             mixBlendMode: 'screen',
             pointerEvents: 'none',
           }}
         />
 
-        {/* fill（実ゲージ） */}
+        {/* base inner highlight */}
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 6,
+            background:
+              'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 100%)',
+            opacity: 0.65,
+            pointerEvents: 'none',
+          }}
+        />
+
+        {/* fill */}
         <div
           className="gauge-pulse"
           style={{
             width: `${percent}%`,
             height: '100%',
             borderRadius: 9999,
-            background:
-              'linear-gradient(90deg, rgba(56,189,248,0.75), rgba(59,130,246,0.92), rgba(37,99,235,0.88))',
             position: 'relative',
-            transition: 'width 240ms ease-out',
+            transition: 'width 260ms ease-out',
+
+            /* 3Dっぽい色（シアン→ブルー→ディープブルー） */
+            background:
+              'linear-gradient(90deg, rgba(56,189,248,0.82), rgba(59,130,246,0.95), rgba(37,99,235,0.90))',
+
             boxShadow:
-              '0 10px 26px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.16)',
-            animation: percent > 0 ? 'gaugePulse 2.8s ease-in-out infinite' : undefined,
+              '0 10px 28px rgba(37,99,235,0.30), 0 0 24px rgba(56,189,248,0.18), inset 0 1px 0 rgba(255,255,255,0.18)',
+
+            animation: hasProgress
+              ? 'gaugePulse 2.4s ease-in-out infinite'
+              : undefined,
           }}
         >
-          {/* sheen（立体的なハイライトが流れる） */}
+          {/* sheen */}
           <div
             aria-hidden
             className="gauge-sheen"
@@ -226,37 +299,44 @@ const ProgressGauge: React.FC<{
               position: 'absolute',
               inset: 0,
               background:
-                'linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.22) 45%, transparent 70%)',
-              transform: 'translateX(-40%)',
-              animation:
-                percent > 0 ? 'gaugeSheen 2.6s ease-in-out infinite' : undefined,
+                'linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.28) 45%, transparent 70%)',
+              transform: 'translateX(-55%)',
+              animation: hasProgress
+                ? 'gaugeSheen 2.2s ease-in-out infinite'
+                : undefined,
               mixBlendMode: 'screen',
               pointerEvents: 'none',
             }}
           />
 
-          {/* top highlight（上面の薄い反射） */}
+          {/* micro noise / texture（“のっぺり”防止） */}
           <div
             aria-hidden
             style={{
               position: 'absolute',
-              left: 0,
-              right: 0,
-              top: 0,
-              height: 6,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.22), transparent)',
-              opacity: 0.55,
+              inset: 0,
+              backgroundImage:
+                'linear-gradient(0deg, rgba(255,255,255,0.06) 1px, transparent 1px)',
+              backgroundSize: '100% 6px',
+              opacity: 0.22,
+              mixBlendMode: 'overlay',
               pointerEvents: 'none',
             }}
           />
         </div>
       </div>
+
+      {/* percent */}
       <div
         style={{
-          marginTop: 4,
+          marginTop: 6,
           textAlign: 'center',
           fontSize: '0.85rem',
-          fontWeight: 600,
+          fontWeight: 700,
+          letterSpacing: 0.4,
+          position: 'relative',
+          zIndex: 1,
+          textShadow: '0 0 10px rgba(56,189,248,0.20)',
         }}
       >
         {percent}%

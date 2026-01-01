@@ -581,6 +581,34 @@ const saveTaskNotificationOptions = (
                   }}
                 />
               )}
+              {isDone && (
+                  <div
+                    aria-hidden
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      pointerEvents: 'none',
+
+                      /* ✅ 完了カード専用の“質感レイヤ” */
+                      backgroundImage: `
+                        linear-gradient(
+                          0deg,
+                          rgba(34,197,94,0.045) 1px,
+                          transparent 1px
+                        ),
+                        linear-gradient(
+                          90deg,
+                          rgba(34,197,94,0.045) 1px,
+                          transparent 1px
+                        )
+                      `,
+                      backgroundSize: '14px 14px',
+                      opacity: 0.9,
+                      mixBlendMode: 'overlay',
+                    }}
+                  />
+                )}
+
                 {/* 1行目: チェックボックス + タイトル + ✏️ */}
                 <div
                   style={{

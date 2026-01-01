@@ -522,13 +522,12 @@ const saveTaskNotificationOptions = (
                 borderRadius: 18,
                 padding: '0.85rem 0.95rem',
 
-                // ✅ 完了は “薄い緑” に寄せて主役から外す（でも一目で分かる）
                 background: isDone
-                  ? 'linear-gradient(180deg, rgba(34,197,94,0.09), rgba(255,255,255,0.03))'
+                  ? 'linear-gradient(180deg, rgba(34,197,94,0.14), rgba(255,255,255,0.04))'
                   : 'rgba(255,255,255,0.06)',
 
                 border: isDone
-                  ? '1px solid rgba(34,197,94,0.32)'
+                  ? '1px solid rgba(34,197,94,0.40)'
                   : '1px solid rgba(255,255,255,0.10)',
 
                 backdropFilter: 'blur(16px)',
@@ -546,6 +545,40 @@ const saveTaskNotificationOptions = (
                 animation: isJustDone ? 'doneEnter 900ms ease-out 1' : undefined,
               }}
             >
+              {/* ① グリッド質感（いちばん下） */}
+              {isDone && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    pointerEvents: 'none',
+
+                    backgroundImage: `
+                      linear-gradient(
+                        0deg,
+                        rgba(34,197,94,0.085) 1px,
+                        transparent 1px
+                      ),
+                      linear-gradient(
+                        90deg,
+                        rgba(34,197,94,0.085) 1px,
+                        transparent 1px
+                      )
+                    `,
+                    backgroundSize: '10px 10px',
+                    opacity: 1,
+                    mixBlendMode: 'screen',
+
+                    maskImage:
+                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
+                    WebkitMaskImage:
+                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
+                  }}
+                />
+              )}
+
+              {/* ② 左アクセントライン */}
               {isDone && (
                 <div
                   aria-hidden
@@ -565,6 +598,7 @@ const saveTaskNotificationOptions = (
                 />
               )}
 
+              {/* ③ シマー（動き） */}
               {isDone && (
                 <div
                   aria-hidden
@@ -581,36 +615,21 @@ const saveTaskNotificationOptions = (
                   }}
                 />
               )}
+
+              {/* ④ オーラ（いちばん上・近未来感） */}
               {isDone && (
                 <div
                   aria-hidden
+                  className="done-aura"
                   style={{
                     position: 'absolute',
-                    inset: 0,
+                    inset: -2,
                     pointerEvents: 'none',
-
-                    // ✅ ここを強める：線の濃さ + マス目を少し細かく + ブレンドをスクリーン寄りに
-                    backgroundImage: `
-                      linear-gradient(
-                        0deg,
-                        rgba(34,197,94,0.085) 1px,
-                        transparent 1px
-                      ),
-                      linear-gradient(
-                        90deg,
-                        rgba(34,197,94,0.085) 1px,
-                        transparent 1px
-                      )
-                    `,
-                    backgroundSize: '10px 10px',
-                    opacity: 1,
+                    background:
+                      'radial-gradient(80% 60% at 20% 15%, rgba(34,197,94,0.22) 0%, transparent 60%)',
+                    opacity: 0.22, // ✅ 0.16 → 0.22
                     mixBlendMode: 'screen',
-
-                    // ✅ “面の差”を少しだけ増やす（うるさくしない）
-                    maskImage:
-                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
-                    WebkitMaskImage:
-                      'radial-gradient(120% 80% at 20% 10%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.0) 80%)',
+                    animation: 'doneAura 5.8s ease-in-out infinite',
                   }}
                 />
               )}

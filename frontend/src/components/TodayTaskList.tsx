@@ -147,22 +147,20 @@ const ProgressGauge: React.FC<{
           pointerEvents: 'none',
           mixBlendMode: 'screen',
           animation: 'gaugeConstellationDrift 7.2s ease-in-out infinite',
-          backgroundImage: `
-            /* dots */
-            radial-gradient(circle at 12% 28%, rgba(56,189,248,0.55) 0 2px, transparent 3px),
-            radial-gradient(circle at 22% 62%, rgba(56,189,248,0.42) 0 2px, transparent 3px),
-            radial-gradient(circle at 38% 18%, rgba(56,189,248,0.38) 0 2px, transparent 3px),
-            radial-gradient(circle at 58% 42%, rgba(56,189,248,0.46) 0 2px, transparent 3px),
-            radial-gradient(circle at 74% 24%, rgba(56,189,248,0.40) 0 2px, transparent 3px),
-            radial-gradient(circle at 82% 66%, rgba(56,189,248,0.48) 0 2px, transparent 3px),
+          backgroundImage: [
+          // dots
+          'radial-gradient(circle at 12% 28%, rgba(56,189,248,0.55) 0 2px, transparent 3px)',
+          'radial-gradient(circle at 22% 62%, rgba(56,189,248,0.42) 0 2px, transparent 3px)',
+          'radial-gradient(circle at 38% 18%, rgba(56,189,248,0.38) 0 2px, transparent 3px)',
+          'radial-gradient(circle at 58% 42%, rgba(56,189,248,0.46) 0 2px, transparent 3px)',
+          'radial-gradient(circle at 74% 24%, rgba(56,189,248,0.40) 0 2px, transparent 3px)',
+          'radial-gradient(circle at 82% 66%, rgba(56,189,248,0.48) 0 2px, transparent 3px)',
 
-            /* lines */
-            linear-gradient(115deg, transparent 0%, rgba(56,189,248,0.16) 46%, transparent 52%),
-            linear-gradient(35deg,  transparent 0%, rgba(56,189,248,0.12) 46%, transparent 52%),
-            linear-gradient(165deg, transparent 0%, rgba(56,189,248,0.10) 46%, transparent 52%)
-          `,
-          filter: 'blur(0.2px)',
-          opacity: 0.28,
+          // lines
+          'linear-gradient(115deg, transparent 0%, rgba(56,189,248,0.28) 46%, transparent 52%)',
+          'linear-gradient(35deg,  transparent 0%, rgba(56,189,248,0.12) 46%, transparent 52%)',
+          'linear-gradient(165deg, transparent 0%, rgba(56,189,248,0.10) 46%, transparent 52%)',
+        ].join(','),
         }}
       />
 

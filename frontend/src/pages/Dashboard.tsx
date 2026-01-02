@@ -421,11 +421,18 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const allTasksWithWeekly: Task[] = useMemo(() => tasks, [tasks]);
-
   const allDisplayTasks = useMemo(() => {
-    return getAllTasksByViewMode(allTasksWithWeekly, allViewMode);
-  }, [allTasksWithWeekly, allViewMode]);
+    const xs = getAllTasksByViewMode(tasks, allViewMode);
+
+    // ✅ 管理中（active）のみ：締切昇順を保証
+    if (allViewMode === 'active') {
+      return [...xs].sort(
+        (a, b) =>
+          new Date(a.deadline).getTime() - new Date(b.deadline).getTime()
+      );
+    }
+    return xs;
+  }, [tasks, allViewMode]);
 
   const todayTasks = useMemo(() => {
     return tasks

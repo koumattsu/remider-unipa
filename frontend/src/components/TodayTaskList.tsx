@@ -163,7 +163,6 @@ const ProgressGauge: React.FC<{
         ].join(','),
         }}
       />
-
       {/* 粒子の点滅（もう1枚重ねて“動いてる感”を増やす） */}
       <div
         aria-hidden

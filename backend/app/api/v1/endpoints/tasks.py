@@ -63,11 +63,23 @@ async def create_task(
         user_id=current_user.id,
         **task_data.model_dump(),
     )
+
+    # ✅ FakeSession / server_default 非反映でもレスポンス契約を壊さない
+    if task.is_done is None:
+        task.is_done = False
+    if task.auto_notify_disabled_by_done is None:
+        task.auto_notify_disabled_by_done = False
+
+    now = datetime.now(timezone.utc)
+    if task.created_at is None:
+        task.created_at = now
+    if task.updated_at is None:
+        task.updated_at = now
+
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
-
 
 @router.patch("/{task_id}", response_model=TaskResponse)
 async def update_task(

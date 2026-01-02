@@ -13,6 +13,7 @@ from app.main import app
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
+from app.models.asset_snapshot import AssetSnapshot
 from app.models.in_app_notification import InAppNotification
 from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
@@ -21,6 +22,7 @@ from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
+from app.models.user import User
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -339,6 +341,11 @@ class FakeSession:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             # add() されたものが見えるようにする（DBっぽく）
             q._items = [x for x in self._added if isinstance(x, ActionEffectivenessSnapshot)]
+            return q
+        if model is AssetSnapshot:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            # add() されたものが見えるようにする（DBっぽく）
+            q._items = [x for x in self._added if isinstance(x, AssetSnapshot)]
             return q
         if model is NotificationRun:
             q = FakeQuery(

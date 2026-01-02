@@ -1,12 +1,11 @@
 # backend/app/api/v1/api.py
 
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes, in_app_notifications, webpush_subscriptions, notification_runs
+from app.api.v1.endpoints import auth, tasks, settings, cron, admin_migrate, weekly_tasks, task_notification_override, outcomes, in_app_notifications, webpush_subscriptions, notification_runs, admin_assets
 import app.api.v1.endpoints.analytics_outcomes as analytics_outcomes
 import app.api.v1.endpoints.analytics_actions as analytics_actions
 
 api_router = APIRouter()
-# 既存ルーター
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
@@ -39,6 +38,12 @@ api_router.include_router(
 # ✅ 管理: NotificationRun（cron実行の監査ログ）
 api_router.include_router(
     notification_runs.router,
+    prefix="/admin",
+    tags=["admin"],
+)
+# 📦 管理: Asset Summary（M&A / 監査 / KPI）
+api_router.include_router(
+    admin_assets.router,
     prefix="/admin",
     tags=["admin"],
 )

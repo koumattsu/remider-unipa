@@ -22,7 +22,7 @@ class NotificationRun(Base):
         default="running",  # running/success/partial/fail
         index=True,
     )
-
+    
     error_summary = Column(Text, nullable=True)
     users_processed = Column(Integer, nullable=False, default=0)
     due_candidates_total = Column(Integer, nullable=False, default=0)

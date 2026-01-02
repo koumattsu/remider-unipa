@@ -874,9 +874,9 @@ export const Dashboard: React.FC = () => {
   };
 
   const ALL_MODE_ITEMS: { key: AllViewMode; label: string; desc: string; icon: string }[] = [
-    { key: 'active', label: '管理中', desc: '期限内 + 期限超過≤24h（未完）', icon: '🟦' },
-    { key: 'overdue', label: '期限切れ未完了', desc: '期限超過（未完）', icon: '⚠️' },
-    { key: 'incomplete', label: '締切内の未完了', desc: '期限内（未完）', icon: '🕒' },
+    { key: 'active', label: '管理中', desc: '期限内 / 24h以内の期限切れ', icon: '🟦' },
+    { key: 'overdue', label: '期限切れ', desc: '期限超過', icon: '⚠️' },
+    { key: 'incomplete', label: '期限内', desc: '期限内', icon: '🕒' },
   ];
 
   const AllModeDropdown: React.FC<{

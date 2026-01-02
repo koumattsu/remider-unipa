@@ -72,3 +72,18 @@ async def get_current_user(
 def require_auth(func):
     """認証が必要なエンドポイント用デコレータ（簡易版）"""
     return func
+
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    管理者専用 Dependency（v0）
+
+    - v0: 全ユーザーを通過させる（read-only Admin API 用）
+    - 将来:
+        - User.is_admin
+        - role == "admin"
+        - allowlist
+      に差し替えても API 仕様は変えない
+    """
+    return current_user

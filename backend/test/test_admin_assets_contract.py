@@ -1,10 +1,8 @@
 # backend/test/test_admin_assets_summary_contract.py
 
 from datetime import datetime, timezone
-
 from app.core.security import get_current_user
 from app.db.session import get_db
-
 from app.models.user import User
 from app.models.task import Task
 from app.models.notification_run import NotificationRun
@@ -12,11 +10,9 @@ from app.models.in_app_notification import InAppNotification
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
 
-
 class _DummyUser:
     def __init__(self, user_id: int):
         self.id = user_id
-
 
 def test_admin_assets_summary_contract(client):
     """

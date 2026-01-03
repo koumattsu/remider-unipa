@@ -205,3 +205,10 @@ def test_notification_run_summary_contract(client):
                 "skipped",
                 "unknown",
             }
+
+        # ✅ 追加契約: webpush_source は監査の説明に必須（delivery / inapp_extra）
+        src = snapshot.get("webpush_source")
+        assert src in ("delivery", "inapp_extra")
+
+        # ✅ FakeSession 契約: delivery 集計が使えないため fallback になる
+        assert src == "inapp_extra"

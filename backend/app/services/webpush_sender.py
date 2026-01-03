@@ -99,7 +99,7 @@ class WebPushSender:
                             in_app_notification_id=in_app_notification_id,
                             user_id=user_id,
                             subscription_id=sub.id,
-                            status="sent",
+                            status=WebPushDelivery.STATUS_SENT,
                             http_status=201,
                             attempted_at=now,
                         )
@@ -116,12 +116,7 @@ class WebPushSender:
                     db.add(sub)
                     dirty = True
                     deactivated += 1
-                    logger.info(
-                        "[webpush] deactivated user_id=%s sub_id=%s status=%s",
-                        user_id,
-                        sub.id,
-                        status,
-                    )
+
                     if in_app_notification_id is not None:
                         db.add(
                             WebPushDelivery(
@@ -129,13 +124,22 @@ class WebPushSender:
                                 in_app_notification_id=in_app_notification_id,
                                 user_id=user_id,
                                 subscription_id=sub.id,
-                                status="deactivated",
+                                status=WebPushDelivery.STATUS_DEACTIVATED,
                                 http_status=status,
                                 attempted_at=now,
                             )
                         )
                         dirty = True
+
+                    logger.info(
+                        "[webpush] deactivated user_id=%s sub_id=%s status=%s",
+                        user_id,
+                        sub.id,
+                        status,
+                    )
                     continue
+
+                # ✅ それ以外は failed
                 failed += 1
                 if in_app_notification_id is not None:
                     db.add(
@@ -144,19 +148,44 @@ class WebPushSender:
                             in_app_notification_id=in_app_notification_id,
                             user_id=user_id,
                             subscription_id=sub.id,
-                            status="failed",
+                            status=WebPushDelivery.STATUS_FAILED,
                             http_status=status,
                             error_summary=str(e)[:255],
                             attempted_at=now,
                         )
                     )
                     dirty = True
+
                 logger.warning(
                     "[webpush] failed user_id=%s sub_id=%s status=%s err=%s",
                     user_id,
                     sub.id,
                     status,
                     e,
+                )
+
+            except Exception as e:
+                # ✅ 予期せぬ例外でも attempt を残す（監査SSOTの防波堤）
+                failed += 1
+                if in_app_notification_id is not None:
+                    db.add(
+                        WebPushDelivery(
+                            run_id=run_id,
+                            in_app_notification_id=in_app_notification_id,
+                            user_id=user_id,
+                            subscription_id=sub.id,
+                            status=WebPushDelivery.STATUS_FAILED,
+                            http_status=None,
+                            error_summary=str(e)[:255],
+                            attempted_at=now,
+                        )
+                    )
+                    dirty = True
+                logger.exception(
+                    "[webpush] unexpected error user_id=%s sub_id=%s err=%s",
+                    user_id,
+                    sub.id,
+                    str(e)[:200],
                 )
 
         if dirty:

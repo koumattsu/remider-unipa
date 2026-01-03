@@ -155,6 +155,7 @@ def test_admin_assets_export_contract(client):
     payload = data["payload"]
     assert set(payload.keys()) == {
         "asset_snapshots",
+        "lifecycle_snapshots",
         "outcome_logs",
         "action_applied_events",
         "notification_runs",

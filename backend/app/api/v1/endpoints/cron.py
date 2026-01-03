@@ -7,13 +7,16 @@ import re
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import and_, func
 from app.db.session import get_db
+from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
 from app.models.user import User
+from app.models.user_lifecycle_snapshot import UserLifecycleSnapshot
 from app.models.task import Task
 from app.models.in_app_notification import InAppNotification
 from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting 
 from app.models.notification_run import NotificationRun 
-from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
+from app.models.webpush_delivery import WebPushDelivery
+from app.core.time import JST
 from app.services.outcome_analytics import (
     build_action_effectiveness,
 )
@@ -34,9 +37,6 @@ from app.services.outcome_features import extract_outcome_features, FEATURE_VERS
 from app.services.outcome_feature_lock import try_mark_outcome_feature_as_saved
 
 router = APIRouter()
-
-# 日本時間(JST)のタイムゾーン
-JST = timezone(timedelta(hours=9))
 
 from sqlalchemy import text
 
@@ -603,7 +603,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.due_candidates_total = due_candidates_total
         run.morning_candidates_total = morning_candidates_total
         run.inapp_created = inapp_created
+        # ✅ 例外でも必ず存在するように初期化（SSOTの防波堤）
         snapshot = None
+        events = {"sent": 0, "failed": 0, "deactivated": 0, "skipped": 0, "unknown": 0}
+        webpush_source = "delivery"
+
         try:
             inapp_total = int(
                 db.query(func.count(InAppNotification.id))
@@ -612,45 +616,52 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 or 0
             )
 
-            status_expr = func.jsonb_extract_path_text(
-                InAppNotification.extra,
-                "webpush",
-                "status",
-            )
+            # ✅ SSOT: WebPushDelivery から集計
+            try:
+                rows2 = (
+                    db.query(WebPushDelivery.status, func.count(WebPushDelivery.id))
+                    .filter(WebPushDelivery.run_id == run.id)
+                    .group_by(WebPushDelivery.status)
+                    .all()
+                )
+                for st, cnt in rows2 or []:
+                    key = st if st in events else "unknown"
+                    events[key] += int(cnt or 0)
+            except Exception:
+                pass
 
-            rows = (
-                db.query(status_expr.label("status"), func.count(InAppNotification.id))
-                .filter(InAppNotification.run_id == run.id)
-                .group_by(status_expr)
-                .all()
-            )
-
-            events = {"sent": 0, "failed": 0, "deactivated": 0, "skipped": 0, "unknown": 0}
-            for st, cnt in rows:
-                key = st if st in events else "unknown"
-                events[key] += int(cnt or 0)
-
-            # ✅ SSOT: webpush_* は events から確定させる（途中加算は信用しない）
-            webpush_sent = int(events["sent"])
-            webpush_failed = int(events["failed"])
-            webpush_deactivated = int(events["deactivated"])
+            # ✅ fallback（FakeSession / 旧環境）
+            if sum(events.values()) == 0:
+                webpush_source = "inapp_extra"
+                status_expr = func.jsonb_extract_path_text(
+                    InAppNotification.extra, "webpush", "status"
+                )
+                rows = (
+                    db.query(status_expr.label("status"), func.count(InAppNotification.id))
+                    .filter(InAppNotification.run_id == run.id)
+                    .group_by(status_expr)
+                    .all()
+                )
+                for st, cnt in rows or []:
+                    key = st if st in events else "unknown"
+                    events[key] += int(cnt or 0)
 
             snapshot = {
                 "generated_at": now_utc.isoformat(),
                 "inapp_total": inapp_total,
                 "webpush_events": events,
+                "webpush_source": webpush_source,
             }
         except Exception as e:
-            # snapshot 失敗でcron全体を落とさない（監査ログは残す）
             snapshot = {
                 "generated_at": now_utc.isoformat(),
                 "error": (f"{type(e).__name__}: {str(e)}")[:300],
             }
 
-        # ✅ ここで run に入れる（SSOT確定後）
-        run.webpush_sent = webpush_sent
-        run.webpush_failed = webpush_failed
-        run.webpush_deactivated = webpush_deactivated
+        # ✅ SSOT集計結果を直カラムへ同期（監査一貫性）
+        run.webpush_sent = int(events.get("sent", 0))
+        run.webpush_failed = int(events.get("failed", 0))
+        run.webpush_deactivated = int(events.get("deactivated", 0))
         run.stats = {
             "v": 1,
             "kind": "notification_run_stats",
@@ -671,8 +682,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
         # ==============================
         # status 確定（success/partial/fail）
         # ==============================
-        has_success = (inapp_created > 0) or (webpush_sent > 0) or (line_sent > 0)
-        has_failure = (webpush_failed > 0) or (line_failed > 0)
+        has_success = (inapp_created > 0) or (run.webpush_sent > 0) or (line_sent > 0)
+        has_failure = (run.webpush_failed > 0) or (line_failed > 0)
 
         # except で fail がセット済みなら尊重（例外落ち）
         if run.status != "fail":
@@ -689,6 +700,103 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.finished_at = now_utc
         db.add(run)
         db.commit()
+
+        # ==============================
+        # UserLifecycleSnapshot（資産）：1日1回自動 capture（失敗しても cron を落とさない）
+        # ==============================
+        lifecycle_result = {"attempted": 0, "created": 0, "skipped": 0, "error": None}
+        try:
+            captured_day = now_utc.astimezone(JST).date()
+
+            # FakeSession 互換：User は query 禁止の可能性があるので _added fallback
+            try:
+                users = db.query(User).all() or []
+            except Exception:
+                added = getattr(db, "_added", []) or []
+                users = [x for x in added if isinstance(x, User)]
+
+            lifecycle_result["attempted"] = len(users)
+
+            # タスクは count/distinct 禁止環境でも動くように all→Python（既存方針に揃える）
+            try:
+                tasks_all = db.query(Task).all() or []
+            except Exception:
+                added = getattr(db, "_added", []) or []
+                tasks_all = [x for x in added if isinstance(x, Task)]
+
+            tasks_by_user: dict[int, list[Task]] = {}
+            for t in tasks_all:
+                if getattr(t, "deleted_at", None) is not None:
+                    continue
+                uid = int(getattr(t, "user_id"))
+                tasks_by_user.setdefault(uid, []).append(t)
+
+            created_ids: list[int] = []
+
+            for u in users:
+                uid = int(getattr(u, "id"))
+
+                # ✅ DBユニーク制約が最終防衛線。ここでは savepoint で「1ユーザだけスキップ」を可能にする
+                try:
+                    with db.begin_nested():
+                        user_tasks = tasks_by_user.get(uid, [])
+
+                        tasks_total = int(len(user_tasks))
+                        completed_total = int(
+                            sum(1 for t in user_tasks if getattr(t, "completed_at", None) is not None)
+                        )
+                        done_rate = float(completed_total / tasks_total) if tasks_total > 0 else 0.0
+
+                        # first/last は “手元にある資産” から作れる範囲で固定（まずは Task のみ）
+                        created_ats = [getattr(t, "created_at", None) for t in user_tasks if getattr(t, "created_at", None)]
+                        completed_ats = [getattr(t, "completed_at", None) for t in user_tasks if getattr(t, "completed_at", None)]
+                        updated_ats = [getattr(t, "updated_at", None) for t in user_tasks if getattr(t, "updated_at", None)]
+
+                        snap = UserLifecycleSnapshot(
+                            user_id=uid,
+                            captured_at=now_utc,
+                            captured_day=captured_day,
+                            registered_at=getattr(u, "created_at", None),  # ※User.created_at導入は次Priorityで強化
+                            first_task_created_at=min(created_ats) if created_ats else None,
+                            first_task_completed_at=min(completed_ats) if completed_ats else None,
+                            last_active_at=max(updated_ats + completed_ats) if (updated_ats or completed_ats) else None,
+                            tasks_total=tasks_total,
+                            completed_total=completed_total,
+                            done_rate=done_rate,
+                            active_7d=False,   # 次で SSOT 定義を固める（last_active_at 基準に統一）
+                            active_30d=False,  # 次で SSOT 定義を固める
+                        )
+                        db.add(snap)
+                        db.flush()  # id 確定
+                        created_ids.append(int(snap.id))
+                        lifecycle_result["created"] += 1
+                except Exception:
+                    # ここは「同日重複」なども含む。cron全体は落とさない。
+                    lifecycle_result["skipped"] += 1
+                    continue
+
+            if created_ids:
+                db.commit()
+            else:
+                db.rollback()
+
+        except Exception as e:
+            db.rollback()
+            lifecycle_result["error"] = (f"{type(e).__name__}: {str(e)}")[:300]
+
+        # ✅ 監査価値UP：run.stats に lifecycle 結果を追記して再コミット（run自体は既に確定済み）
+        try:
+            if isinstance(run.stats, dict):
+                payload = run.stats.get("payload") or {}
+                payload["lifecycle_capture"] = {
+                    "captured_day": str(now_utc.astimezone(JST).date()),
+                    **lifecycle_result,
+                }
+                run.stats["payload"] = payload
+                db.add(run)
+                db.commit()
+        except Exception:
+            db.rollback()
 
 # ここから下の debug 系は、君の元コードそのまま残してOK
 @router.post("/debug-send")

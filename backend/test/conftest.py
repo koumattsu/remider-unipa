@@ -24,6 +24,7 @@ from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
 from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
 from app.models.user import User
+from app.models.user_lifecycle_snapshot import UserLifecycleSnapshot
 
 class _DummyUser:
     def __init__(self, user_id: int = 1):
@@ -225,7 +226,6 @@ class FakeSession:
         self.action_events = []
         self.total = 5
         self.dismissed = 2
-        from datetime import datetime, timezone
         now = datetime(2025, 1, 6, tzinfo=timezone.utc)
         self.inapp_items = [
             _FakeInApp(
@@ -359,9 +359,6 @@ class FakeSession:
                 rows=[],
             )
 
-            # ✅ latest_notification_run() が参照する属性を揃えたダミー
-            from datetime import datetime, timezone
-
             dummy = NotificationRun(
                 id=1,
                 status="success",
@@ -382,11 +379,23 @@ class FakeSession:
                     "kind": "notification_run_stats",
                     "generated_at": datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat(),
                     "payload": {
-                        "snapshot": {"any": "ok"},
+                        "snapshot": {
+                            "any": "ok",
+                            # ✅ 契約: webpush_source は監査の説明に必須
+                            # ✅ FakeSession契約: delivery集計が使えないので fallback
+                            "webpush_source": "inapp_extra",
+                            # 任意（あってもOK）：キー集合契約を満たす形で入れておくと将来壊れにくい
+                            "webpush_events": {
+                                "sent": 1,
+                                "failed": 1,
+                                "deactivated": 1,
+                                "skipped": 1,
+                                "unknown": 1,
+                            },
+                        },
                     },
-                },  # latestでは返さないがモデル上あってOK
+                },
             )
-
             q._first_obj = dummy
             q._items = [dummy]
             return q
@@ -435,6 +444,11 @@ class FakeSession:
         if model is OutcomeFeatureSnapshot:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             q._items = self.feature_rows
+            return q
+        if model is UserLifecycleSnapshot:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            # add() されたものが見えるようにする（DBっぽく）
+            q._items = [x for x in self._added if isinstance(x, UserLifecycleSnapshot)]
             return q
         if model is Task:
             q = FakeQuery(total=0, dismissed=0, rows=[])

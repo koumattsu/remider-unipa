@@ -1,10 +1,11 @@
-from __future__ import annotations
+# backend/app/services/in_app_summary_aggregate.py
 
+from __future__ import annotations
 from typing import Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, cast, Integer
 from app.models.in_app_notification import InAppNotification
-
+from app.models.webpush_delivery import WebPushDelivery
 
 def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
     """
@@ -31,56 +32,98 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
             or 0
         )
 
-        # JSONBから文字列で抜いて int 化（無い/壊れてる時は0）
-        sent_expr = cast(
-            func.coalesce(func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "sent"), "0"),
-            Integer,
-        )
-        failed_expr = cast(
-            func.coalesce(func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "failed"), "0"),
-            Integer,
-        )
-        deactivated_expr = cast(
-            func.coalesce(func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "deactivated"), "0"),
-            Integer,
-        )
+        # ✅ SSOT: WebPushDelivery（subscription軸の合計）
+        delivered = 0
+        failed = 0
+        deactivated = 0
+        unknown = 0
 
-        delivered = int(
-            db.query(func.coalesce(func.sum(sent_expr), 0))
-            .filter(InAppNotification.run_id == run_id)
-            .scalar()
-            or 0
-        )
-        failed = int(
-            db.query(func.coalesce(func.sum(failed_expr), 0))
-            .filter(InAppNotification.run_id == run_id)
-            .scalar()
-            or 0
-        )
-        deactivated = int(
-            db.query(func.coalesce(func.sum(deactivated_expr), 0))
-            .filter(InAppNotification.run_id == run_id)
-            .scalar()
-            or 0
-        )
-
-        # unknown = webpush が object じゃない（null含む）レコード数
-        unknown = int(
-            db.query(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (func.jsonb_typeof(func.coalesce(InAppNotification.extra["webpush"], func.cast("null", InAppNotification.extra.type))) == "object", 0),
-                            else_=1,
-                        )
-                    ),
-                    0,
-                )
+        try:
+            rows = (
+                db.query(WebPushDelivery.status, func.count(WebPushDelivery.id))
+                .filter(WebPushDelivery.run_id == run_id)
+                .group_by(WebPushDelivery.status)
+                .all()
             )
-            .filter(InAppNotification.run_id == run_id)
-            .scalar()
-            or 0
-        )
+            for st, cnt in rows:
+                c = int(cnt or 0)
+                if st == WebPushDelivery.STATUS_SENT:
+                    delivered += c
+                elif st == WebPushDelivery.STATUS_FAILED:
+                    failed += c
+                elif st == WebPushDelivery.STATUS_DEACTIVATED:
+                    deactivated += c
+                else:
+                    unknown += c
+        except Exception:
+            # ✅ fallback: 旧SSOT（InAppNotification.extra）
+            sent_expr = cast(
+                func.coalesce(
+                    func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "sent"),
+                    "0",
+                ),
+                Integer,
+            )
+            failed_expr = cast(
+                func.coalesce(
+                    func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "failed"),
+                    "0",
+                ),
+                Integer,
+            )
+            deactivated_expr = cast(
+                func.coalesce(
+                    func.jsonb_extract_path_text(InAppNotification.extra, "webpush", "deactivated"),
+                    "0",
+                ),
+                Integer,
+            )
+
+            delivered = int(
+                db.query(func.coalesce(func.sum(sent_expr), 0))
+                .filter(InAppNotification.run_id == run_id)
+                .scalar()
+                or 0
+            )
+            failed = int(
+                db.query(func.coalesce(func.sum(failed_expr), 0))
+                .filter(InAppNotification.run_id == run_id)
+                .scalar()
+                or 0
+            )
+            deactivated = int(
+                db.query(func.coalesce(func.sum(deactivated_expr), 0))
+                .filter(InAppNotification.run_id == run_id)
+                .scalar()
+                or 0
+            )
+
+            # unknown は互換のため旧定義も維持（webpushがdictじゃない通知数）
+            unknown = int(
+                db.query(
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (
+                                    func.jsonb_typeof(
+                                        func.coalesce(
+                                            InAppNotification.extra["webpush"],
+                                            func.cast("null", InAppNotification.extra.type),
+                                        )
+                                    )
+                                    == "object",
+                                    0,
+                                ),
+                                else_=1,
+                            )
+                        ),
+                        0,
+                    )
+                )
+                .filter(InAppNotification.run_id == run_id)
+                .scalar()
+                or 0
+            )
 
         return {
             "inapp_total": inapp_total,

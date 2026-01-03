@@ -17,6 +17,8 @@ from app.models.notification_run import NotificationRun
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.in_app_notification import InAppNotification
 from app.models.suggested_action_applied_event import SuggestedActionAppliedEvent
+from app.models.user_lifecycle_snapshot import UserLifecycleSnapshot
+from app.models.user import User
 
 router = APIRouter()
 
@@ -43,10 +45,10 @@ def admin_assets_summary(
         "users": users_count,
         "tasks": len(tasks_merged),
         "completed_tasks": completed_tasks_count,
-        "notification_runs": len(db.query(NotificationRun).all() or []),
-        "in_app_notifications": len(db.query(InAppNotification).all() or []),
-        "outcome_logs": len(db.query(TaskOutcomeLog).all() or []),
-        "action_applied_events": len(db.query(SuggestedActionAppliedEvent).all() or []),
+        "notification_runs": len(_merge_all(db, NotificationRun)),
+        "in_app_notifications": len(_merge_all(db, InAppNotification)),
+        "outcome_logs": len(_merge_all(db, TaskOutcomeLog)),
+        "action_applied_events": len(_merge_all(db, SuggestedActionAppliedEvent)),
     }
 
 @router.get("/assets/users/{user_id}", response_model=dict)
@@ -99,7 +101,6 @@ def _merge_all(db: Session, Model):
     added = getattr(db, "_added", []) or []
     extra = [x for x in added if isinstance(x, Model)]
     return base + extra
-
 
 def _compute_global_assets(db: Session) -> dict:
     # Task は FakeSession 的に固定配列 + _added の両方を見る必要がある
@@ -373,9 +374,10 @@ def _build_export_dict(
     # SSOT: すべて Python + _added マージ
     snaps = _merge_all(db, AssetSnapshot)
     outcomes = _merge_all(db, TaskOutcomeLog)
+    events = _merge_all(db, SuggestedActionAppliedEvent)
     runs = _merge_all(db, NotificationRun)
     inapps = _merge_all(db, InAppNotification)
-    events = _merge_all(db, SuggestedActionAppliedEvent)
+    lifecycles = _merge_all(db, UserLifecycleSnapshot)
 
     # kind フィルタ
     if kind == "global":
@@ -389,6 +391,7 @@ def _build_export_dict(
         outcomes = [o for o in outcomes if getattr(o, "user_id", None) == uid]
         inapps = [n for n in inapps if getattr(n, "user_id", None) == uid]
         events = [e for e in events if getattr(e, "user_id", None) == uid]
+        lifecycles = [x for x in lifecycles if getattr(x, "user_id", None) == uid]
 
     # created_at / evaluated_at / applied_at で新しい順に
     snaps = sorted(snaps, key=lambda x: getattr(x, "created_at", None), reverse=True)[:lim]
@@ -396,11 +399,20 @@ def _build_export_dict(
     inapps = sorted(inapps, key=lambda x: getattr(x, "created_at", None), reverse=True)[:lim]
     events = sorted(events, key=lambda x: getattr(x, "applied_at", None), reverse=True)[:lim]
     runs = sorted(runs, key=lambda x: getattr(x, "started_at", None), reverse=True)[:lim]
+    lifecycles = sorted(lifecycles, key=lambda x: getattr(x, "captured_at", None), reverse=True)[:lim]
 
     def iso(dt):
         return dt.isoformat() if dt is not None else None
 
     def export_inapp(n: InAppNotification) -> dict:
+        extra_obj = getattr(n, "extra", None)
+        extra_text = (
+            json.dumps(extra_obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            if extra_obj is not None
+            else None
+        )
+        extra_hash = _hmac_sha256(extra_text, secret) if extra_text else None
+
         return {
             "id": int(n.id),
             "user_id": int(getattr(n, "user_id", 0)) or None,
@@ -410,7 +422,7 @@ def _build_export_dict(
             "kind": str(getattr(n, "kind", "")),
             "deep_link": str(getattr(n, "deep_link", "")),
             "run_id": int(n.run_id) if getattr(n, "run_id", None) is not None else None,
-            "extra": getattr(n, "extra", None),
+            "extra_hash": extra_hash,
             "created_at": iso(getattr(n, "created_at", None)),
             "dismissed_at": iso(getattr(n, "dismissed_at", None)),
         }
@@ -477,6 +489,22 @@ def _build_export_dict(
             "stats": getattr(s, "stats", None),
             "created_at": iso(getattr(s, "created_at", None)),
         }
+    
+    def export_lifecycle(x: UserLifecycleSnapshot) -> dict:
+        return {
+            "id": int(x.id),
+            "user_id": int(getattr(x, "user_id", 0)),
+            "captured_at": iso(getattr(x, "captured_at", None)),
+            "registered_at": iso(getattr(x, "registered_at", None)),
+            "first_task_created_at": iso(getattr(x, "first_task_created_at", None)),
+            "first_task_completed_at": iso(getattr(x, "first_task_completed_at", None)),
+            "last_active_at": iso(getattr(x, "last_active_at", None)),
+            "tasks_total": int(getattr(x, "tasks_total", 0) or 0),
+            "completed_total": int(getattr(x, "completed_total", 0) or 0),
+            "done_rate": float(getattr(x, "done_rate", 0.0) or 0.0),
+            "active_7d": bool(getattr(x, "active_7d", False) is True),
+            "active_30d": bool(getattr(x, "active_30d", False) is True),
+        }
 
     generated_at = datetime.now(timezone.utc).isoformat()
 
@@ -492,6 +520,7 @@ def _build_export_dict(
         },
         "payload": {
             "asset_snapshots": [export_snap(s) for s in snaps],
+            "lifecycle_snapshots": [export_lifecycle(x) for x in lifecycles],
             "outcome_logs": [export_outcome(o) for o in outcomes],
             "action_applied_events": [export_event(e) for e in events],
             "notification_runs": [export_run(r) for r in runs],
@@ -542,11 +571,13 @@ def admin_assets_export_runs_create(
             "range": export_dict.get("range"),
             "counts": {
                 "asset_snapshots": len(export_dict["payload"]["asset_snapshots"]),
+                "lifecycle_snapshots": len(export_dict["payload"]["lifecycle_snapshots"]),
                 "outcome_logs": len(export_dict["payload"]["outcome_logs"]),
                 "action_applied_events": len(export_dict["payload"]["action_applied_events"]),
                 "notification_runs": len(export_dict["payload"]["notification_runs"]),
                 "in_app_notifications": len(export_dict["payload"]["in_app_notifications"]),
             },
+
         },
     )
     db.add(run)
@@ -591,6 +622,166 @@ def admin_assets_export_runs_list(
                 "limit": int(getattr(x, "limit", 0) or 0),
                 "export_hash": str(getattr(x, "export_hash", "")),
                 "created_at": iso(getattr(x, "created_at", None)),
+            }
+            for x in items_sorted
+        ]
+    }
+
+@router.post("/assets/lifecycle/snapshots/capture", response_model=dict)
+def admin_assets_lifecycle_snapshots_capture(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _ = current_user  # 認証ガード用
+
+    now = datetime.now(timezone.utc)
+
+    # SSOT: FakeSession互換（Taskは固定配列+_addedの両方）
+    tasks_all = db.query(Task).all() or []
+    added = getattr(db, "_added", []) or []
+    added_tasks = [x for x in added if isinstance(x, Task)]
+    tasks_merged = tasks_all + added_tasks
+
+    # user_id の集合（マルチテナント分離の入口）
+    user_ids = sorted({int(getattr(t, "user_id")) for t in tasks_merged if getattr(t, "user_id", None) is not None})
+
+    # 他資産（user_id 持ちのものだけ last_active に使う）
+    inapps_all = _merge_all(db, InAppNotification)
+    outcomes_all = _merge_all(db, TaskOutcomeLog)
+    actions_all = _merge_all(db, SuggestedActionAppliedEvent)
+
+    def _iso_dt(x):
+        return x
+
+    def _max_dt(dts):
+        dts2 = [d for d in dts if d is not None]
+        return max(dts2) if dts2 else None
+
+    # ✅ FakeSession は db.query(User) が禁止のことがある
+    # テストの seed (session.add(User)) は _added に積まれる前提なので、
+    # User は _added から拾う（SSOT: 推測せず現物の保存先に寄せる）
+    added = getattr(db, "_added", []) or []
+    users_all = [x for x in added if isinstance(x, User)]
+    users_by_id = {
+        int(getattr(u, "id")): u
+        for u in users_all
+        if getattr(u, "id", None) is not None
+    }
+
+    created_ids: list[int] = []
+
+    for uid in user_ids:
+        tasks_u = [t for t in tasks_merged if int(getattr(t, "user_id", -1)) == uid]
+        inapps_u = [n for n in inapps_all if int(getattr(n, "user_id", -1)) == uid]
+        outcomes_u = [o for o in outcomes_all if int(getattr(o, "user_id", -1)) == uid]
+        actions_u = [e for e in actions_all if int(getattr(e, "user_id", -1)) == uid]
+
+        # first task created（最小）
+        cands = [getattr(t, "created_at", None) for t in tasks_u if getattr(t, "created_at", None) is not None]
+        first_task_created_at = min(cands) if cands else None
+
+        # first completion
+        comp_cands = [getattr(t, "completed_at", None) for t in tasks_u if getattr(t, "completed_at", None) is not None]
+        first_task_completed_at = min(comp_cands) if comp_cands else None
+        tasks_total = int(len(tasks_u))
+        completed_total = int(sum(1 for t in tasks_u if getattr(t, "is_done", False) is True))
+        done_rate = float(completed_total / tasks_total) if tasks_total > 0 else 0.0
+
+        # last_active: user_id を持つ資産の中から最大
+        last_active_at = _max_dt(
+            [
+                _max_dt([getattr(t, "updated_at", None) for t in tasks_u]),
+                _max_dt([getattr(t, "completed_at", None) for t in tasks_u]),
+                _max_dt([getattr(t, "created_at", None) for t in tasks_u]),
+                _max_dt([getattr(n, "created_at", None) for n in inapps_u]),
+                _max_dt([getattr(o, "evaluated_at", None) for o in outcomes_u]),
+                _max_dt([getattr(o, "created_at", None) for o in outcomes_u]),
+                _max_dt([getattr(e, "applied_at", None) for e in actions_u]),
+                _max_dt([getattr(e, "created_at", None) for e in actions_u]),
+            ]
+        )
+
+        active_7d = bool(last_active_at is not None and last_active_at >= (now - timedelta(days=7)))
+        active_30d = bool(last_active_at is not None and last_active_at >= (now - timedelta(days=30)))
+        u = users_by_id.get(uid)
+        registered_at = getattr(u, "created_at", None) if u is not None else None
+        snap = UserLifecycleSnapshot(
+            user_id=int(uid),
+            captured_at=now,
+            registered_at=registered_at,
+            first_task_created_at=first_task_created_at,
+            first_task_completed_at=first_task_completed_at,
+            last_active_at=last_active_at,
+            tasks_total=tasks_total,
+            completed_total=completed_total,
+            done_rate=float(done_rate),
+            active_7d=bool(active_7d),
+            active_30d=bool(active_30d),
+        )
+        db.add(snap)
+    db.commit()
+    created = _merge_all(db, UserLifecycleSnapshot)
+    created_sorted = sorted(
+        created,
+        key=lambda x: getattr(x, "captured_at", None)
+        or getattr(x, "created_at", None)
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    # 今回作った分（user_ids の数）だけを返す
+    created_ids = [int(x.id) for x in created_sorted[: len(user_ids)]]
+
+    # User テーブルが無い = 旧契約
+    if not users_by_id:
+        snapshot_id = int(created_ids[0]) if created_ids else 0
+        return {"ok": True, "snapshot_id": snapshot_id}
+
+    # User テーブルがある = 新契約
+    return {"ok": True, "created_ids": created_ids}
+
+@router.get("/assets/lifecycle/snapshots", response_model=dict)
+def admin_assets_lifecycle_snapshots_list(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _ = current_user  # 認証ガード用
+
+    lim = int(limit)
+    if lim <= 0:
+        lim = 30
+    if lim > 5000:
+        lim = 5000
+
+    items = _merge_all(db, UserLifecycleSnapshot)
+
+    items_sorted = sorted(
+        items,
+        key=lambda x: getattr(x, "captured_at", None)
+        or getattr(x, "created_at", None)
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )[:lim]
+
+    def iso(dt):
+        return dt.isoformat() if dt is not None else None
+
+    return {
+        "items": [
+            {
+                "id": int(x.id),
+                "user_id": int(getattr(x, "user_id", 0)),
+                "captured_at": iso(getattr(x, "captured_at", None)),
+                "registered_at": iso(getattr(x, "registered_at", None)),
+                "first_task_created_at": iso(getattr(x, "first_task_created_at", None)),
+                "first_task_completed_at": iso(getattr(x, "first_task_completed_at", None)),
+                "last_active_at": iso(getattr(x, "last_active_at", None)),
+                "tasks_total": int(getattr(x, "tasks_total", 0)),
+                "completed_total": int(getattr(x, "completed_total", 0)),
+                "done_rate": float(getattr(x, "done_rate", 0.0)),
+                "active_7d": bool(getattr(x, "active_7d", False)),
+                "active_30d": bool(getattr(x, "active_30d", False)),
             }
             for x in items_sorted
         ]

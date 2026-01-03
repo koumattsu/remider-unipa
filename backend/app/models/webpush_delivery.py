@@ -1,3 +1,5 @@
+# backend/app/models/webpush_delivery.py
+
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -9,6 +11,21 @@ class WebPushDelivery(Base):
     - 監査/M&A耐性のため正規化
     """
     __tablename__ = "webpush_deliveries"
+
+    # ✅ 監査で説明できる正規 status（契約）
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_DEACTIVATED = "deactivated"
+    STATUS_SKIPPED = "skipped"
+    STATUS_UNKNOWN = "unknown"
+
+    STATUS_SET = {
+        STATUS_SENT,
+        STATUS_FAILED,
+        STATUS_DEACTIVATED,
+        STATUS_SKIPPED,
+        STATUS_UNKNOWN,
+    }
 
     id = Column(Integer, primary_key=True)
 

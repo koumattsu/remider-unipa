@@ -5,7 +5,10 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.notification_run import NotificationRun
 from app.models.in_app_notification import InAppNotification
-from app.services.webpush_aggregate import calc_webpush_events_for_run
+from app.services.webpush_aggregate import (
+    calc_webpush_events_for_run,
+    calc_webpush_events_with_source_for_run,
+)
 from app.services.in_app_summary_aggregate import calc_in_app_summary_for_run
 
 router = APIRouter(tags=["admin"])
@@ -163,7 +166,28 @@ def get_run_summary(
     unknown = summary["unknown"]
 
     # ✅ イベント軸（通知レコード単位）は SSOT
-    events = calc_webpush_events_for_run(db, run_id)
+    events, webpush_source = calc_webpush_events_with_source_for_run(db, run_id)
+
+    # ✅ 監査耐性: stats が欠けていても summary では説明可能にする（補完）
+    stats = r.stats if isinstance(r.stats, dict) else None
+    if isinstance(stats, dict):
+        payload = stats.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+            stats["payload"] = payload
+
+        snapshot = payload.get("snapshot")
+        if not isinstance(snapshot, dict):
+            snapshot = {}
+            payload["snapshot"] = snapshot
+
+        # webpush_events が欠けていれば補完（キー集合は契約で固定済み）
+        if not isinstance(snapshot.get("webpush_events"), dict):
+            snapshot["webpush_events"] = events
+
+        # webpush_source が欠けていれば補完（最小diff: 保守的に fallback 扱い）
+        if snapshot.get("webpush_source") is None:
+            snapshot["webpush_source"] = webpush_source
 
     return {
         "summary_v": 1,
@@ -172,7 +196,7 @@ def get_run_summary(
             "status": r.status,
             "started_at": r.started_at.isoformat() if r.started_at else None,
             "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-            "stats": r.stats,
+            "stats": stats,
         },
         "inapp": {
             "total": inapp_total,

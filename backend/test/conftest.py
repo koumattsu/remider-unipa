@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.action_effectiveness_snapshot import ActionEffectivenessSnapshot
 from app.models.asset_snapshot import AssetSnapshot
+from app.models.export_run import ExportRun
 from app.models.in_app_notification import InAppNotification
 from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
@@ -346,6 +347,10 @@ class FakeSession:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             # add() されたものが見えるようにする（DBっぽく）
             q._items = [x for x in self._added if isinstance(x, AssetSnapshot)]
+            return q
+        if model is ExportRun:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = [x for x in self._added if isinstance(x, ExportRun)]
             return q
         if model is NotificationRun:
             q = FakeQuery(

@@ -82,18 +82,18 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
 
   const [actionEffectivenessLoading, setActionEffectivenessLoading] = useState(false);
   const [actionEffectivenessError, setActionEffectivenessError] = useState<string | null>(null);
-  const windowDaysOf = (b: Bucket) => (b === 'week' ? 7 : 30);
-  const refetchActionEffectiveness = () => {
-    setActionEffectiveness(prev => ({ ...prev, [bucket]: null }));
-    setActionEffectivenessByFeature(prev => ({ ...prev, [bucket]: null }));
-    setActionEffectivenessMeta(prev => ({ ...prev, [bucket]: null }));
-  };
   const [actionEffectivenessMeta, setActionEffectivenessMeta] = useState<
     Record<Bucket, { windowDays: number; fetchedAt: Date } | null>
   >({
     week: null,
     month: null,
   });
+  const windowDaysOf = (b: Bucket) => (b === 'week' ? 7 : 30);
+  const refetchActionEffectiveness = () => {
+    setActionEffectiveness(prev => ({ ...prev, [bucket]: null }));
+    setActionEffectivenessByFeature(prev => ({ ...prev, [bucket]: null }));
+    setActionEffectivenessMeta(prev => ({ ...prev, [bucket]: null }));
+  };
 
 const [effectivenessSnapshots, setEffectivenessSnapshots] =
   useState<ActionEffectivenessSnapshotItem[] | null>(null);
@@ -138,7 +138,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return () => {
       mounted = false;
     };
-  }, [bucket, actionEffectivenessByFeature]);
+  }, [bucket, actionEffectivenessByFeature[bucket]]);
 
   useEffect(() => {
     let mounted = true;
@@ -854,6 +854,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         </button>
       </div>
 
+      {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
       <StatsCard
         title={`達成率（${bucket === 'week' ? '週' : '月'}）`}
         subtitle={chosenSummary ? 'analytics/outcomes/summary（read-only SSOT）' : '（集計がまだありません）'}
@@ -862,47 +863,98 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         done={chosenSummary?.done ?? 0}
       />
 
+      {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
       <div
         style={{
-          padding: '1rem 1.1rem',
-          borderRadius: 18,
-          border: '1px solid rgba(255,255,255,.12)',
-          background:
-            'radial-gradient(circle at 20% 0%, rgba(14,165,233,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          boxShadow: '0 14px 40px rgba(0,0,0,.38)',
-          color: 'rgba(255,255,255,.92)',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+          gap: '0.9rem',
         }}
       >
-        <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-          落ちやすい授業（missed率ランキング）
-        </div>
-        <div
+        <StatsCard
+          title="今週（直近7日）の達成率"
+          subtitle={
+            weeklySummaryLoaded
+              ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
+              : "通知サマリ取得失敗（暫定値）"
+          }
+          rate={weekly.rate}
+          total={weekly.total}
+          done={weekly.done}
+        />
+
+        {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
+        <NotifStatsCard
+          title="今週の通知反応"
+          subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
+          created={weeklyCreated}
+          dismissed={weeklyDismissed}
+          dismissRate={weeklyDismissRate}
+          sent={weeklySent}
+          failed={weeklyFailed}
+          deactivated={weeklyDeactivated}
+          sentEvents={weeklySentEvents}
+        />
+
+        <StatsCard
+          title="今月の達成率"
+          subtitle="OutcomeLog（締切到達時点の結果）ベース"
+          rate={monthly.rate}
+          total={monthly.total}
+          done={monthly.done}
+        />
+
+        <RunStatsCard
+          title="最新Runの観測"
+          subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
+          run={latestRun}
+          summary={latestRunSummary}
+          inappTotal={summaryInappTotal}
+          dismissed={summaryDismissed}
+          dismissRate={summaryDismissRate}
+        />
+      </div>
+
+      {/* ✅ Insights（重い分析はここに畳む） */}
+      <details
+        style={{
+          border: '1px solid rgba(255,255,255,.12)',
+          borderRadius: 16,
+          background: 'rgba(255,255,255,.04)',
+          padding: '0.75rem 0.85rem',
+        }}
+      >
+        <summary
           style={{
-            padding: '1rem 1.1rem',
-            borderRadius: 18,
-            border: '1px solid rgba(255,255,255,.12)',
-            background:
-              'radial-gradient(circle at 20% 0%, rgba(168,85,247,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+            cursor: 'pointer',
+            fontWeight: 900,
             color: 'rgba(255,255,255,.92)',
           }}
         >
-          <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-            落ちやすい特徴（feature別 missed率）
-          </div>
-          {/* ✅ Priority 3-C: course × feature（理由表示） */}
+          詳しい分析（Insights）
+          <span
+            style={{
+              marginLeft: 10,
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              opacity: 0.7,
+            }}
+          >
+            授業/特徴/理由/おすすめアクション
+          </span>
+        </summary>
+
+        <div style={{ marginTop: '0.85rem' }}>
+          {/* =========================
+              落ちやすい授業（missed率ランキング）
+            ========================= */}
           <div
             style={{
-              marginTop: '0.9rem',
               padding: '1rem 1.1rem',
               borderRadius: 18,
               border: '1px solid rgba(255,255,255,.12)',
               background:
-                'radial-gradient(circle at 20% 0%, rgba(34,197,94,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
+                'radial-gradient(circle at 20% 0%, rgba(14,165,233,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
               boxShadow: '0 14px 40px rgba(0,0,0,.38)',
@@ -910,87 +962,247 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             }}
           >
             <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-              授業ごとの「落ちやすい理由」（course × feature）
+              落ちやすい授業（missed率ランキング）
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,.62)', marginBottom: '0.65rem' }}>
+              analytics/outcomes/by-course（read-only SSOT）
             </div>
 
-            <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-              analytics/outcomes/course-x-feature（read-only SSOT）
-            </div>
-
-            {courseHashList.length === 0 ? (
+            {!sortedByCourse || sortedByCourse.length === 0 ? (
               <div style={{ opacity: 0.7 }}>（まだ集計対象がありません）</div>
             ) : (
-              <>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.65rem' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9 }}>対象授業:</div>
-                  <select
-                    value={selectedCourseHash ?? ''}
-                    onChange={(e) => setSelectedCourseHash(e.target.value || null)}
-                    style={{
-                      flex: 1,
-                      padding: '0.55rem 0.7rem',
-                      borderRadius: 14,
-                      border: '1px solid rgba(255,255,255,.12)',
-                      background: 'rgba(255,255,255,.06)',
-                      color: 'rgba(255,255,255,.92)',
-                      fontWeight: 800,
-                      outline: 'none',
-                    }}
-                  >
-                    {courseHashList.map((ch) => {
-                      const c = courseTotals.get(ch) ?? { total: 0, missed: 0 };
-                      const rate = c.total > 0 ? Math.round((c.missed / c.total) * 100) : 0;
-                      return (
-                        <option key={ch} value={ch}>
-                          {labelCourse(ch)}（missed {c.missed}/{c.total} = {rate}%）
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {sortedByCourse.slice(0, 5).map((r, idx) => {
+                  const key = courseKeyOf(r); // ✅ courseKeyOf を「正式に」使用（未使用エラー解消）
+                  const isWorst =
+                    worstCourse != null && courseKeyOf(worstCourse) === key; // ✅ worstCourse を「正式に」使用
 
-                {reasons.length === 0 ? (
-                  <div style={{ opacity: 0.7 }}>（この授業の理由データがありません）</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                    {reasons.map((r, idx) => (
-                      <div
-                        key={`${r.course_hash}-${r.feature_key}-${r.feature_value}-${idx}`}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: '0.75rem',
-                          padding: '0.5rem 0',
-                          borderTop: '1px solid rgba(255,255,255,.08)',
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 800 }}>
-                            #{idx + 1} {labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}
-                          </div>
-                          <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                            missed {r.missed}/{r.total}
-                          </div>
+                  return (
+                    <div
+                      key={`${key}-${idx}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
+                        padding: '0.55rem 0.6rem',
+                        borderRadius: 12,
+                        border: '1px solid rgba(255,255,255,.08)',
+                        background: isWorst ? 'rgba(255,70,70,.10)' : 'rgba(255,255,255,.03)',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 850 }}>
+                          #{idx + 1} {labelCourse(key)}
+                          {isWorst && (
+                            <span style={{ marginLeft: 8, fontSize: '0.75rem', opacity: 0.85 }}>
+                              ← Worst
+                            </span>
+                          )}
                         </div>
-                        <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-                          {toPercent(r.missed_rate)}%
+                        <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                          missed {r.missed}/{r.total}
                         </div>
                       </div>
-                    ))}
+
+                      <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+                        {toPercent(r.missed_rate)}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 🔻 ここに「授業ランキング表示」の既存コードをそのまま入れてOK */}
+            {/* 例: courseRows.map(...) など */}
+          </div>
+
+          {/* =========================
+              落ちやすい特徴（feature別 missed率）
+            ========================= */}
+          <div
+            style={{
+              marginTop: '0.9rem',
+              padding: '1rem 1.1rem',
+              borderRadius: 18,
+              border: '1px solid rgba(255,255,255,.12)',
+              background:
+                'radial-gradient(circle at 20% 0%, rgba(168,85,247,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+              color: 'rgba(255,255,255,.92)',
+            }}
+          >
+            <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
+              落ちやすい特徴（feature別 missed率）
+            </div>
+
+            {/* 🔻 ここに feature 別ランキングの既存コード（あれば） */}
+
+            {/* ✅ Priority 3-C: course × feature（理由表示） */}
+            <div
+              style={{
+                marginTop: '0.9rem',
+                padding: '1rem 1.1rem',
+                borderRadius: 18,
+                border: '1px solid rgba(255,255,255,.12)',
+                background:
+                  'radial-gradient(circle at 20% 0%, rgba(34,197,94,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+                color: 'rgba(255,255,255,.92)',
+              }}
+            >
+              <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
+                授業ごとの「落ちやすい理由」（course × feature）
+              </div>
+
+              <div
+                style={{
+                  marginBottom: '0.75rem',
+                  fontSize: '0.8rem',
+                  color: 'rgba(255,255,255,.62)',
+                }}
+              >
+                analytics/outcomes/course-x-feature（read-only SSOT）
+              </div>
+
+              {courseHashList.length === 0 ? (
+                <div style={{ opacity: 0.7 }}>（まだ集計対象がありません）</div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      marginBottom: '0.65rem',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9 }}>
+                      対象授業:
+                    </div>
+
+                    <select
+                      value={selectedCourseHash ?? ''}
+                      onChange={(e) => setSelectedCourseHash(e.target.value || null)}
+                      style={{
+                        flex: 1,
+                        padding: '0.55rem 0.7rem',
+                        borderRadius: 14,
+                        border: '1px solid rgba(255,255,255,.12)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: 'rgba(255,255,255,.92)',
+                        fontWeight: 800,
+                        outline: 'none',
+                      }}
+                    >
+                      {courseHashList.map((ch) => {
+                        const c = courseTotals.get(ch) ?? { total: 0, missed: 0 };
+                        const rate = c.total > 0 ? Math.round((c.missed / c.total) * 100) : 0;
+
+                        return (
+                          <option key={ch} value={ch}>
+                            {labelCourse(ch)}（missed {c.missed}/{c.total} = {rate}%）
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
-                )}
-                <div style={{ marginTop: '0.85rem' }}>
-                  <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>
-                    おすすめアクション
-                  </div>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.6rem' }}>
-                    ※ course×feature の結果から提案（SSOT追加なし）
-                  </div>
-                  {/* ✅ Priority 3-D: Before/After */}
-                  {appliedAt && (
+
+                  {reasons.length === 0 ? (
+                    <div style={{ opacity: 0.7 }}>（この授業の理由データがありません）</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                      {reasons.map((r, idx) => (
+                        <div
+                          key={`${r.course_hash}-${r.feature_key}-${r.feature_value}-${idx}`}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: '0.75rem',
+                            padding: '0.5rem 0',
+                            borderTop: '1px solid rgba(255,255,255,.08)',
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 800 }}>
+                              #{idx + 1} {labelFeatureKey(r.feature_key)} ={' '}
+                              {labelFeatureValue(r.feature_value, r.feature_key)}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                              missed {r.missed}/{r.total}
+                            </div>
+                          </div>
+                          <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+                            {toPercent(r.missed_rate)}%
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '0.85rem' }}>
+                    <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>
+                      おすすめアクション
+                    </div>
+
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.6rem' }}>
+                      ※ course×feature の結果から提案（SSOT追加なし）
+                    </div>
+
+                    {/* ✅ Priority 3-D: Before/After */}
+                    {appliedAt && (
+                      <div
+                        style={{
+                          marginBottom: '0.6rem',
+                          padding: '0.7rem 0.85rem',
+                          borderRadius: 14,
+                          border: '1px solid rgba(255,255,255,.10)',
+                          background: 'rgba(255,255,255,.04)',
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
+                          改善の見える化（Before/After）
+                        </div>
+                        <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.35rem' }}>
+                          適用時刻: {appliedAt.toLocaleString()}
+                        </div>
+
+                        {beforeAfterLoading ? (
+                          <div style={{ opacity: 0.7 }}>集計中…</div>
+                        ) : beforeAfterError ? (
+                          <div style={{ color: 'rgba(252,165,165,.9)' }}>failed: {beforeAfterError}</div>
+                        ) : (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, opacity: 0.9 }}>Before</div>
+                              <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                                missed率: {missedRateOf(beforeSummary)}%（{beforeSummary?.missed ?? 0}/{beforeSummary?.total ?? 0}）
+                              </div>
+                            </div>
+
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, opacity: 0.9 }}>After</div>
+                              <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                                missed率: {missedRateOf(afterSummary)}%（{afterSummary?.missed ?? 0}/{afterSummary?.total ?? 0}）
+                              </div>
+                            </div>
+
+                            <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+                              {missedRateOf(afterSummary) - missedRateOf(beforeSummary) >= 0 ? '+' : ''}
+                              {missedRateOf(afterSummary) - missedRateOf(beforeSummary)}pt
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div
                       style={{
-                        marginBottom: '0.6rem',
+                        marginTop: '0.75rem',
                         padding: '0.7rem 0.85rem',
                         borderRadius: 14,
                         border: '1px solid rgba(255,255,255,.10)',
@@ -998,181 +1210,160 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       }}
                     >
                       <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                        改善の見える化（Before/After）
+                        適用履歴（直近）
                       </div>
-                      <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.35rem' }}>
-                        適用時刻: {appliedAt.toLocaleString()}
+
+                      <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.4rem' }}>
+                        analytics/actions/applied（確定資産 / 読み取り専用）
                       </div>
-                      {beforeAfterLoading ? (
-                        <div style={{ opacity: 0.7 }}>集計中…</div>
-                      ) : beforeAfterError ? (
-                        <div style={{ color: 'rgba(252,165,165,.9)' }}>failed: {beforeAfterError}</div>
-                      ) : (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, opacity: 0.9 }}>Before</div>
-                            <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
-                              missed率: {missedRateOf(beforeSummary)}%（{beforeSummary?.missed ?? 0}/{beforeSummary?.total ?? 0}）
-                            </div>
-                          </div>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontWeight: 800, opacity: 0.9 }}>After</div>
-                            <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
-                              missed率: {missedRateOf(afterSummary)}%（{afterSummary?.missed ?? 0}/{afterSummary?.total ?? 0}）
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-                            {missedRateOf(afterSummary) - missedRateOf(beforeSummary) >= 0 ? '+' : ''}
-                            {missedRateOf(afterSummary) - missedRateOf(beforeSummary)}pt
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      marginTop: '0.75rem',
-                      padding: '0.7rem 0.85rem',
-                      borderRadius: 14,
-                      border: '1px solid rgba(255,255,255,.10)',
-                      background: 'rgba(255,255,255,.04)',
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                      適用履歴（直近）
-                    </div>
-                    <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.4rem' }}>
-                      analytics/actions/applied（確定資産 / 読み取り専用）
-                    </div>
 
-                    {appliedEventsLoading && (
-                      <div style={{ opacity: 0.7 }}>読み込み中…</div>
-                    )}
+                      {appliedEventsLoading && <div style={{ opacity: 0.7 }}>読み込み中…</div>}
 
-                    {!appliedEventsLoading && appliedEventsError && (
-                      <div style={{ color: 'rgba(255,120,120,.95)' }}>
-                        {appliedEventsError}
-                      </div>
-                    )}
-
-                    {!appliedEventsLoading &&
-                      !appliedEventsError &&
-                      (!appliedEvents || appliedEvents.length === 0) && (
-                        <div style={{ opacity: 0.7 }}>
-                          （まだ適用履歴がありません）
-                        </div>
+                      {!appliedEventsLoading && appliedEventsError && (
+                        <div style={{ color: 'rgba(255,120,120,.95)' }}>{appliedEventsError}</div>
                       )}
 
-                    {!appliedEventsLoading &&
-                      !appliedEventsError &&
-                      appliedEvents &&
-                      appliedEvents.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {appliedEvents.map((e) => (
-                            <div
-                              key={e.id}
-                              style={{
-                                padding: '0.45rem 0.6rem',
-                                borderRadius: 12,
-                                border: '1px solid rgba(255,255,255,.08)',
-                                background: 'rgba(255,255,255,.03)',
-                                fontSize: '0.8rem',
-                              }}
-                            >
-                              <div style={{ fontWeight: 800 }}>
-                                {e.action_id}
-                              </div>
-                              <div style={{ opacity: 0.75 }}>
-                                applied_at: {new Date(e.applied_at).toLocaleString()}
-                              </div>
-                              {e.payload?.reason_keys?.length > 0 && (
+                      {!appliedEventsLoading &&
+                        !appliedEventsError &&
+                        (!appliedEvents || appliedEvents.length === 0) && (
+                          <div style={{ opacity: 0.7 }}>（まだ適用履歴がありません）</div>
+                        )}
+
+                      {!appliedEventsLoading &&
+                        !appliedEventsError &&
+                        appliedEvents &&
+                        appliedEvents.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                            {appliedEvents.map((e) => (
+                              <div
+                                key={e.id}
+                                style={{
+                                  padding: '0.45rem 0.6rem',
+                                  borderRadius: 12,
+                                  border: '1px solid rgba(255,255,255,.08)',
+                                  background: 'rgba(255,255,255,.03)',
+                                  fontSize: '0.8rem',
+                                }}
+                              >
+                                <div style={{ fontWeight: 800 }}>{e.action_id}</div>
                                 <div style={{ opacity: 0.75 }}>
-                                  reason: {e.payload.reason_keys.join(', ')}
+                                  applied_at: {new Date(e.applied_at).toLocaleString()}
                                 </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-                  {applyError && (
-                    <div
-                      style={{
-                        color: 'rgba(252,165,165,.9)',
-                        fontSize: '0.85rem',
-                        marginBottom: '0.5rem',
-                      }}
-                    >
-                      failed: {applyError}
-                    </div>
-                  )}
-
-                  {applyMessage && (
-                    <div style={{ color: 'rgba(187,247,208,.95)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                      {applyMessage}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {suggestedActions.map((a) => (
-                      <div
-                        key={a.id}
-                        style={{
-                          border: '1px solid rgba(255,255,255,.10)',
-                          borderRadius: 14,
-                          padding: '0.75rem 0.85rem',
-                          background: 'rgba(255,255,255,.05)',
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>
-                          {a.title}
-                        </div>
-                        <div style={{ fontSize: '0.82rem', opacity: 0.75 }}>
-                          {a.description}
-                        </div>
-                        {(() => {
-                          const ev = evidenceForAction(a, reasons);
-                          if (!ev || ev.length === 0) return null;
-                          return (
-                            <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.85 }}>
-                              <div style={{ fontWeight: 800, opacity: 0.9, marginBottom: '0.25rem' }}>根拠</div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                {ev.map((r, idx) => (
-                                  <div key={`${a.id}-ev-${r.feature_key}-${String(r.feature_value)}-${idx}`} style={{ opacity: 0.85 }}>
-                                    ・{labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}（missed {r.missed}/{r.total} = {toPercent(r.missed_rate)}%）
+                                {e.payload?.reason_keys?.length > 0 && (
+                                  <div style={{ opacity: 0.75 }}>
+                                    reason: {e.payload.reason_keys.join(', ')}
                                   </div>
-                                ))}
+                                )}
                               </div>
-                            </div>
-                          );
-                        })()}
-                        {a.patch ? (
-                          <div
-                            style={{
-                              marginTop: '0.55rem',
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                            }}
-                          >
-                            <button
-                              onClick={() => applySuggestedAction(a)}
-                              disabled={applySaving || !currentNotifSetting}
-                            >
-                              {applySaving ? '適用中…' : 'この提案を適用'}
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.65 }}>
-                            （手動アクション）
+                            ))}
                           </div>
                         )}
+                    </div>
+
+                    {applyError && (
+                      <div
+                        style={{
+                          color: 'rgba(252,165,165,.9)',
+                          fontSize: '0.85rem',
+                          marginBottom: '0.5rem',
+                        }}
+                      >
+                        failed: {applyError}
                       </div>
-                    ))}
+                    )}
+
+                    {applyMessage && (
+                      <div style={{ color: 'rgba(187,247,208,.95)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                        {applyMessage}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {suggestedActions.map((a) => (
+                        <div
+                          key={a.id}
+                          style={{
+                            border: '1px solid rgba(255,255,255,.10)',
+                            borderRadius: 14,
+                            padding: '0.75rem 0.85rem',
+                            background: 'rgba(255,255,255,.05)',
+                          }}
+                        >
+                          <div style={{ fontWeight: 900, marginBottom: '0.25rem' }}>{a.title}</div>
+
+                          <div style={{ fontSize: '0.82rem', opacity: 0.75 }}>{a.description}</div>
+
+                          {(() => {
+                            const ev = evidenceForAction(a, reasons);
+                            if (!ev || ev.length === 0) return null;
+
+                            return (
+                              <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.85 }}>
+                                <div style={{ fontWeight: 800, opacity: 0.9, marginBottom: '0.25rem' }}>根拠</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  {ev.map((r, idx) => (
+                                    <div
+                                      key={`${a.id}-ev-${r.feature_key}-${String(r.feature_value)}-${idx}`}
+                                      style={{ opacity: 0.85 }}
+                                    >
+                                      ・{labelFeatureKey(r.feature_key)} ={' '}
+                                      {labelFeatureValue(r.feature_value, r.feature_key)}（missed {r.missed}/{r.total} ={' '}
+                                      {toPercent(r.missed_rate)}%）
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {a.patch ? (
+                            <div style={{ marginTop: '0.55rem', display: 'flex', justifyContent: 'flex-end' }}>
+                              <button onClick={() => applySuggestedAction(a)} disabled={applySaving || !currentNotifSetting}>
+                                {applySaving ? '適用中…' : 'この提案を適用'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: '0.55rem', fontSize: '0.8rem', opacity: 0.65 }}>
+                              （手動アクション）
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
+        </div>
+      </details>
+      {worstFeature && (
+        <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
+          いちばん要注意：
+          {labelFeatureKey(worstFeature.feature_key)} ={' '}
+          {labelFeatureValue(worstFeature.feature_value, worstFeature.feature_key)}（
+          {toPercent(worstFeature.missed_rate)}% / missed {worstFeature.missed}/{worstFeature.total}
+          ）
+        </div>
+      )}
+      {/* ✅ Developer / 監査（さらに折りたたみ：Snapshot/Effectiveness系は隔離） */}
+      <details
+        style={{
+          marginTop: '0.9rem',
+          border: '1px solid rgba(255,255,255,.12)',
+          borderRadius: 14,
+          background: 'rgba(255,255,255,.03)',
+          padding: '0.65rem 0.75rem',
+        }}
+      >
+        <summary style={{ cursor: 'pointer', fontWeight: 900, opacity: 0.9 }}>
+          Developer / 監査情報
+          <span style={{ marginLeft: 10, fontWeight: 600, fontSize: '0.8rem', opacity: 0.7 }}>
+            Snapshot / 提案効果 / by-feature / measured条件
+          </span>
+        </summary>
+
+        <div style={{ marginTop: '0.85rem' }}>
           {/* ✅ Priority 8-C②: Action Effectiveness Snapshot（read-only 資産） */}
           <div style={{ marginTop: '0.9rem' }}>
             <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
@@ -1210,13 +1401,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               effectivenessSnapshots &&
               effectivenessSnapshots.length > 0 && (() => {
                 const snap =
-                  effectivenessSnapshots.find(s => s.id === selectedSnapshotId) ??
+                  effectivenessSnapshots.find((s) => s.id === selectedSnapshotId) ??
                   effectivenessSnapshots[0];
 
-                // - same bucket
-                // - computed_at が「1つ前」（直前）
                 const sortedSameBucket = [...effectivenessSnapshots]
-                  .filter((s) => s.bucket === snap.bucket) // ← bucket strict
+                  .filter((s) => s.bucket === snap.bucket)
                   .sort(
                     (a, b) =>
                       new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()
@@ -1225,7 +1414,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 const idx = sortedSameBucket.findIndex((s) => s.id === snap.id);
                 const prevSnap = idx >= 0 ? sortedSameBucket[idx + 1] ?? null : null;
 
-                // ✅ action_id -> (rank, improved_rate, measured_count) を作る（表示だけ）
                 const rankMap = (items: ActionEffectivenessItem[]) => {
                   const rows = [...(items ?? [])].sort((a, b) => {
                     const ar = Number(a.improved_rate ?? 0);
@@ -1233,6 +1421,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                     if (br !== ar) return br - ar;
                     return Number(b.measured_count ?? 0) - Number(a.measured_count ?? 0);
                   });
+
                   const m = new Map<string, { rank: number; improved: number; measured: number }>();
                   rows.forEach((x, i) => {
                     m.set(String(x.action_id), {
@@ -1245,7 +1434,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 };
 
                 const curRank = rankMap(snap.items);
-                const prevRank = prevSnap ? rankMap(prevSnap.items) : null;  
+                const prevRank = prevSnap ? rankMap(prevSnap.items) : null;
+
                 const asOfApplied = (() => {
                   if (!appliedEvents || appliedEvents.length === 0) return null;
                   const snapAt = new Date(snap.computed_at).getTime();
@@ -1271,8 +1461,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       onSelect={setSelectedSnapshotId}
                       current={snap}
                       previous={prevSnap}
-                      asOfApplied={asOfApplied}  
+                      asOfApplied={asOfApplied}
                     />
+
                     <div
                       style={{
                         padding: '0.7rem 0.85rem',
@@ -1283,6 +1474,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       }}
                     >
                     </div>
+
                     <SnapshotItemsTable
                       snapshotId={snap.id}
                       items={snap.items}
@@ -1290,10 +1482,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       previousRankMap={prevRank}
                       hasPreviousSnapshot={!!prevSnap}
                     />
-                  </>  
+                  </>
                 );
               })()}
           </div>
+
           {/* ✅ Priority 4-B: action effectiveness（read-only / 監査用） */}
           <div style={{ marginTop: '0.8rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
@@ -1328,6 +1521,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
               ※ OutcomeLog（締切到達時点の結果）だけで前後比較します。Outcome不足の提案も「行は残り」、measured=0 になります。
             </div>
+
             {actionEffectivenessLoading && (
               <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
             )}
@@ -1336,6 +1530,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 {actionEffectivenessError}
               </div>
             )}
+
             {!actionEffectivenessLoading && !actionEffectivenessError && (
               <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
                 {sortedActionEffectiveness.length === 0 ? (
@@ -1358,7 +1553,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                           const b = stabilityBadge(measured);
                           const recommended = isRecommendedAction(x);
                           const caution = isCautionAction(x);
-                          const hyp = hypothesisForAction(x.action_id); // ✅ 追加
+                          const hyp = hypothesisForAction(x.action_id);
 
                           return (
                             <>
@@ -1386,6 +1581,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                     今すぐ使う
                                   </span>
                                 )}
+
                                 {!recommended && caution && (
                                   <span
                                     style={{
@@ -1404,6 +1600,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                   </span>
                                 )}
                               </div>
+
                               {hyp && (
                                 <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.72 }}>
                                   仮説: {hyp}
@@ -1419,6 +1616,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               </div>
             )}
           </div>
+
           {/* ✅ Priority 4-C: action effectiveness by feature（read-only / 監査用） */}
           <div style={{ marginTop: '0.7rem', fontSize: '0.85rem', opacity: 0.9 }}>
             <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
@@ -1427,6 +1625,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.35rem' }}>
               安定度: ✅ total ≥ 30 / △ 10–29 / ⚠️ &lt; 10（母数ベース）
             </div>
+
             {actionEffectivenessByFeatureLoading && (
               <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
             )}
@@ -1453,9 +1652,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                           background: 'rgba(255,255,255,.04)',
                         }}
                       >
-                        <div style={{ fontWeight: 750 }}>
-                          {x.action_id}
-                        </div>
+                        <div style={{ fontWeight: 750 }}>{x.action_id}</div>
                         {(() => {
                           const measured = Number(x.total_events ?? 0);
                           const b = stabilityBadge(measured);
@@ -1479,137 +1676,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               </div>
             )}
           </div>
-          {worstFeature && (
-            <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
-              いちばん要注意：
-              {labelFeatureKey(worstFeature.feature_key)} = {labelFeatureValue(worstFeature.feature_value, worstFeature.feature_key)}（
-              {toPercent(worstFeature.missed_rate)}% / missed {worstFeature.missed}/{worstFeature.total}
-              ）
-            </div>
-          )}
-
-          <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-            analytics/outcomes/missed-by-feature（read-only SSOT）
-          </div>
-
-          {!sortedByFeature || sortedByFeature.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>（まだ集計対象がありません）</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-              {sortedByFeature.slice(0, 8).map((r, idx) => (
-                <div
-                  key={`${r.feature_key}-${String(r.feature_value)}-${idx}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '0.75rem',
-                    padding: '0.5rem 0',
-                    borderTop: '1px solid rgba(255,255,255,.08)',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800 }}>
-                      #{idx + 1} {labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                      missed {r.missed}/{r.total}
-                    </div>
-                  </div>
-                  <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-                    {toPercent(r.missed_rate)}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-        {worstCourse && (
-          <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
-            いちばん要注意：
-            {labelCourse(courseKeyOf(worstCourse))}（
-            {toPercent(worstCourse.missed_rate)}% / missed {worstCourse.missed}/{worstCourse.total}
-            ）
-          </div>
-        )}
-        <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-          {chosenByCourse ? 'analytics/outcomes/by-course（read-only SSOT）' : '（集計がまだありません）'}
-        </div>
-
-        {!sortedByCourse || sortedByCourse.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>（まだ集計対象がありません）</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-            {sortedByCourse.slice(0, 8).map((r, idx) => (
-              <div
-                key={`${courseKeyOf(r)}-${idx}`}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: '0.75rem',
-                  padding: '0.5rem 0',
-                  borderTop: '1px solid rgba(255,255,255,.08)',
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800 }}>
-                    #{idx + 1} {labelCourse(courseKeyOf(r))}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                    missed {r.missed}/{r.total}
-                  </div>
-                </div>
-                <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-                  {toPercent(r.missed_rate)}%
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <StatsCard
-        title="今週（直近7日）の達成率"
-        subtitle={
-          weeklySummaryLoaded
-            ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
-            : "通知サマリ取得失敗（暫定値）"
-        }
-        rate={weekly.rate}
-        total={weekly.total}
-        done={weekly.done}
-      />
-
-      <NotifStatsCard
-        title="今週の通知反応"
-        subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
-        created={weeklyCreated}
-        dismissed={weeklyDismissed}
-        dismissRate={weeklyDismissRate}
-        sent={weeklySent}
-        failed={weeklyFailed}
-        deactivated={weeklyDeactivated}
-        sentEvents={weeklySentEvents}
-      />
-
-      <StatsCard
-        title="今月の達成率"
-        subtitle="OutcomeLog（締切到達時点の結果）ベース"
-        rate={monthly.rate}
-        total={monthly.total}
-        done={monthly.done}
-      />
-
-      <RunStatsCard
-        title="最新Runの観測"
-        subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
-        run={latestRun}
-        summary={latestRunSummary}
-        inappTotal={summaryInappTotal}
-        dismissed={summaryDismissed}
-        dismissRate={summaryDismissRate}
-      />
+      </details>
     </div>
   );
 };
+
 
 interface StatsCardProps {
   title: string;
@@ -1807,7 +1879,6 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
     </div>
   );
 };
-
 
 interface NotifStatsCardProps {
   title: string;

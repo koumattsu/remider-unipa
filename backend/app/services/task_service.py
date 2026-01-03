@@ -1,13 +1,10 @@
 # app/services/task_service.py
 
 from typing import List, Optional
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.models.task import Task
 from app.schemas.task import TaskCreate
-
 
 async def upsert_task_from_moodle(
     db: AsyncSession,

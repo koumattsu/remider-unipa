@@ -1,18 +1,16 @@
 // frontend/src/utils/taskTime.ts
+
 import type { Task } from '../types';
 
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-
-const toJst = (d: Date) => new Date(d.getTime() + JST_OFFSET_MS);
 
 /**
  * ✅ 「今日」= JSTで 1:00〜24:30 の感覚
  * - 0:00〜0:59は前日扱い
  */
 export const isTodayTaskJst = (deadlineIso: string, now = new Date()) => {
-  const d = toJst(new Date(deadlineIso));
-  const n = toJst(now);
+  const d = new Date(deadlineIso); // ← JSTとしてそのまま扱う
+  const n = new Date(now);
 
   if (d.getHours() < 1) d.setDate(d.getDate() - 1);
 

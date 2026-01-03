@@ -31,10 +31,15 @@ def extract_outcome_features(task: Task) -> dict:
     else:
         title_len_bucket = "61+"
 
-    # course_name は匿名化（復元不能。secret漏洩を前提にしない）
-    # もし将来 "courseは保存しない" にするならここを削るだけで済むよう分離しておく
-    secret = getattr(settings, "FEATURE_HASH_SECRET", None) or settings.SECRET_KEY
+    # ✅ SSOT: 匿名化鍵は FEATURE_HASH_SECRET を唯一の真実にする（監査/継続性のため）
+    secret = getattr(settings, "FEATURE_HASH_SECRET", "") or ""
+    if not secret:
+        raise RuntimeError(
+            "FEATURE_HASH_SECRET is missing. "
+            "Set FEATURE_HASH_SECRET in env (Render) for stable, auditable outcome feature hashing."
+        )
     course_hash = _hmac_sha256(task.course_name or "", secret)
+
 
     return {
         "deadline_dow_jst": int(d.weekday()),          # 0=Mon..6

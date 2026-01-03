@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str = "http://localhost:5173"
     SESSION_SECRET: str = ""
+    FEATURE_HASH_SECRET: str = ""
 
     SESSION_COOKIE_NAME: str = "unipa_session"
     # ✅ cookie属性を一箇所に集約（auth/securityで必ずこれを使う）

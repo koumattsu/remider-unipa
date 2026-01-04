@@ -35,7 +35,8 @@ interface StatsViewProps {
 }
 
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
-  const [logs, setLogs] = useState<OutcomeLog[]>([]);
+  const [logsWeek, setLogsWeek] = useState<OutcomeLog[]>([]);
+  const [logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);
   const [bucket, setBucket] = useState<Bucket>('week');
   type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
   const [activeTab, setActiveTab] = useState<StatsTab>('overview');
@@ -46,6 +47,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [byFeatureWeek, setByFeatureWeek] = useState<OutcomesByFeatureRow[] | null>(null);
   const [byFeatureMonth, setByFeatureMonth] = useState<OutcomesByFeatureRow[] | null>(null);
   const [weeklyNotifSummary, setWeeklyNotifSummary] = useState<InAppNotificationsSummary | null>(null);
+  const [monthlyNotifSummary, setMonthlyNotifSummary] = useState<InAppNotificationsSummary | null>(null);
   const [latestRun, setLatestRun] = useState<NotificationRun | null>(null);
   const [latestRunSummary, setLatestRunSummary] = useState<RunSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,9 +176,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
         const fromNotifs = startOfWeek.toISOString();
         const toNotifs = endOfToday.toISOString();
+        const fromNotifsMonth = startOfMonth.toISOString();
+        const toNotifsMonth = endOfMonthEnd.toISOString();
 
         const [
-          outcomeData, weeklySummary, runSummary,
+          outcomeWeek,
+          outcomeMonth,
+          weeklySummary,
+          monthlySummary,
+          runSummary,
           sumW, sumM, byW, byM, featW, featM,
           cxW, cxM,
           notifSetting,
@@ -184,39 +192,38 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           effByFeatureItems,
         ] = await Promise.all([
           outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
+          outcomesApi.list({ from: fromOutcomesMonth, to: toOutcomesMonth }),
+
           fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }),
+          fetchInAppNotificationsSummary({ from: fromNotifsMonth, to: toNotifsMonth }),
+
           run?.id ? fetchRunSummary(run.id).catch(() => null) : Promise.resolve(null),
 
-          analyticsOutcomesApi.getSummary({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek }).then(x => x.items?.[0] ?? null).catch(() => null),
+          analyticsOutcomesApi.getSummary({ bucket: 'week',  from: fromOutcomesWeek,  to: toOutcomesWeek  }).then(x => x.items?.[0] ?? null).catch(() => null),
           analyticsOutcomesApi.getSummary({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth }).then(x => x.items?.[0] ?? null).catch(() => null),
 
-          analyticsOutcomesApi.getByCourse({ bucket: 'week', from: fromOutcomesWeek, to: toOutcomesWeek }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getByCourse({ bucket: 'week',  from: fromOutcomesWeek,  to: toOutcomesWeek  }).then(x => x.items).catch(() => null),
           analyticsOutcomesApi.getByCourse({ bucket: 'month', from: fromOutcomesMonth, to: toOutcomesMonth }).then(x => x.items).catch(() => null),
 
-          analyticsOutcomesApi.getMissedByFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 2000 }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getMissedByFeature({ version: 'v1', from: fromOutcomesWeek,  to: toOutcomesWeek,  limit: 2000 }).then(x => x.items).catch(() => null),
           analyticsOutcomesApi.getMissedByFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 2000 }).then(x => x.items).catch(() => null),
 
-          analyticsOutcomesApi.getCourseXFeature({ version: 'v1', from: fromOutcomesWeek, to: toOutcomesWeek, limit: 20000 }).then(x => x.items).catch(() => null),
+          analyticsOutcomesApi.getCourseXFeature({ version: 'v1', from: fromOutcomesWeek,  to: toOutcomesWeek,  limit: 20000 }).then(x => x.items).catch(() => null),
           analyticsOutcomesApi.getCourseXFeature({ version: 'v1', from: fromOutcomesMonth, to: toOutcomesMonth, limit: 20000 }).then(x => x.items).catch(() => null),
 
           settingsApi.getNotification().catch(() => null),
 
-          // ✅ effectiveness（items配列だけ返す）
-          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 })
-            .then(x => x.items ?? [])
-            .catch(() => []),
+          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 }).then(x => x.items ?? []).catch(() => []),
 
-          // ✅ effectiveness by feature（items配列だけ返す）
           analyticsActionsApi.getEffectivenessByFeature({
             version: 'v1',
             window_days: 7,
             min_total: 5,
             limit_events: 500,
             limit_samples_per_event: 50,
-          })
-            .then(x => x.items ?? [])
-            .catch(() => []),
+          }).then(x => x.items ?? []).catch(() => []),
         ]);
+
 
         setCurrentNotifSetting(notifSetting);
         setActionEffectiveness((prev) => ({ ...prev, week: effItems }));
@@ -231,8 +238,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
         if (!mounted) return;
 
-        setLogs(outcomeData);
+        setLogsWeek(outcomeWeek);
+        setLogsMonth(outcomeMonth);
         setWeeklyNotifSummary(weeklySummary);
+        setMonthlyNotifSummary(monthlySummary);
+        setWeeklyNotifSummary(weeklySummary);
+        setMonthlyNotifSummary(monthlySummary);
         setLatestRun(run);
         setLatestRunSummary(runSummary);
         setSummaryWeek(sumW);
@@ -354,27 +365,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, [bucket, appliedAt]);
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfWeek = new Date(startOfToday);
-  startOfWeek.setDate(startOfWeek.getDate() - 6); // 過去7日
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const parseDeadline = (x: OutcomeLog) => new Date(x.deadline);
-
-  const inRange = (d: Date, from: Date, to: Date) =>
-    d.getTime() >= from.getTime() && d.getTime() <= to.getTime();
-
-  const weeklyLogs = useMemo(
-    () => logs.filter((x) => inRange(parseDeadline(x), startOfWeek, startOfToday)),
-    [logs, startOfWeek, startOfToday]
-  );
-
-  const monthlyLogs = useMemo(
-    () => logs.filter((x) => inRange(parseDeadline(x), startOfMonth, endOfMonth)),
-    [logs, startOfMonth, endOfMonth]
-  );
+  // ✅ outcomesApi.list() で backend 側で期間絞り込み済みなので、
+  //    フロントで logs.filter による再フィルタは不要（= logs 未定義も解消）
+  const weeklyLogs = useMemo(() => logsWeek, [logsWeek]);
+  const monthlyLogs = useMemo(() => logsMonth, [logsMonth]);
 
   const calcRate = (subset: OutcomeLog[]) => {
     const total = subset.length;
@@ -388,6 +382,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
   // ✅ Priority 3-A: 表示対象（週 / 月）
   const chosenSummary = bucket === 'week' ? summaryWeek : summaryMonth;
+  const weeklySummaryLoaded = weeklyNotifSummary !== null;
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
   const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
@@ -805,10 +800,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
 
   // ✅ 週次通知反応（summary API 1発）
-  const weeklySummaryLoaded = weeklyNotifSummary !== null;
-  const weeklyCreated = weeklyNotifSummary?.total ?? 0;
-  const weeklyDismissed = weeklyNotifSummary?.dismissed ?? 0;
-  const weeklyDismissRate = weeklyNotifSummary?.dismiss_rate ?? 0;
+  const chosenNotifSummary =
+    bucket === 'week' ? weeklyNotifSummary : monthlyNotifSummary;
+
+  const chosenNotifCreated = chosenNotifSummary?.total ?? 0;
+  const chosenNotifDismissed = chosenNotifSummary?.dismissed ?? 0;
+  const chosenNotifDismissRate = chosenNotifSummary?.dismiss_rate ?? 0;
 
   const weeklyEvents = weeklyNotifSummary?.webpush_events;
   const weeklySentEvents = weeklyEvents?.sent ?? 0;
@@ -942,11 +939,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
             {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
             <NotifStatsCard
-              title="今週の通知反応"
-              subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
-              created={weeklyCreated}
-              dismissed={weeklyDismissed}
-              dismissRate={weeklyDismissRate}
+              title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
+              subtitle="InAppNotification（資産） + extra.webpush（観測）ベース"
+              created={chosenNotifCreated}
+              dismissed={chosenNotifDismissed}
+              dismissRate={chosenNotifDismissRate}
               sent={weeklySent}
               failed={weeklyFailed}
               deactivated={weeklyDeactivated}

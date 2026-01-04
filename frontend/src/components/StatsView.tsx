@@ -762,12 +762,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return String(v);
   };
 
-  const toPercent = (v: number | null | undefined) => {
+  function toPercent(v: number | null | undefined) {
     if (v == null) return 0;
     const n = Number(v);
     if (!Number.isFinite(n)) return 0;
     return n <= 1 ? Math.round(n * 100) : Math.round(n);
-  };
+  }
 
   const missedRateOf = (s: OutcomesSummaryItem | null) => {
     if (!s) return 0;
@@ -1484,7 +1484,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                           })}
                         </select>
                       </div>
-
                       {reasons.length === 0 ? (
                         <div style={{ opacity: 0.7 }}>（この授業の理由データがありません）</div>
                       ) : (

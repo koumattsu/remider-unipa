@@ -2285,22 +2285,117 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         <span>{dismissed} / {inappTotal} 件（summary）</span>
       </div>
 
-      <div style={{ marginTop: '0.7rem', fontSize: '0.82rem', color: 'rgba(255,255,255,.72)' }}>
-        <div style={{ marginBottom: '0.35rem', fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>Run集計（cron側）</div>
-        <div>
-          inapp_created={runCounters?.inapp_created ?? '—'} / webpush sent={runCounters?.webpush_sent ?? '—'} failed={runCounters?.webpush_failed ?? '—'} deact={runCounters?.webpush_deactivated ?? '—'}
+      <div style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: 'rgba(255,255,255,.74)' }}>
+        {/* Run集計（cron側） */}
+        <div style={{ marginBottom: '0.35rem', fontWeight: 800, color: 'rgba(255,255,255,.86)' }}>
+          Run集計（cron側）
         </div>
 
-        <div style={{ marginTop: '0.6rem', marginBottom: '0.35rem', fontWeight: 700, color: 'rgba(255,255,255,.8)' }}>資産集計（InAppNotification側）</div>
-        <div>
-          inapp_total={summaryCounters?.inapp_total ?? '—'} / delivered={summaryCounters?.delivered ?? '—'} failed={summaryCounters?.failed ?? '—'} deact={summaryCounters?.deactivated ?? '—'} unknown={summaryCounters?.unknown ?? '—'}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '0.35rem 0.75rem',
+            padding: '0.6rem 0.65rem',
+            borderRadius: 12,
+            border: '1px solid rgba(255,255,255,.10)',
+            background: 'rgba(255,255,255,.04)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>inapp_created</span>
+            <span style={{ fontWeight: 900 }}>{runCounters?.inapp_created ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>webpush_sent</span>
+            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_sent ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>webpush_failed</span>
+            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_failed ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>webpush_deact</span>
+            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_deactivated ?? '—'}</span>
+          </div>
         </div>
 
-        <div style={{ marginTop: '0.25rem' }}>
-          events: sent={summaryCounters?.events.sent ?? '—'} failed={summaryCounters?.events.failed ?? '—'} deact={summaryCounters?.events.deactivated ?? '—'} skipped={summaryCounters?.events.skipped ?? '—'} unknown={summaryCounters?.events.unknown ?? '—'}
+        {/* 資産集計（InAppNotification側） */}
+        <div style={{ marginTop: '0.75rem', marginBottom: '0.35rem', fontWeight: 800, color: 'rgba(255,255,255,.86)' }}>
+          資産集計（InAppNotification側）
         </div>
 
-        <div style={{ marginTop: '0.5rem', color: 'rgba(255,255,255,.6)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '0.35rem 0.75rem',
+            padding: '0.6rem 0.65rem',
+            borderRadius: 12,
+            border: '1px solid rgba(255,255,255,.10)',
+            background: 'rgba(255,255,255,.04)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>inapp_total</span>
+            <span style={{ fontWeight: 900 }}>{summaryCounters?.inapp_total ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>delivered</span>
+            <span style={{ fontWeight: 900 }}>{summaryCounters?.delivered ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>failed</span>
+            <span style={{ fontWeight: 900 }}>{summaryCounters?.failed ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>deact</span>
+            <span style={{ fontWeight: 900 }}>{summaryCounters?.deactivated ?? '—'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>unknown</span>
+            <span style={{ fontWeight: 900 }}>{summaryCounters?.unknown ?? '—'}</span>
+          </div>
+        </div>
+
+        {/* events は詳細なので折りたたみ */}
+        <details style={{ marginTop: '0.55rem' }}>
+          <summary style={{ cursor: 'pointer', opacity: 0.78, fontWeight: 800 }}>
+            events（詳細）
+          </summary>
+          <div
+            style={{
+              marginTop: '0.45rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.4rem',
+              fontSize: '0.78rem',
+              color: 'rgba(255,255,255,.72)',
+            }}
+          >
+            {[
+              ['sent', summaryCounters?.events.sent],
+              ['failed', summaryCounters?.events.failed],
+              ['deact', summaryCounters?.events.deactivated],
+              ['skipped', summaryCounters?.events.skipped],
+              ['unknown', summaryCounters?.events.unknown],
+            ].map(([k, v]) => (
+              <span
+                key={k}
+                style={{
+                  padding: '0.22rem 0.5rem',
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,.12)',
+                  background: 'rgba(255,255,255,.04)',
+                }}
+              >
+                {k} {v ?? '—'}
+              </span>
+            ))}
+          </div>
+        </details>
+
+        <div style={{ marginTop: '0.6rem', color: 'rgba(255,255,255,.6)', fontSize: '0.78rem' }}>
           ※ 「Run集計」と「資産集計」がズレたら、観測/監査の入口になる（M&A説明しやすい）
         </div>
       </div>
@@ -2354,10 +2449,32 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
         {subtitle}
       </div>
 
-      <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,.82)', marginBottom: '0.6rem' }}>
-        <div>作成: {created} 件</div>
-        <div>dismiss: {dismissed} 件</div>
-        <div>反応率(dismiss): {clampedRate}%</div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.35rem 0.75rem',
+          fontSize: '0.88rem',
+          color: 'rgba(255,255,255,.84)',
+          marginBottom: '0.65rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ opacity: 0.75 }}>作成</span>
+          <span style={{ fontWeight: 800 }}>{created}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ opacity: 0.75 }}>dismiss</span>
+          <span style={{ fontWeight: 800 }}>{dismissed}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ opacity: 0.75 }}>反応率</span>
+          <span style={{ fontWeight: 900 }}>{clampedRate}%</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ opacity: 0.75 }}>sentEvents</span>
+          <span style={{ fontWeight: 800 }}>{sentEvents}</span>
+        </div>
       </div>
 
       <div
@@ -2381,9 +2498,41 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
         />
       </div>
 
-      <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,.72)' }}>
-        <div>WebPush: sent={sent} failed={failed} deactivated={deactivated}</div>
-        <div>sentイベント数: {sentEvents}（通知レコード単位）</div>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.4rem',
+          alignItems: 'center',
+          fontSize: '0.78rem',
+          color: 'rgba(255,255,255,.74)',
+        }}
+      >
+        <span
+          style={{
+            padding: '0.22rem 0.5rem',
+            borderRadius: 999,
+            border: '1px solid rgba(255,255,255,.14)',
+            background: 'rgba(255,255,255,.06)',
+            fontWeight: 800,
+          }}
+        >
+          WebPush
+        </span>
+
+        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
+          sent {sent}
+        </span>
+        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
+          failed {failed}
+        </span>
+        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
+          deact {deactivated}
+        </span>
+      </div>
+
+      <div style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: 'rgba(255,255,255,.62)' }}>
+        ※ sentEvents は「通知レコード（イベント）単位」
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 # backend/app/core/config.py
+
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from typing import Optional, Union
 
 class Settings(BaseSettings):
@@ -36,7 +37,6 @@ class Settings(BaseSettings):
     # ローカルで使うなら .env で DUMMY_AUTH_ENABLED=true を明示
     DUMMY_AUTH_ENABLED: bool = False
     DUMMY_USER_ID: int = 1
-
     LINE_LOGIN_CHANNEL_ID: str = ""
     LINE_LOGIN_CHANNEL_SECRET: str = ""
     LINE_LOGIN_REDIRECT_URI: str = ""
@@ -56,12 +56,28 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     SESSION_SECRET: str = ""
     FEATURE_HASH_SECRET: str = ""
+    # ✅ 監査用：どのデプロイの実行かをRunに刻む（Renderが持つcommitも拾える）
+    BUILD_SHA: str = ""
+    RENDER_GIT_COMMIT: str = ""
+
+    @property
+    def BUILD_ID(self) -> str:
+        base = self.BUILD_SHA or self.RENDER_GIT_COMMIT or "unknown"
+        return f"{base}:{self.ENV}"
 
     SESSION_COOKIE_NAME: str = "unipa_session"
     # ✅ cookie属性を一箇所に集約（auth/securityで必ずこれを使う）
     SESSION_COOKIE_PATH: str = "/"
     SESSION_COOKIE_DOMAIN: Optional[str] = None
     ENV: str = "development"
+    AUTO_INIT_DB: bool = False
+
+    @model_validator(mode="after")
+    def _validate_prod_secrets(self):
+        if self.ENV == "production":
+            if not self.FEATURE_HASH_SECRET:
+                raise ValueError("FEATURE_HASH_SECRET is required in production")
+        return self
 
     @property
     def SESSION_COOKIE_SECURE(self) -> bool:

@@ -7,9 +7,9 @@ from app.api.v1.endpoints.line_webhook import router as line_webhook_router
 from app.db.base import init_db
 
 def create_tables_if_needed() -> None:
-    # ✅ 本番(Postgres)でも新規テーブルが増えたら作れるようにする
-    # create_all は既存テーブルには影響せず（なければ作る）なので、最小で安全
-    init_db()
+    # ✅ 起動時DDLは本番で事故りやすいのでデフォOFF（必要時のみON）
+    if settings.AUTO_INIT_DB:
+        init_db()
 
 def get_application() -> FastAPI:
     create_tables_if_needed()
@@ -45,7 +45,12 @@ def get_application() -> FastAPI:
 
     @app.get("/health")
     async def health_check():
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "env": settings.ENV,
+            "build": settings.BUILD_ID,
+            "version": settings.APP_VERSION,
+        }
 
     return app
 

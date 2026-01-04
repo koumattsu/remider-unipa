@@ -16,6 +16,7 @@ from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting 
 from app.models.notification_run import NotificationRun 
 from app.models.webpush_delivery import WebPushDelivery
+from app.core.config import settings
 from app.core.time import JST
 from app.services.outcome_analytics import (
     build_action_effectiveness,
@@ -587,7 +588,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
             k.startswith("offset_") and v > 0 for k, v in detail.items()
         ) or detail.get("morning", 0) > 0
 
-        return {"notified": notified, "detail": detail}
+        return {
+            "notified": notified,
+            "detail": detail,
+            "run_id": int(run.id),
+            "build": settings.BUILD_ID,
+        }
 
     except Exception as e:
         db.rollback()
@@ -662,12 +668,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
         run.webpush_sent = int(events.get("sent", 0))
         run.webpush_failed = int(events.get("failed", 0))
         run.webpush_deactivated = int(events.get("deactivated", 0))
+        build_id = settings.BUILD_ID
         run.stats = {
             "v": 1,
             "kind": "notification_run_stats",
             "generated_at": now_utc.isoformat(),
             "payload": {
-                "build": "2025-12-25-cron-v2",
+                "build": build_id,
                 "now_utc": started_at_utc.isoformat(),
                 "users_total": users_total,
                 "users_processed": users_processed,

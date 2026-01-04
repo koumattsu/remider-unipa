@@ -778,7 +778,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   };
 
   // appliedAt を境に「同じ長さ」の before/after を作る（week=7d, month=30d）
-  const buildBeforeAfterRange = (dt: Date, b: Bucket) => {
+  function buildBeforeAfterRange(dt: Date, b: Bucket) {
     const windowDays = b === 'week' ? 7 : 30;
     const ms = windowDays * 24 * 60 * 60 * 1000;
     const t = dt.getTime();
@@ -791,7 +791,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       before: { from: beforeFrom.toISOString(), to: beforeTo.toISOString() },
       after: { from: afterFrom.toISOString(), to: afterTo.toISOString() },
     };
-  };
+  }
 
   const courseKeyOf = (r: OutcomesByCourseRow) =>
     r.course_name || r.course_key || r.course_hash || 'unknown';

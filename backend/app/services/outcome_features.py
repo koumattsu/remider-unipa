@@ -40,7 +40,6 @@ def extract_outcome_features(task: Task) -> dict:
         )
     course_hash = _hmac_sha256(task.course_name or "", secret)
 
-
     return {
         "deadline_dow_jst": int(d.weekday()),          # 0=Mon..6
         "deadline_hour_jst": int(d.hour),             # 0..23

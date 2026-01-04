@@ -22,6 +22,10 @@ def try_mark_outcome_feature_as_saved(
     OutcomeFeatureSnapshot の保存ロック（UNIQUE + flush）
     - commit は呼び出し側に任せる
     """
+    # ✅ 監査耐性：UTC timezone-aware を強制（naive混入で集計が壊れるのを防ぐ）
+    if deadline_utc.tzinfo is None:
+        raise ValueError("deadline_utc must be timezone-aware (UTC)")
+
     with db.begin_nested() as nested:
         try:
             row = OutcomeFeatureSnapshot(
@@ -34,7 +38,11 @@ def try_mark_outcome_feature_as_saved(
             db.add(row)
             db.flush()  # ✅ UNIQUE 競合をここで確定
             return True
-        except IntegrityError:
-            # ✅ 競合は SAVEPOINT だけを rollback（外側TXは生かす）
-            nested.rollback()
-            return False
+        except IntegrityError as e:
+            # ✅ UNIQUE競合だけ「既に保存済み」として扱う
+            # Postgres: unique_violation = 23505
+            pgcode = getattr(getattr(e, "orig", None), "pgcode", None)
+            if pgcode == "23505":
+                nested.rollback()
+                return False
+            raise

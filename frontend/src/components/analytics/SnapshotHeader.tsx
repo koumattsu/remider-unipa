@@ -1,3 +1,5 @@
+// frontend/src/components/analytics/SnapshotHeader.tsx
+
 import { ActionEffectivenessSnapshotItem, ActionAppliedEvent } from '../../api/analyticsActions';
 
 type Props = {

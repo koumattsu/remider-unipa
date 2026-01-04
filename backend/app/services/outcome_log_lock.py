@@ -30,6 +30,12 @@ def try_mark_outcome_as_evaluated(
     if evaluated_at_utc is None:
         evaluated_at_utc = _utcnow()
 
+    # ✅ 監査耐性：UTC timezone-aware を強制（naive混入で集計が壊れるのを防ぐ）
+    if deadline_utc.tzinfo is None:
+        raise ValueError("deadline_utc must be timezone-aware (UTC)")
+    if evaluated_at_utc.tzinfo is None:
+        raise ValueError("evaluated_at_utc must be timezone-aware (UTC)")    
+
     log = TaskOutcomeLog(
         user_id=user_id,
         task_id=task_id,
@@ -42,7 +48,13 @@ def try_mark_outcome_as_evaluated(
             db.add(log)
             db.flush()  # ✅ ここで UNIQUE を評価
             return True
-        except IntegrityError:
-            # ✅ 競合は SAVEPOINT だけを rollback（外側TXは生かす）
-            nested.rollback()
-            return False
+        except IntegrityError as e:
+            # ✅ UNIQUE競合だけ「既に確定済み」として扱う
+            # Postgres: unique_violation = 23505
+            pgcode = getattr(getattr(e, "orig", None), "pgcode", None)
+            if pgcode == "23505":
+                # ✅ 競合は SAVEPOINT だけを rollback（外側TXは生かす）
+                nested.rollback()
+                return False
+            # それ以外（NOT NULL/FKなど）はバグなので握りつぶさない
+            raise

@@ -1,3 +1,5 @@
+// frontend/src/components/analytics/ActionEffectivenessTopList.tsx
+
 import React from 'react';
 import { ActionEffectivenessItem } from '../../api/analyticsActions';
 

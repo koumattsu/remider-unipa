@@ -37,6 +37,8 @@ interface StatsViewProps {
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [logs, setLogs] = useState<OutcomeLog[]>([]);
   const [bucket, setBucket] = useState<Bucket>('week');
+  type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
+  const [activeTab, setActiveTab] = useState<StatsTab>('overview');
   const [summaryWeek, setSummaryWeek] = useState<OutcomesSummaryItem | null>(null);
   const [summaryMonth, setSummaryMonth] = useState<OutcomesSummaryItem | null>(null);
   const [byCourseWeek, setByCourseWeek] = useState<OutcomesByCourseRow[] | null>(null);
@@ -662,6 +664,23 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   }, [chosenByFeature]);
 
   const worstFeature = sortedByFeature?.[0] ?? null;
+  const hotspotSorted = useMemo(() => {
+    if (!sortedByFeature) return null;
+    return sortedByFeature.filter(
+      (r) => r.feature_key === 'deadline_dow_jst' || r.feature_key === 'deadline_hour_jst'
+    );
+  }, [sortedByFeature]);
+
+  const hotspotWorst = hotspotSorted?.[0] ?? null;
+
+  const hotspotDow = hotspotSorted
+    ? hotspotSorted.filter((r) => r.feature_key === 'deadline_dow_jst').slice(0, 3)
+    : [];
+
+  const hotspotHour = hotspotSorted
+    ? hotspotSorted.filter((r) => r.feature_key === 'deadline_hour_jst').slice(0, 3)
+    : [];
+
 
   // ✅ feature_key を日本語に（未知キーはそのまま表示）
   const labelFeatureKey = (k: string) => {
@@ -853,67 +872,222 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           今月
         </button>
       </div>
-
-      {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
-      <StatsCard
-        title={`達成率（${bucket === 'week' ? '週' : '月'}）`}
-        subtitle={chosenSummary ? 'analytics/outcomes/summary（read-only SSOT）' : '（集計がまだありません）'}
-        rate={summaryRate ?? 0}
-        total={chosenSummary?.total ?? 0}
-        done={chosenSummary?.done ?? 0}
-      />
-
-      {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
+      {/* ✅ Tabs（C-1: ユーザー向け / 監査向けを分離） */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
-          gap: '0.9rem',
+          display: 'flex',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          marginTop: '0.25rem',
+          marginBottom: '0.35rem',
         }}
       >
-        <StatsCard
-          title="今週（直近7日）の達成率"
-          subtitle={
-            weeklySummaryLoaded
-              ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
-              : "通知サマリ取得失敗（暫定値）"
-          }
-          rate={weekly.rate}
-          total={weekly.total}
-          done={weekly.done}
-        />
-
-        {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
-        <NotifStatsCard
-          title="今週の通知反応"
-          subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
-          created={weeklyCreated}
-          dismissed={weeklyDismissed}
-          dismissRate={weeklyDismissRate}
-          sent={weeklySent}
-          failed={weeklyFailed}
-          deactivated={weeklyDeactivated}
-          sentEvents={weeklySentEvents}
-        />
-
-        <StatsCard
-          title="今月の達成率"
-          subtitle="OutcomeLog（締切到達時点の結果）ベース"
-          rate={monthly.rate}
-          total={monthly.total}
-          done={monthly.done}
-        />
-
-        <RunStatsCard
-          title="最新Runの観測"
-          subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
-          run={latestRun}
-          summary={latestRunSummary}
-          inappTotal={summaryInappTotal}
-          dismissed={summaryDismissed}
-          dismissRate={summaryDismissRate}
-        />
+        {([
+          ['overview', 'Overview'],
+          ['hotspots', 'Hotspots'],
+          ['improve', 'Improve'],
+          ['audit', 'Audit'],
+        ] as const).map(([key, label]) => {
+          const isActive = activeTab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              style={{
+                padding: '0.4rem 0.65rem',
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,.12)',
+                background: isActive ? 'rgba(0,212,255,.16)' : 'rgba(255,255,255,.06)',
+                color: 'rgba(255,255,255,.92)',
+                fontWeight: 850,
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
+      {activeTab === 'overview' && (
+        <>
+          {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
+          <StatsCard
+            title={`達成率（${bucket === 'week' ? '週' : '月'}）`}
+            subtitle={chosenSummary ? 'analytics/outcomes/summary（read-only SSOT）' : '（集計がまだありません）'}
+            rate={summaryRate ?? 0}
+            total={chosenSummary?.total ?? 0}
+            done={chosenSummary?.done ?? 0}
+          />
+
+          {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+              gap: '0.9rem',
+            }}
+          >
+            <StatsCard
+              title="今週（直近7日）の達成率"
+              subtitle={
+                weeklySummaryLoaded
+                  ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
+                  : "通知サマリ取得失敗（暫定値）"
+              }
+              rate={weekly.rate}
+              total={weekly.total}
+              done={weekly.done}
+            />
+
+            {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
+            <NotifStatsCard
+              title="今週の通知反応"
+              subtitle="InAppNotification（資産）+ extra.webpush（観測）ベース"
+              created={weeklyCreated}
+              dismissed={weeklyDismissed}
+              dismissRate={weeklyDismissRate}
+              sent={weeklySent}
+              failed={weeklyFailed}
+              deactivated={weeklyDeactivated}
+              sentEvents={weeklySentEvents}
+            />
+
+            <StatsCard
+              title="今月の達成率"
+              subtitle="OutcomeLog（締切到達時点の結果）ベース"
+              rate={monthly.rate}
+              total={monthly.total}
+              done={monthly.done}
+            />
+
+            <RunStatsCard
+              title="最新Runの観測"
+              subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
+              run={latestRun}
+              summary={latestRunSummary}
+              inappTotal={summaryInappTotal}
+              dismissed={summaryDismissed}
+              dismissRate={summaryDismissRate}
+            />
+          </div>
+        </>
+      )}
+      {activeTab === 'hotspots' && (
+        <div
+          style={{
+            padding: '1rem 1.1rem',
+            borderRadius: 18,
+            border: '1px solid rgba(255,255,255,.12)',
+            background: 'rgba(255,255,255,.04)',
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>
+            Hotspots（落としやすいパターン）
+          </div>
+
+          <div
+            style={{
+              fontSize: '0.8rem',
+              opacity: 0.7,
+              marginBottom: '0.75rem',
+            }}
+          >
+            analytics/outcomes/missed-by-feature（read-only SSOT: OutcomeFeatureSnapshot）
+          </div>
+
+          {hotspotWorst && (
+            <div
+              style={{
+                marginBottom: '0.75rem',
+                fontSize: '0.92rem',
+                fontWeight: 850,
+              }}
+            >
+              いちばん要注意：
+              {labelFeatureKey(hotspotWorst.feature_key)} ={' '}
+              {labelFeatureValue(
+                hotspotWorst.feature_value,
+                hotspotWorst.feature_key
+              )}
+              （{toPercent(hotspotWorst.missed_rate)}% / missed{' '}
+              {hotspotWorst.missed}/{hotspotWorst.total}）
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {/* 曜日 */}
+            <div>
+              <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
+                曜日 Top3
+              </div>
+
+              {hotspotDow.length === 0 ? (
+                <div style={{ opacity: 0.7 }}>（データなし）</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '0.35rem' }}>
+                  {hotspotDow.map((r, idx) => (
+                    <div
+                      key={`dow-${idx}-${String(r.feature_value)}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '0.45rem 0.6rem',
+                        borderRadius: 12,
+                        border: '1px solid rgba(255,255,255,.10)',
+                        background: 'rgba(255,255,255,.03)',
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>
+                        #{idx + 1}{' '}
+                        {labelFeatureValue(r.feature_value, r.feature_key)}
+                      </div>
+                      <div style={{ opacity: 0.82 }}>
+                        {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 時間帯 */}
+            <div>
+              <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
+                時間帯 Top3
+              </div>
+
+              {hotspotHour.length === 0 ? (
+                <div style={{ opacity: 0.7 }}>（データなし）</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '0.35rem' }}>
+                  {hotspotHour.map((r, idx) => (
+                    <div
+                      key={`hour-${idx}-${String(r.feature_value)}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '0.45rem 0.6rem',
+                        borderRadius: 12,
+                        border: '1px solid rgba(255,255,255,.10)',
+                        background: 'rgba(255,255,255,.03)',
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>
+                        #{idx + 1}{' '}
+                        {labelFeatureValue(r.feature_value, r.feature_key)}
+                      </div>
+                      <div style={{ opacity: 0.82 }}>
+                        {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✅ Insights（重い分析はここに畳む） */}
       <details

@@ -16,9 +16,22 @@ jobs:
         run: |
           set -euo pipefail
           echo "Now(UTC): $(date -u)"
-          curl -sS -X POST "https://unipa-reminder-backend.onrender.com/api/v1/cron/daily" \
-               -H "Content-Type: application/json" \
-               --connect-timeout 10 \
+
+          BASE="https://unipa-reminder-backend.onrender.com"
+
+          echo "Warmup (GET /health)..."
+          curl -sS -L "${BASE}/health" \
+               --connect-timeout 20 \
                --max-time 60 \
+               -w "\nWARMUP_HTTP_STATUS=%{http_code}\n" || true
+
+          echo "POST /api/v1/cron/daily (with retry)..."
+          curl -sS -L -X POST "${BASE}/api/v1/cron/daily" \
+               -H "Content-Type: application/json" \
+               --connect-timeout 20 \
+               --max-time 180 \
+               --retry 5 \
+               --retry-all-errors \
+               --retry-delay 5 \
                -w "\nHTTP_STATUS=%{http_code}\n" \
                --fail-with-body

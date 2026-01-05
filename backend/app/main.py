@@ -39,14 +39,14 @@ def get_application() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(line_webhook_router, prefix="/line", tags=["line"])
 
-    @app.get("/")
-    async def root():
-        return {"message": "UNIPA Reminder Backend is running"}
-
     @app.get("/health")
     async def health_check():
+        return {"ok": True}
+
+    @app.get("/build")
+    async def build_info():
+        # ここは落ちてもサービス死なない（ヘルスとは分離）
         return {
-            "status": "ok",
             "env": settings.ENV,
             "build": settings.BUILD_ID,
             "version": settings.APP_VERSION,

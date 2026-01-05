@@ -1004,11 +1004,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
           <StatsCard
             title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
-            subtitle={chosenSummary ? 'analytics/outcomes/summary（read-only SSOT）' : '（集計がまだありません）'}
+            subtitle={chosenSummary ? undefined : '（集計がまだありません）'}
             rate={shownRate}
             total={shownTotal}
             done={shownDone}
-          />
+          /> 
 
           {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
           <div
@@ -1027,7 +1027,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
             <NotifStatsCard
               title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
-              subtitle="InAppNotification（資産） + extra.webpush（観測）ベース"
+              subtitle={undefined} // ✅ 消す
               created={chosenNotifCreated}
               dismissed={chosenNotifDismissed}
               dismissRate={chosenNotifDismissRate}
@@ -1038,7 +1038,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             />
             <RunStatsCard
               title="最新Runの観測"
-              subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
+              subtitle={undefined} // ✅ 消す
               run={latestRun}
               summary={latestRunSummary}
               inappTotal={summaryInappTotal}
@@ -2188,7 +2188,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
 interface StatsCardProps {
   title: string;
-  subtitle: string;
+  subtitle?: string; // ✅ optional
   rate: number;
   total: number;
   done: number;
@@ -2215,9 +2215,12 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, subtitle, rate, total, don
       <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
         {title}
       </div>
-      <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-        {subtitle}
-      </div>
+      {/* ✅ subtitle は「ある時だけ」表示 */}
+      {subtitle ? (
+        <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
+          {subtitle}
+        </div>
+      ) : null}
 
       <div
         style={{
@@ -2259,7 +2262,7 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, subtitle, rate, total, don
 
 interface RunStatsCardProps {
   title: string;
-  subtitle: string;
+  subtitle?: string; // ✅ optional
   run: NotificationRun | null;
   summary: RunSummary | null;
   inappTotal: number;
@@ -2490,15 +2493,15 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
             <span style={{ fontWeight: 900 }}>{summaryCounters?.delivered ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>failed</span>
+            <span style={{ opacity: 0.7 }}>失敗</span>
             <span style={{ fontWeight: 900 }}>{summaryCounters?.failed ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>deact</span>
+            <span style={{ opacity: 0.7 }}>停止</span>
             <span style={{ fontWeight: 900 }}>{summaryCounters?.deactivated ?? '—'}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>unknown</span>
+            <span style={{ opacity: 0.7 }}>不明</span>
             <span style={{ fontWeight: 900 }}>{summaryCounters?.unknown ?? '—'}</span>
           </div>
         </div>
@@ -2506,7 +2509,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         {/* events は詳細なので折りたたみ */}
         <details style={{ marginTop: '0.55rem' }}>
           <summary style={{ cursor: 'pointer', opacity: 0.78, fontWeight: 800 }}>
-            events（詳細）
+            内訳（詳細）
           </summary>
           <div
             style={{
@@ -2519,11 +2522,11 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
             }}
           >
             {[
-              ['sent', summaryCounters?.events.sent],
-              ['failed', summaryCounters?.events.failed],
-              ['deact', summaryCounters?.events.deactivated],
-              ['skipped', summaryCounters?.events.skipped],
-              ['unknown', summaryCounters?.events.unknown],
+              ['送信', summaryCounters?.events.sent],
+              ['失敗', summaryCounters?.events.failed],
+              ['停止', summaryCounters?.events.deactivated],
+              ['スキップ', summaryCounters?.events.skipped],
+              ['不明', summaryCounters?.events.unknown],
             ].map(([k, v]) => (
               <span
                 key={k}
@@ -2550,7 +2553,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
 
 interface NotifStatsCardProps {
   title: string;
-  subtitle: string;
+  subtitle?: string; // ✅ optional
   created: number;
   dismissed: number;
   dismissRate: number;

@@ -214,7 +214,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             return {
               from,
               to: endExclusive,
-              label: `${fmtMD(from)}-${fmtMD(new Date(endExclusive.getTime() - 1))}`,
+              // 画面に出すのは短く（週の“終わり日”だけ出す）
+              label: fmtMD(new Date(endExclusive.getTime() - 1)),
+              // hover でちゃんと範囲が分かるように残す
+              rangeLabel: `${fmtMD(from)}-${fmtMD(new Date(endExclusive.getTime() - 1))}`,
             };
           });
         };
@@ -2271,8 +2274,9 @@ interface RunStatsCardProps {
 }
 
 type RatePoint = {
-  label: string;
-  rate: number;  // 0..100
+  label: string;       // 表示用（短い）
+  rangeLabel?: string; // tooltip用（詳細）
+  rate: number;        // 0..100
   done: number;
   total: number;
 };
@@ -2295,28 +2299,52 @@ const RateBars: React.FC<{ points: RatePoint[] }> = ({ points }) => {
         }}
       >
         {points.map((p, i) => {
-          const h = Math.max(0, Math.min(100, Number(p.rate ?? 0)));
+          const isEmpty = !p.total; // total=0
+          const h = isEmpty ? 0 : Math.max(0, Math.min(100, Number(p.rate ?? 0)));
+          const shownPct = isEmpty ? '—' : `${h}%`;
+          const tip = [
+            p.rangeLabel ?? p.label,
+            isEmpty ? 'データなし' : `${h}%（${p.done}/${p.total}）`,
+          ].join('\n');
           return (
             <div key={`${p.label}-${i}`} style={{ minWidth: 0 }}>
               <div
+                title={tip}
                 style={{
-                  height: 72,
-                  borderRadius: 10,
+                  height: 84, // 少しだけ上げる（読みやすさ優先）
+                  borderRadius: 12,
                   border: '1px solid rgba(255,255,255,.12)',
                   background: 'rgba(255,255,255,.04)',
                   display: 'flex',
                   alignItems: 'flex-end',
                   overflow: 'hidden',
+                  position: 'relative',
+                  opacity: isEmpty ? 0.55 : 1,
                 }}
               >
                 <div
                   style={{
                     width: '100%',
                     height: `${h}%`,
-                    background: 'rgba(110,231,183,.55)', // 薄い緑
+                    background: isEmpty ? 'rgba(255,255,255,.08)' : 'rgba(110,231,183,.55)',
                     borderTop: '1px solid rgba(255,255,255,.10)',
+                    transition: 'height 0.25s ease-out',
                   }}
                 />
+                {/* % をバー内に固定 */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    right: 8,
+                    bottom: 6,
+                    fontSize: '0.78rem',
+                    fontWeight: 900,
+                    color: 'rgba(255,255,255,.88)',
+                    textShadow: '0 2px 10px rgba(0,0,0,.45)',
+                  }}
+                >
+                  {shownPct}
+                </div>
               </div>
 
               <div style={{ marginTop: 6, fontSize: '0.72rem', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -2331,10 +2359,6 @@ const RateBars: React.FC<{ points: RatePoint[] }> = ({ points }) => {
             </div>
           );
         })}
-      </div>
-
-      <div style={{ marginTop: '0.35rem', fontSize: '0.72rem', opacity: 0.6 }}>
-        縦=達成率、横=期間（SSOT: analytics/outcomes/summary）
       </div>
     </div>
   );

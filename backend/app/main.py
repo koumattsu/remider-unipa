@@ -1,4 +1,5 @@
 # backend/app/main.py
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -51,7 +52,6 @@ def get_application() -> FastAPI:
             "build": settings.BUILD_ID,
             "version": settings.APP_VERSION,
         }
-
     return app
 
 app = get_application()

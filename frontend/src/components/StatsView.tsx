@@ -505,6 +505,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
   const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
+  const ratePoints: RatePoint[] = bucket === 'week' ? rateSeriesWeek : rateSeriesMonth;
 
   // ✅ done_rate を表示用%に（chosenSummary が先に必要）
   const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
@@ -1065,16 +1066,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               gap: '0.9rem',
             }}
           >
-            {bucket === 'week' ? (
-              <RateBars points={rateSeriesWeek} />
-            ) : (
-              <RateBars points={rateSeriesMonth} />
-            )}
+            {/* ✅ RateBars は必ず全幅 */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <RateBars points={ratePoints} bucket={bucket} />
+            </div>
 
-            {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
             <NotifStatsCard
               title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
-              subtitle={undefined} // ✅ 消す
+              subtitle={undefined}
               created={chosenNotifCreated}
               dismissed={chosenNotifDismissed}
               dismissRate={chosenNotifDismissRate}
@@ -1083,9 +1082,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               deactivated={chosenDeactivated}
               sentEvents={chosenSentEvents}
             />
+
             <RunStatsCard
               title="最新Runの観測"
-              subtitle={undefined} // ✅ 消す
+              subtitle={undefined}
               run={latestRun}
               summary={latestRunSummary}
               inappTotal={summaryInappTotal}
@@ -2325,94 +2325,145 @@ type RatePoint = {
   total: number;
 };
 
-const RateBars: React.FC<{ points: RatePoint[] }> = ({ points }) => {
+const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
+  points,
+  bucket,
+}) => {
   if (!points || points.length === 0) return null;
 
-  const shortLabel = (s: string) => {
-    const m = s.match(/^(\d{4})\/(\d{2})$/);
-    if (m) return `${Number(m[2])}月`;
-    return s.replace(/^(\d{4})\//, '');
+  const clampPct = (v: any) => Math.max(0, Math.min(100, Number(v ?? 0)));
+
+  // "2025/12/30-2026/01/05" / "12/30-1/5" / "12/30〜1/5" みたいなのを雑に拾う
+  const parseRange = (s?: string | null) => {
+    if (!s) return null;
+
+    // 1) YYYY/MM/DD-YYYY/MM/DD
+    let m = s.match(
+      /(\d{4})\/(\d{1,2})\/(\d{1,2})\s*[-〜~]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/
+    );
+    if (m) {
+      const start = `${Number(m[2])}/${Number(m[3])}`;
+      const end = `${Number(m[5])}/${Number(m[6])}`;
+      return { start, end };
+    }
+
+    // 2) MM/DD-MM/DD（年なし）
+    m = s.match(/(\d{1,2})\/(\d{1,2})\s*[-〜~]\s*(\d{1,2})\/(\d{1,2})/);
+    if (m) {
+      const start = `${Number(m[1])}/${Number(m[2])}`;
+      const end = `${Number(m[3])}/${Number(m[4])}`;
+      return { start, end };
+    }
+
+    return null;
+  };
+
+  const formatBottom = (p: RatePoint) => {
+    // 月: "2026/01" -> "1月"
+    if (bucket === 'month') {
+      const m = (p.label ?? '').match(/^(\d{4})\/(\d{2})$/);
+      if (m) return { left: `${Number(m[2])}月`, right: '' };
+      // 念のため
+      return { left: p.label ?? '', right: '' };
+    }
+
+    // 週: rangeLabel から start/end を作る（なければ label を start 扱い）
+    const r = parseRange(p.rangeLabel ?? '');
+    if (r) return { left: r.start, right: `〜 ${r.end}` };
+
+    // rangeLabel が無い/パースできない場合
+    const label = (p.label ?? '').replace(/^(\d{4})\//, ''); // YYYY/ を落とす
+    return { left: label, right: '〜' };
   };
 
   return (
-    <div style={{ marginTop: '0.65rem' }}>
-      <div style={{ fontSize: '0.78rem', opacity: 0.75, marginBottom: '0.5rem', fontWeight: 700 }}>
-        達成率の推移（直近6）
+    <div style={{ marginTop: '0.85rem', width: '100%' }}>
+      <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9, marginBottom: '0.55rem' }}>
+        達成率の推移（直近{points.length}）
       </div>
 
       <div
         style={{
+          width: '100%',
           display: 'grid',
-          gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-          gap: '0.55rem',
+          gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))`,
+          gap: '0.65rem',
+          alignItems: 'end',
         }}
       >
-        {points.map((p, idx) => {
-          const total = Number(p.total ?? 0);
-          const done = Number(p.done ?? 0);
-          const rate = Math.max(0, Math.min(100, Number(p.rate ?? 0)));
+        {points.map((p, i) => {
+          const isEmpty = !p.total;
+          const pct = isEmpty ? 0 : clampPct(p.rate);
+          const topText = isEmpty ? '—' : `${pct}%`;
+          const bottom = formatBottom(p);
 
-          // ✅ 表示ラベルは「rangeLabelがあれば優先」(君の現状仕様を維持)
-          const rawLabel = (p as any).rangeLabel ?? p.label;
-          const label = shortLabel(String(rawLabel ?? ''));
+          const tip = [
+            p.rangeLabel ?? p.label,
+            isEmpty ? 'データなし' : `${pct}%（${p.done}/${p.total}）`,
+          ].join('\n');
 
           return (
-            <div
-              key={`${p.label}-${idx}`}
-              title={
-                total === 0
-                  ? `${rawLabel ?? p.label}\nデータなし`
-                  : `${rawLabel ?? p.label}\n${rate}%（${done}/${total}）`
-              }
-              style={{
-                padding: '0.55rem 0.55rem 0.6rem',
-                borderRadius: 16,
-                border: '1px solid rgba(255,255,255,.12)',
-                background: 'rgba(255,255,255,.04)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                opacity: total === 0 ? 0.65 : 1,
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.9, marginBottom: '0.35rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {label}
-              </div>
-
+            <div key={`${p.label}-${i}`} style={{ minWidth: 0 }}>
+              {/* ✅ 上に% */}
               <div
                 style={{
-                  height: 58,
-                  borderRadius: 14,
-                  background: 'rgba(255,255,255,.08)',
-                  border: '1px solid rgba(255,255,255,.10)',
-                  overflow: 'hidden',
+                  textAlign: 'center',
+                  fontSize: '0.95rem',
+                  fontWeight: 900,
+                  lineHeight: 1,
+                  marginBottom: 8,
+                  opacity: isEmpty ? 0.55 : 0.95,
+                }}
+              >
+                {topText}
+              </div>
+
+              {/* ✅ バー（中には何も出さない） */}
+              <div
+                title={tip}
+                style={{
+                  height: 110,
+                  borderRadius: 16,
+                  border: '1px solid rgba(255,255,255,.14)',
+                  background: 'rgba(255,255,255,.04)',
                   display: 'flex',
                   alignItems: 'flex-end',
+                  overflow: 'hidden',
+                  opacity: isEmpty ? 0.55 : 1,
                 }}
               >
                 <div
                   style={{
-                    height: `${Math.max(6, (58 * rate) / 100)}px`, // 0%でも見える最低高さ
                     width: '100%',
-                    borderRadius: 14,
-                    background:
-                      total === 0
-                        ? 'rgba(255,255,255,.10)'
-                        : 'linear-gradient(180deg, rgba(34,197,94,.85), rgba(14,165,233,.55))',
+                    height: `${pct}%`,
+                    background: isEmpty ? 'rgba(255,255,255,.08)' : 'rgba(110,231,183,.55)',
+                    borderTop: '1px solid rgba(255,255,255,.10)',
                     transition: 'height 0.25s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 900,
-                    fontSize: '0.95rem',
-                    color: 'rgba(255,255,255,.92)',
                   }}
-                >
-                  {total === 0 ? '—' : `${rate}%`}
-                </div>
+                />
               </div>
 
-              <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', opacity: 0.8 }}>
-                {total === 0 ? 'データなし' : `(${done}/${total})`}
+              {/* ✅ 下：週は「開始日」左＋「〜 終了日」右 / 月は「○月」 */}
+              <div
+                style={{
+                  marginTop: 10,
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  opacity: 0.78,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{bottom.left}</span>
+                <span style={{ flexShrink: 0, opacity: 0.8 }}>{bottom.right}</span>
+              </div>
+
+              {/* ✅ 補助：分母/分子だけ小さく（邪魔なら消してOK） */}
+              <div style={{ marginTop: 2, textAlign: 'center', fontSize: '0.72rem', opacity: 0.65 }}>
+                {isEmpty ? '—' : `(${p.done}/${p.total})`}
               </div>
             </div>
           );

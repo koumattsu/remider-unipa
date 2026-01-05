@@ -1,5 +1,6 @@
 // frontend/src/components/analytics/SnapshotHeader.tsx
 
+import React from 'react';
 import { ActionEffectivenessSnapshotItem, ActionAppliedEvent } from '../../api/analyticsActions';
 
 type Props = {

@@ -157,8 +157,18 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         // 期間（deadline基準でbackendへ渡す）
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        // 今週の月曜 00:00
         const startOfWeek = new Date(startOfToday);
-        startOfWeek.setDate(startOfWeek.getDate() - 6);
+        const day = startOfWeek.getDay(); // Sun=0, Mon=1 ...
+        const diffToMonday = (day === 0 ? -6 : 1) - day;
+        startOfWeek.setDate(startOfWeek.getDate() + diffToMonday);
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        // 次週月曜 00:00（= 今週の終端 / exclusive）
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(endOfWeek.getDate() + 7);
+
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
@@ -168,16 +178,16 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         const endOfMonthEnd = new Date(endOfMonth);
         endOfMonthEnd.setHours(23, 59, 59, 999);
 
-        // ✅ analytics 用（deadline基準）
         const fromOutcomesWeek = startOfWeek.toISOString();
-        const toOutcomesWeek = endOfToday.toISOString();
+        const toOutcomesWeek = endOfWeek.toISOString();
+
+        const fromNotifs = fromOutcomesWeek;
+        const toNotifs = toOutcomesWeek;
 
         const fromOutcomesMonth = startOfMonth.toISOString();
         const toOutcomesMonth = endOfMonthEnd.toISOString();
 
         // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
-        const fromNotifs = startOfWeek.toISOString();
-        const toNotifs = endOfToday.toISOString();
         const fromNotifsMonth = startOfMonth.toISOString();
         const toNotifsMonth = endOfMonthEnd.toISOString();
         const fmtMD = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
@@ -442,11 +452,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, [bucket, appliedAt]);
 
-  // ✅ outcomesApi.list() で backend 側で期間絞り込み済みなので、
-  //    フロントで logs.filter による再フィルタは不要（= logs 未定義も解消）
-  const weeklyLogs = useMemo(() => logsWeek, [logsWeek]);
-  const monthlyLogs = useMemo(() => logsMonth, [logsMonth]);
-
   const calcRate = (subset: OutcomeLog[]) => {
     const total = subset.length;
     if (total === 0) return { total: 0, done: 0, rate: 0 };
@@ -454,16 +459,30 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return { total, done, rate: Math.round((done / total) * 100) };
   };
 
+  // ✅ outcomesApi.list() で backend 側で期間絞り込み済みなので、
+  //    フロントで logs.filter による再フィルタは不要（= logs 未定義も解消）
+  const weeklyLogs = useMemo(() => logsWeek, [logsWeek]);
+  const monthlyLogs = useMemo(() => logsMonth, [logsMonth]);
   const weekly = useMemo(() => calcRate(weeklyLogs), [weeklyLogs]);
   const monthly = useMemo(() => calcRate(monthlyLogs), [monthlyLogs]);
 
-  // ✅ Priority 3-A: 表示対象（週 / 月）
+  // ✅ Priority 3-A: 表示対象（週 / 月） ※先に宣言する（重要）
   const chosenSummary = bucket === 'week' ? summaryWeek : summaryMonth;
-  const weeklySummaryLoaded = weeklyNotifSummary !== null;
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
   const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
+
+  // ✅ done_rate を表示用%に（chosenSummary が先に必要）
+  const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
+
+  // ✅ ts(6133) 回避 + サマリ未取得時の fallback（OutcomeLogベース）
+  const fallbackRateObj = bucket === 'week' ? weekly : monthly;
+  const shownRate = chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate;
+  const shownTotal = chosenSummary?.total ?? fallbackRateObj.total;
+  const shownDone = chosenSummary?.done ?? fallbackRateObj.done;
+
   const chosenActionEffectiveness = actionEffectiveness[bucket] ?? [];
+
   const sortedActionEffectiveness = useMemo(() => {
   const xs = chosenActionEffectiveness ?? [];
     return [...xs].sort((a, b) => {
@@ -874,9 +893,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return raw.length > 16 ? `${raw.slice(0, 8)}…${raw.slice(-4)}` : raw;
   };
 
-  const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
-
-  // ✅ 週次通知反応（summary API 1発）
   const chosenNotifSummary =
     bucket === 'week' ? weeklyNotifSummary : monthlyNotifSummary;
 
@@ -884,13 +900,13 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const chosenNotifDismissed = chosenNotifSummary?.dismissed ?? 0;
   const chosenNotifDismissRate = chosenNotifSummary?.dismiss_rate ?? 0;
 
-  const weeklyEvents = weeklyNotifSummary?.webpush_events;
-  const weeklySentEvents = weeklyEvents?.sent ?? 0;
+  const chosenEvents = chosenNotifSummary?.webpush_events;
+  const chosenSentEvents = chosenEvents?.sent ?? 0;
 
   // NotifStatsCard は props 形を変えない（最小diff）
-  const weeklySent = weeklyEvents?.sent ?? 0;
-  const weeklyFailed = weeklyEvents?.failed ?? 0;
-  const weeklyDeactivated = weeklyEvents?.deactivated ?? 0;
+  const chosenSent = chosenEvents?.sent ?? 0;
+  const chosenFailed = chosenEvents?.failed ?? 0;
+  const chosenDeactivated = chosenEvents?.deactivated ?? 0;
 
   const summaryInappTotal = latestRunSummary?.inapp?.total ?? 0;
   const summaryDismissed = latestRunSummary?.inapp?.dismissed_count ?? 0;
@@ -987,11 +1003,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         <>
           {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
           <StatsCard
-            title={`達成率（${bucket === 'week' ? '週' : '月'}）`}
+            title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
             subtitle={chosenSummary ? 'analytics/outcomes/summary（read-only SSOT）' : '（集計がまだありません）'}
-            rate={summaryRate ?? 0}
-            total={chosenSummary?.total ?? 0}
-            done={chosenSummary?.done ?? 0}
+            rate={shownRate}
+            total={shownTotal}
+            done={shownDone}
           />
 
           {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
@@ -1002,19 +1018,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               gap: '0.9rem',
             }}
           >
-            {bucket === 'week' && (
-              <StatsCard
-                title="今週（直近7日）の達成率"
-                subtitle={
-                  weeklySummaryLoaded
-                    ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
-                    : "通知サマリ取得失敗（暫定値）"
-                }
-                rate={weekly.rate}
-                total={weekly.total}
-                done={weekly.done}
-              />
-            )}  
             {bucket === 'week' ? (
               <RateBars points={rateSeriesWeek} />
             ) : (
@@ -1028,20 +1031,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               created={chosenNotifCreated}
               dismissed={chosenNotifDismissed}
               dismissRate={chosenNotifDismissRate}
-              sent={weeklySent}
-              failed={weeklyFailed}
-              deactivated={weeklyDeactivated}
-              sentEvents={weeklySentEvents}
+              sent={chosenSent}
+              failed={chosenFailed}
+              deactivated={chosenDeactivated}
+              sentEvents={chosenSentEvents}
             />
-            {bucket === 'month' && (
-              <StatsCard
-                title="今月の達成率"
-                subtitle="OutcomeLog（締切到達時点の結果）ベース"
-                rate={monthly.rate}
-                total={monthly.total}
-                done={monthly.done}
-              />
-            )}
             <RunStatsCard
               title="最新Runの観測"
               subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"

@@ -39,6 +39,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);
   const [bucket, setBucket] = useState<Bucket>('week');
   type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
+  const [rateSeriesWeek, setRateSeriesWeek] = useState<RatePoint[]>([]);
+  const [rateSeriesMonth, setRateSeriesMonth] = useState<RatePoint[]>([]);
   const [activeTab, setActiveTab] = useState<StatsTab>('overview');
   const [summaryWeek, setSummaryWeek] = useState<OutcomesSummaryItem | null>(null);
   const [summaryMonth, setSummaryMonth] = useState<OutcomesSummaryItem | null>(null);
@@ -178,6 +180,82 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         const toNotifs = endOfToday.toISOString();
         const fromNotifsMonth = startOfMonth.toISOString();
         const toNotifsMonth = endOfMonthEnd.toISOString();
+        const fmtMD = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+        const fmtYM = (d: Date) => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+        const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+        // [from, to) で扱う（toは翌日0:00など）
+        const iso = (d: Date) => d.toISOString();
+
+        const buildWeekWindows = () => {
+          // 直近6週（1本=7日）。今日を含む最新ウィンドウは [今日-6, 明日)
+          const endExclusive0 = new Date(startOfDay(now));
+          endExclusive0.setDate(endExclusive0.getDate() + 1);
+
+          return Array.from({ length: 6 }).map((_, idx) => {
+            // 古い -> 新しい の順に並べたいので idx=0 が最古
+            const k = 5 - idx;
+            const endExclusive = new Date(endExclusive0);
+            endExclusive.setDate(endExclusive.getDate() - k * 7);
+            const from = new Date(endExclusive);
+            from.setDate(from.getDate() - 7);
+
+            return {
+              from,
+              to: endExclusive,
+              label: `${fmtMD(from)}-${fmtMD(new Date(endExclusive.getTime() - 1))}`,
+            };
+          });
+        };
+
+        const buildMonthWindows = () => {
+          // 直近6ヶ月（当月含む）。idx=0が最古
+          const base = new Date(now.getFullYear(), now.getMonth(), 1);
+          return Array.from({ length: 6 }).map((_, idx) => {
+            const m = 5 - idx;
+            const from = new Date(base.getFullYear(), base.getMonth() - m, 1);
+            const to = new Date(from.getFullYear(), from.getMonth() + 1, 1); // 次月1日 0:00
+            return { from, to, label: fmtYM(from) };
+          });
+        };
+
+        const fetchSeries = async () => {
+          // SSOT（analytics/outcomes/summary）を6回ずつ叩いて棒グラフを作る
+          const weekWins = buildWeekWindows();
+          const monthWins = buildMonthWindows();
+
+          const weekPoints = await Promise.all(
+            weekWins.map(async (w) => {
+              const res = await analyticsOutcomesApi.getSummary({
+                bucket: 'week',
+                from: iso(w.from),
+                to: iso(w.to),
+              });
+              const item = res.items?.[0];
+              const rate = item ? toPercent(item.done_rate) : 0;
+              return { label: w.label, rate, total: item?.total ?? 0, done: item?.done ?? 0 };
+            })
+          );
+
+          const monthPoints = await Promise.all(
+            monthWins.map(async (w) => {
+              const res = await analyticsOutcomesApi.getSummary({
+                bucket: 'month',
+                from: iso(w.from),
+                to: iso(w.to),
+              });
+              const item = res.items?.[0];
+              const rate = item ? toPercent(item.done_rate) : 0;
+              return { label: w.label, rate, total: item?.total ?? 0, done: item?.done ?? 0 };
+            })
+          );
+
+          setRateSeriesWeek(weekPoints);
+          setRateSeriesMonth(monthPoints);
+        };
+
+        await fetchSeries();
 
         const [
           outcomeWeek,
@@ -223,7 +301,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             limit_samples_per_event: 50,
           }).then(x => x.items ?? []).catch(() => []),
         ]);
-
 
         setCurrentNotifSetting(notifSetting);
         setActionEffectiveness((prev) => ({ ...prev, week: effItems }));
@@ -925,17 +1002,24 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               gap: '0.9rem',
             }}
           >
-            <StatsCard
-              title="今週（直近7日）の達成率"
-              subtitle={
-                weeklySummaryLoaded
-                  ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
-                  : "通知サマリ取得失敗（暫定値）"
-              }
-              rate={weekly.rate}
-              total={weekly.total}
-              done={weekly.done}
-            />
+            {bucket === 'week' && (
+              <StatsCard
+                title="今週（直近7日）の達成率"
+                subtitle={
+                  weeklySummaryLoaded
+                    ? "InAppNotification（資産）+ extra.webpush（観測）ベース"
+                    : "通知サマリ取得失敗（暫定値）"
+                }
+                rate={weekly.rate}
+                total={weekly.total}
+                done={weekly.done}
+              />
+            )}  
+            {bucket === 'week' ? (
+              <RateBars points={rateSeriesWeek} />
+            ) : (
+              <RateBars points={rateSeriesMonth} />
+            )}
 
             {/* ✅ NotifStatsCard はこの1個だけ（rate/total/done は渡さない） */}
             <NotifStatsCard
@@ -949,15 +1033,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               deactivated={weeklyDeactivated}
               sentEvents={weeklySentEvents}
             />
-
-            <StatsCard
-              title="今月の達成率"
-              subtitle="OutcomeLog（締切到達時点の結果）ベース"
-              rate={monthly.rate}
-              total={monthly.total}
-              done={monthly.done}
-            />
-
+            {bucket === 'month' && (
+              <StatsCard
+                title="今月の達成率"
+                subtitle="OutcomeLog（締切到達時点の結果）ベース"
+                rate={monthly.rate}
+                total={monthly.total}
+                done={monthly.done}
+              />
+            )}
             <RunStatsCard
               title="最新Runの観測"
               subtitle="NotificationRun（cron集計）× InAppNotification（資産）で突合"
@@ -2188,6 +2272,76 @@ interface RunStatsCardProps {
   dismissed: number;
   dismissRate: number;
 }
+
+type RatePoint = {
+  label: string;
+  rate: number;  // 0..100
+  done: number;
+  total: number;
+};
+
+const RateBars: React.FC<{ points: RatePoint[] }> = ({ points }) => {
+  if (!points || points.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: '0.65rem' }}>
+      <div style={{ fontSize: '0.75rem', opacity: 0.7, marginBottom: '0.35rem' }}>
+        達成率の推移（直近6区切り）
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${points.length}, 1fr)`,
+          gap: '0.45rem',
+          alignItems: 'end',
+        }}
+      >
+        {points.map((p, i) => {
+          const h = Math.max(0, Math.min(100, Number(p.rate ?? 0)));
+          return (
+            <div key={`${p.label}-${i}`} style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  height: 72,
+                  borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,.12)',
+                  background: 'rgba(255,255,255,.04)',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    width: '100%',
+                    height: `${h}%`,
+                    background: 'rgba(110,231,183,.55)', // 薄い緑
+                    borderTop: '1px solid rgba(255,255,255,.10)',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginTop: 6, fontSize: '0.72rem', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {p.label}
+              </div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 900 }}>
+                {h}%
+                <span style={{ fontWeight: 700, opacity: 0.7, marginLeft: 6, fontSize: '0.72rem' }}>
+                  ({p.done}/{p.total})
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: '0.35rem', fontSize: '0.72rem', opacity: 0.6 }}>
+        縦=達成率、横=期間（SSOT: analytics/outcomes/summary）
+      </div>
+    </div>
+  );
+};
 
 const RunStatsCard: React.FC<RunStatsCardProps> = ({
   title,

@@ -358,6 +358,38 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, []);
 
+  // ✅ 今週（月〜日）のタスク進捗（UI用）
+  // tasks は Props の tasks（= _tasks）を使う
+  const weekProgress = useMemo(() => {
+    if (bucket !== 'week') return { total: 0, done: 0, rate: 0 };
+
+    const now = new Date();
+
+    // 今週の月曜 00:00（ローカル=JST想定）
+    const start = new Date(now);
+    const day = start.getDay(); // Sun=0, Mon=1...
+    const diffToMon = (day === 0 ? -6 : 1) - day;
+    start.setDate(start.getDate() + diffToMon);
+    start.setHours(0, 0, 0, 0);
+
+    // 来週の月曜 00:00（endExclusive）
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+
+    // “今週のタスク” は deadline が [start, end) に入るもの
+    const weekTasks = (_tasks ?? []).filter((t: any) => {
+      const d = t?.deadline ? new Date(t.deadline) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      return d >= start && d < end;
+    });
+
+    const total = weekTasks.length;
+    const done = weekTasks.filter((t: any) => !!t?.is_done).length;
+    const rate = total === 0 ? 0 : Math.round((done / total) * 100);
+
+    return { total, done, rate };
+  }, [bucket, _tasks]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -402,7 +434,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
     // ✅ bucket変更 or apply後に取得し直す（再計算ではなく資産の再取得）
   }, [bucket, appliedAt]);
-
 
   useEffect(() => {
     let mounted = true;
@@ -478,11 +509,24 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // ✅ done_rate を表示用%に（chosenSummary が先に必要）
   const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
 
-  // ✅ ts(6133) 回避 + サマリ未取得時の fallback（OutcomeLogベース）
+  // 既存があるなら残してOK（month側やfallback用）
   const fallbackRateObj = bucket === 'week' ? weekly : monthly;
-  const shownRate = chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate;
-  const shownTotal = chosenSummary?.total ?? fallbackRateObj.total;
-  const shownDone = chosenSummary?.done ?? fallbackRateObj.done;
+
+  // ✅ 今週は「タスク進捗」を優先
+  const shownRate =
+    bucket === 'week'
+      ? weekProgress.rate
+      : (chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate);
+
+  const shownTotal =
+    bucket === 'week'
+      ? weekProgress.total
+      : (chosenSummary?.total ?? fallbackRateObj.total);
+
+  const shownDone =
+    bucket === 'week'
+      ? weekProgress.done
+      : (chosenSummary?.done ?? fallbackRateObj.done);
 
   const chosenActionEffectiveness = actionEffectiveness[bucket] ?? [];
 
@@ -2284,77 +2328,91 @@ type RatePoint = {
 const RateBars: React.FC<{ points: RatePoint[] }> = ({ points }) => {
   if (!points || points.length === 0) return null;
 
+  const shortLabel = (s: string) => {
+    const m = s.match(/^(\d{4})\/(\d{2})$/);
+    if (m) return `${Number(m[2])}月`;
+    return s.replace(/^(\d{4})\//, '');
+  };
+
   return (
     <div style={{ marginTop: '0.65rem' }}>
-      <div style={{ fontSize: '0.75rem', opacity: 0.7, marginBottom: '0.35rem' }}>
-        達成率の推移（直近6区切り）
+      <div style={{ fontSize: '0.78rem', opacity: 0.75, marginBottom: '0.5rem', fontWeight: 700 }}>
+        達成率の推移（直近6）
       </div>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${points.length}, 1fr)`,
-          gap: '0.45rem',
-          alignItems: 'end',
+          gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+          gap: '0.55rem',
         }}
       >
-        {points.map((p, i) => {
-          const isEmpty = !p.total; // total=0
-          const h = isEmpty ? 0 : Math.max(0, Math.min(100, Number(p.rate ?? 0)));
-          const shownPct = isEmpty ? '—' : `${h}%`;
-          const tip = [
-            p.rangeLabel ?? p.label,
-            isEmpty ? 'データなし' : `${h}%（${p.done}/${p.total}）`,
-          ].join('\n');
+        {points.map((p, idx) => {
+          const total = Number(p.total ?? 0);
+          const done = Number(p.done ?? 0);
+          const rate = Math.max(0, Math.min(100, Number(p.rate ?? 0)));
+
+          // ✅ 表示ラベルは「rangeLabelがあれば優先」(君の現状仕様を維持)
+          const rawLabel = (p as any).rangeLabel ?? p.label;
+          const label = shortLabel(String(rawLabel ?? ''));
+
           return (
-            <div key={`${p.label}-${i}`} style={{ minWidth: 0 }}>
+            <div
+              key={`${p.label}-${idx}`}
+              title={
+                total === 0
+                  ? `${rawLabel ?? p.label}\nデータなし`
+                  : `${rawLabel ?? p.label}\n${rate}%（${done}/${total}）`
+              }
+              style={{
+                padding: '0.55rem 0.55rem 0.6rem',
+                borderRadius: 16,
+                border: '1px solid rgba(255,255,255,.12)',
+                background: 'rgba(255,255,255,.04)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                opacity: total === 0 ? 0.65 : 1,
+              }}
+            >
+              <div style={{ fontSize: '0.8rem', fontWeight: 800, opacity: 0.9, marginBottom: '0.35rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {label}
+              </div>
+
               <div
-                title={tip}
                 style={{
-                  height: 84, // 少しだけ上げる（読みやすさ優先）
-                  borderRadius: 12,
-                  border: '1px solid rgba(255,255,255,.12)',
-                  background: 'rgba(255,255,255,.04)',
+                  height: 58,
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,.08)',
+                  border: '1px solid rgba(255,255,255,.10)',
+                  overflow: 'hidden',
                   display: 'flex',
                   alignItems: 'flex-end',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  opacity: isEmpty ? 0.55 : 1,
                 }}
               >
                 <div
                   style={{
+                    height: `${Math.max(6, (58 * rate) / 100)}px`, // 0%でも見える最低高さ
                     width: '100%',
-                    height: `${h}%`,
-                    background: isEmpty ? 'rgba(255,255,255,.08)' : 'rgba(110,231,183,.55)',
-                    borderTop: '1px solid rgba(255,255,255,.10)',
+                    borderRadius: 14,
+                    background:
+                      total === 0
+                        ? 'rgba(255,255,255,.10)'
+                        : 'linear-gradient(180deg, rgba(34,197,94,.85), rgba(14,165,233,.55))',
                     transition: 'height 0.25s ease-out',
-                  }}
-                />
-                {/* % をバー内に固定 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    right: 8,
-                    bottom: 6,
-                    fontSize: '0.78rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     fontWeight: 900,
-                    color: 'rgba(255,255,255,.88)',
-                    textShadow: '0 2px 10px rgba(0,0,0,.45)',
+                    fontSize: '0.95rem',
+                    color: 'rgba(255,255,255,.92)',
                   }}
                 >
-                  {shownPct}
+                  {total === 0 ? '—' : `${rate}%`}
                 </div>
               </div>
 
-              <div style={{ marginTop: 6, fontSize: '0.72rem', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {p.label}
-              </div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 900 }}>
-                {h}%
-                <span style={{ fontWeight: 700, opacity: 0.7, marginLeft: 6, fontSize: '0.72rem' }}>
-                  ({p.done}/{p.total})
-                </span>
+              <div style={{ marginTop: '0.35rem', fontSize: '0.78rem', opacity: 0.8 }}>
+                {total === 0 ? 'データなし' : `(${done}/${total})`}
               </div>
             </div>
           );
@@ -2374,10 +2432,8 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
   dismissRate,
 }) => {
   const clampedRate = Math.max(0, Math.min(100, dismissRate));
-
   const runId = run?.id ?? null;
   const runStatus = run?.status ?? 'unknown';
-
   const runCounters = run
     ? {
         inapp_created: Number(run.inapp_created ?? 0),

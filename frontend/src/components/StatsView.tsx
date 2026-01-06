@@ -315,7 +315,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           }).then(x => x.items ?? []).catch(() => []),
         ]);
 
-        setCurrentNotifSetting(notifSetting);
         setActionEffectiveness((prev) => ({ ...prev, week: effItems }));
         setActionEffectivenessMeta((prev) => ({
           ...prev,
@@ -330,8 +329,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
         setLogsWeek(outcomeWeek);
         setLogsMonth(outcomeMonth);
-        setWeeklyNotifSummary(weeklySummary);
-        setMonthlyNotifSummary(monthlySummary);
         setWeeklyNotifSummary(weeklySummary);
         setMonthlyNotifSummary(monthlySummary);
         setLatestRun(run);
@@ -459,7 +456,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return () => {
       mounted = false;
     };
-  }, [bucket, actionEffectiveness]);
+  }, [bucket, actionEffectiveness[bucket]]);
 
   useEffect(() => {
     let mounted = true;
@@ -1224,13 +1221,13 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             style={{
               padding: '1rem 1.1rem',
               borderRadius: 18,
-              border: '1px solid rgba(255,255,255,12)',
+              border: '1px solid rgba(255,255,255,.12)',
               background:
-                'radial-gradient(circle at 20% 0%, rgba(34,197,94,14), rgba(255,255,255,06) 45%, rgba(255,255,255,04))',
+                'radial-gradient(circle at 20% 0%, rgba(34,197,94,.14), rgba(255,255,255,.06) 45%, rgba(255,255,255,.04))',
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
-              boxShadow: '0 14px 40px rgba(0,0,0,38)',
-              color: 'rgba(255,255,255,92)',
+              boxShadow: '0 14px 40px rgba(0,0,0,.38)',
+              color: 'rgba(255,255,255,.92)',
               marginBottom: '0.85rem',
             }}
           >
@@ -1343,9 +1340,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           {/* ✅ Insights（重い分析はここに畳む） */}
           <details
             style={{
-              border: '1px solid rgba(255,255,255,12)',
+              border: '1px solid rgba(255,255,255,.12)',
               borderRadius: 16,
-              background: 'rgba(255,255,255,04)',
+              background: 'rgba(255,255,255,.04)',
               padding: '0.75rem 0.85rem',
             }}
           >
@@ -2640,9 +2637,11 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
       <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
         {title}
       </div>
-      <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-        {subtitle}
-      </div>
+      {subtitle ? (
+        <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
+          {subtitle}
+        </div>
+      ) : null}
 
       <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,.82)', marginBottom: '0.7rem' }}>
         <div>run_id: {runId ?? '—'} / status: {runStatus}</div>
@@ -2836,9 +2835,11 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
       <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
         {title}
       </div>
-      <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-        {subtitle}
-      </div>
+      {subtitle ? (
+        <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
+          {subtitle}
+        </div>
+      ) : null}
 
       <div
         style={{

@@ -2658,7 +2658,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
 const RunStatsCard: React.FC<RunStatsCardProps> = ({
   title,
-  subtitle,
+  subtitle: _subtitle, // ✅ unused回避（subtitleは受けるが使わない）
   run,
   summary,
   inappTotal,
@@ -2708,161 +2708,152 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         color: 'rgba(255,255,255,.92)',
       }}
     >
-      <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
+      {/* タイトル */}
+      <div style={{ marginBottom: '0.35rem', fontWeight: 900, letterSpacing: '0.02em' }}>
         {title}
       </div>
-      {subtitle ? (
-        <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
-          {subtitle}
-        </div>
-      ) : null}
 
-      <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,.82)', marginBottom: '0.7rem' }}>
-        <div>run_id: {runId ?? '—'} / status: {runStatus}</div>
-        {run?.error_summary ? <div style={{ color: 'rgba(252,165,165,.9)' }}>error: {run.error_summary}</div> : null}
+      {/* status（ユーザーに意味が伝わる形に） */}
+      <div style={{ fontSize: '0.85rem', opacity: 0.85, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 850 }}>
+          status:{' '}
+          {runStatus === 'success'
+            ? '✅ success'
+            : runStatus === 'failed'
+            ? '❌ failed'
+            : runStatus === 'running'
+            ? '⏳ running'
+            : '—'}
+        </span>
+
+        {/* エラーがある時だけ見せる */}
+        {run?.error_summary ? (
+          <span style={{ color: 'rgba(252,165,165,.95)', fontWeight: 850 }}>
+            error: {run.error_summary}
+          </span>
+        ) : null}
       </div>
 
-      {/* dismiss rate */}
-      <div
-        style={{
-          position: 'relative',
-          height: 14,
-          borderRadius: 9999,
-          backgroundColor: 'rgba(255,255,255,.10)',
-          overflow: 'hidden',
-          marginBottom: '0.5rem',
-        }}
-      >
+      {/* dismiss rate（ここが主役） */}
+      <div style={{ marginTop: '0.65rem' }}>
         <div
           style={{
-            width: `${clampedRate}%`,
-            height: '100%',
+            position: 'relative',
+            height: 14,
             borderRadius: 9999,
-            background: 'linear-gradient(90deg, rgba(251,146,60,.95), rgba(14,165,233,.95))',
-            transition: 'width 0.25s ease-out',
-          }}
-        />
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'rgba(255,255,255,.78)' }}>
-        <span>dismiss率: {clampedRate}%</span>
-        <span>{dismissed} / {inappTotal} 件（summary）</span>
-      </div>
-
-      <div style={{ marginTop: '0.75rem', fontSize: '0.82rem', color: 'rgba(255,255,255,.74)' }}>
-        {/* Run集計（cron側） */}
-        <div style={{ marginBottom: '0.35rem', fontWeight: 800, color: 'rgba(255,255,255,.86)' }}>
-          Run集計（cron側）
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '0.35rem 0.75rem',
-            padding: '0.6rem 0.65rem',
-            borderRadius: 12,
-            border: '1px solid rgba(255,255,255,.10)',
-            background: 'rgba(255,255,255,.04)',
+            backgroundColor: 'rgba(255,255,255,.10)',
+            overflow: 'hidden',
+            marginBottom: '0.45rem',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>inapp_created</span>
-            <span style={{ fontWeight: 900 }}>{runCounters?.inapp_created ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>webpush_sent</span>
-            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_sent ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>webpush_failed</span>
-            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_failed ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>webpush_deact</span>
-            <span style={{ fontWeight: 900 }}>{runCounters?.webpush_deactivated ?? '—'}</span>
-          </div>
-        </div>
-
-        {/* 資産集計（InAppNotification側） */}
-        <div style={{ marginTop: '0.75rem', marginBottom: '0.35rem', fontWeight: 800, color: 'rgba(255,255,255,.86)' }}>
-          資産集計（InAppNotification側）
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '0.35rem 0.75rem',
-            padding: '0.6rem 0.65rem',
-            borderRadius: 12,
-            border: '1px solid rgba(255,255,255,.10)',
-            background: 'rgba(255,255,255,.04)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>inapp_total</span>
-            <span style={{ fontWeight: 900 }}>{summaryCounters?.inapp_total ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>delivered</span>
-            <span style={{ fontWeight: 900 }}>{summaryCounters?.delivered ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>失敗</span>
-            <span style={{ fontWeight: 900 }}>{summaryCounters?.failed ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>停止</span>
-            <span style={{ fontWeight: 900 }}>{summaryCounters?.deactivated ?? '—'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>不明</span>
-            <span style={{ fontWeight: 900 }}>{summaryCounters?.unknown ?? '—'}</span>
-          </div>
-        </div>
-
-        {/* events は詳細なので折りたたみ */}
-        <details style={{ marginTop: '0.55rem' }}>
-          <summary style={{ cursor: 'pointer', opacity: 0.78, fontWeight: 800 }}>
-            内訳（詳細）
-          </summary>
           <div
             style={{
-              marginTop: '0.45rem',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.4rem',
-              fontSize: '0.78rem',
-              color: 'rgba(255,255,255,.72)',
+              width: `${clampedRate}%`,
+              height: '100%',
+              borderRadius: 9999,
+              background: 'linear-gradient(90deg, rgba(251,146,60,.95), rgba(14,165,233,.95))',
+              transition: 'width 0.25s ease-out',
             }}
-          >
-            {[
-              ['送信', summaryCounters?.events.sent],
-              ['失敗', summaryCounters?.events.failed],
-              ['停止', summaryCounters?.events.deactivated],
-              ['スキップ', summaryCounters?.events.skipped],
-              ['不明', summaryCounters?.events.unknown],
-            ].map(([k, v]) => (
-              <span
-                key={k}
-                style={{
-                  padding: '0.22rem 0.5rem',
-                  borderRadius: 999,
-                  border: '1px solid rgba(255,255,255,.12)',
-                  background: 'rgba(255,255,255,.04)',
-                }}
-              >
-                {k} {v ?? '—'}
-              </span>
-            ))}
-          </div>
-        </details>
+          />
+        </div>
 
-        <div style={{ marginTop: '0.6rem', color: 'rgba(255,255,255,.6)', fontSize: '0.78rem' }}>
-          ※ 「Run集計」と「資産集計」がズレたら、観測/監査の入口になる（M&A説明しやすい）
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            fontSize: '0.85rem',
+            color: 'rgba(255,255,255,.82)',
+            fontWeight: 850,
+          }}
+        >
+          <span>dismiss率 {clampedRate}%</span>
+          <span style={{ opacity: 0.9 }}>
+            {dismissed} / {inappTotal} 件
+          </span>
         </div>
       </div>
+
+      {/* ズレがある時だけ出す（ユーザー向けにはこれだけで十分） */}
+      {(() => {
+        const cronCreated = runCounters?.inapp_created;
+        const assetTotal = summaryCounters?.inapp_total;
+
+        if (cronCreated == null || assetTotal == null) return null;
+        if (Number(cronCreated) === Number(assetTotal)) return null;
+
+        return (
+          <div
+            style={{
+              marginTop: '0.6rem',
+              fontSize: '0.78rem',
+              opacity: 0.85,
+              color: 'rgba(251,191,36,.95)',
+              fontWeight: 850,
+            }}
+            title="Run集計（cron側）と資産集計（InAppNotification側）が一致しない場合、配信や集計の不整合の可能性があります"
+          >
+            観測ズレ: cron {cronCreated} / asset {assetTotal}
+          </div>
+        );
+      })()}
+
+      {/* 監査・デバッグは折りたたみへ */}
+      <details style={{ marginTop: '0.75rem' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 900, opacity: 0.85 }}>
+          詳細（監査）
+        </summary>
+
+        <div style={{ marginTop: '0.55rem', fontSize: '0.82rem', opacity: 0.82 }}>
+          <div style={{ marginBottom: '0.45rem' }}>
+            <div style={{ opacity: 0.7 }}>run_id</div>
+            <div style={{ fontWeight: 900 }}>{runId ?? '—'}</div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '0.35rem 0.75rem',
+              padding: '0.6rem 0.65rem',
+              borderRadius: 12,
+              border: '1px solid rgba(255,255,255,.10)',
+              background: 'rgba(255,255,255,.04)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>cron inapp_created</span>
+              <span style={{ fontWeight: 900 }}>{runCounters?.inapp_created ?? '—'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>asset inapp_total</span>
+              <span style={{ fontWeight: 900 }}>{summaryCounters?.inapp_total ?? '—'}</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>delivered</span>
+              <span style={{ fontWeight: 900 }}>{summaryCounters?.delivered ?? '—'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>failed</span>
+              <span style={{ fontWeight: 900 }}>{summaryCounters?.failed ?? '—'}</span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>deactivated</span>
+              <span style={{ fontWeight: 900 }}>{summaryCounters?.deactivated ?? '—'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>unknown</span>
+              <span style={{ fontWeight: 900 }}>{summaryCounters?.unknown ?? '—'}</span>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '0.55rem', fontSize: '0.78rem', opacity: 0.65 }}>
+            ※ 詳細は監査用。ユーザーには上の「dismiss率」と「観測ズレ」だけで十分。
+          </div>
+        </div>
+      </details>
     </div>
   );
 };

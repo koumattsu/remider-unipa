@@ -2401,7 +2401,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   const padPoints: RatePoint[] = Array.from({ length: padCount }).map((_, i) => ({
     label: `__pad_${bucket}_${page}_${i}`, // key衝突防止
-    rangeLabel: '',
+    rangeLabel: undefined,
     rate: 0,
     done: 0,
     total: 0,
@@ -2601,7 +2601,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
           const bottom = formatBottom(p);
 
           return (
-            <div key={p.rangeLabel ?? p.label} style={{ minWidth: 0 }}>
+            <div key={p.label} style={{ minWidth: 0 }}>
               {/* ✅ 上に% */}
               <div
                 style={{

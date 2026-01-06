@@ -34,20 +34,31 @@ def make_inapp_records(
 ) -> List[InAppNotification]:
     title = build_inapp_title(offset_hours)
     body = build_inapp_body(tasks)
-    recs: List[InAppNotification] = []
-    for t in tasks:
-        recs.append(
-            InAppNotification(
-                user_id=user_id,
-                task_id=t.id,
-                deadline_at_send=t.deadline,  # “送った瞬間の締切”として固定
-                offset_hours=offset_hours,
-                kind="task_reminder",
-                title=title,
-                body=body,
-                deep_link=TODAY_DEEPLINK,
-                extra=None,
-                run_id=run_id,
-            )
+    if not tasks:
+        return []
+
+    # ✅ 1回の通知 = 1レコード（= 1 Push）
+    # deadline_at_send は「この通知が代表する締切」として最短締切を採用（監査・集計の軸になる）
+    earliest_deadline = min(t.deadline for t in tasks if t.deadline is not None)
+
+    task_ids = [int(t.id) for t in tasks if t.id is not None]
+    extra = {
+        "task_ids": task_ids,
+        "task_count": len(task_ids),
+        "generated_at": now_utc.isoformat(),
+    }
+
+    return [
+        InAppNotification(
+            user_id=user_id,
+            task_id=None,  # ✅ アプリ内通知UI前提を捨てる（OS Push 用のメッセージ資産）
+            deadline_at_send=earliest_deadline,
+            offset_hours=offset_hours,
+            kind="task_reminder",
+            title=title,
+            body=body,
+            deep_link=TODAY_DEEPLINK,
+            extra=extra,
+            run_id=run_id,
         )
-    return recs
+    ]

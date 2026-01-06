@@ -32,6 +32,7 @@ class InAppNotification(Base):
             "task_id",
             "deadline_at_send",
             "offset_hours",
+            "channel",
             name="uq_inapp_user_task_deadline_offset",
         ),
 
@@ -49,6 +50,10 @@ class InAppNotification(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # ✅ 通知チャネル（反応率の集計をWeb Pushだけに絞るため）
+    # 既存データ互換のため default は "in_app"
+    channel = Column(String(32), nullable=False, default="in_app", index=True)
 
     user_id = Column(
         Integer,

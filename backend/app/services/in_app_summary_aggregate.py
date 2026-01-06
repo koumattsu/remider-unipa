@@ -17,20 +17,28 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
     """
     # ① DB集計（Postgres JSONB想定）
     try:
-        inapp_total = int(
-            db.query(func.count(InAppNotification.id))
-            .filter(InAppNotification.run_id == run_id)
+        # ✅ OS Push SSOT: WebPushDelivery から「通知メッセージ数（distinct）」を数える
+        # - subscription が0件だと deliveries が作られず 0 になるので、その場合は InAppNotification にフォールバック
+        inapp_total_from_delivery = int(
+            db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
+            .filter(WebPushDelivery.run_id == run_id)
             .scalar()
             or 0
         )
 
-        dismissed_count = int(
-            db.query(func.count(InAppNotification.id))
-            .filter(InAppNotification.run_id == run_id)
-            .filter(InAppNotification.dismissed_at.isnot(None))
-            .scalar()
-            or 0
-        )
+        if inapp_total_from_delivery > 0:
+            inapp_total = inapp_total_from_delivery
+        else:
+            inapp_total = int(
+                db.query(func.count(InAppNotification.id))
+                .filter(InAppNotification.run_id == run_id)
+                .filter(InAppNotification.channel == "web_push")
+                .scalar()
+                or 0
+            )
+
+        # ✅ OS Pushには「dismissed（アプリ内で消した）」が無いので 0 固定
+        dismissed_count = 0
 
         # ✅ SSOT: WebPushDelivery（subscription軸の合計）
         delivered = 0
@@ -82,18 +90,21 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
             delivered = int(
                 db.query(func.coalesce(func.sum(sent_expr), 0))
                 .filter(InAppNotification.run_id == run_id)
+                .filter(InAppNotification.channel == "web_push")
                 .scalar()
                 or 0
             )
             failed = int(
                 db.query(func.coalesce(func.sum(failed_expr), 0))
                 .filter(InAppNotification.run_id == run_id)
+                .filter(InAppNotification.channel == "web_push")
                 .scalar()
                 or 0
             )
             deactivated = int(
                 db.query(func.coalesce(func.sum(deactivated_expr), 0))
                 .filter(InAppNotification.run_id == run_id)
+                .filter(InAppNotification.channel == "web_push")
                 .scalar()
                 or 0
             )
@@ -121,6 +132,7 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
                     )
                 )
                 .filter(InAppNotification.run_id == run_id)
+                .filter(InAppNotification.channel == "web_push")
                 .scalar()
                 or 0
             )
@@ -139,6 +151,7 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         items = (
             db.query(InAppNotification)
             .filter(InAppNotification.run_id == run_id)
+            .filter(InAppNotification.channel == "web_push")
             .all()
         )
 

@@ -2662,11 +2662,10 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
   subtitle: _subtitle,
   run,
   summary,
-  inappTotal,
-  dismissed,
   dismissRate,
 }) => {
-  const clampedRate = Math.max(0, Math.min(100, dismissRate));
+  const dismissPct = Math.max(0, Math.min(100, Number(dismissRate ?? 0)));
+  const openPct = Math.max(0, Math.min(100, 100 - dismissPct));
   const runId = run?.id ?? null;
   const runStatus = run?.status ?? 'unknown';
   const runCounters = run
@@ -2749,7 +2748,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         >
           <div
             style={{
-              width: `${clampedRate}%`,
+              width: `${dismissPct}%`, // ✅ clampedRate → dismissPct
               height: '100%',
               borderRadius: 9999,
               background: 'linear-gradient(90deg, rgba(251,146,60,.95), rgba(14,165,233,.95))',
@@ -2768,9 +2767,9 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
             fontWeight: 850,
           }}
         >
-          <span>dismiss率 {clampedRate}%</span>
-          <span style={{ opacity: 0.9 }}>
-            {dismissed} / {inappTotal} 件
+          <span>
+            <strong>open</strong> {openPct}% <span style={{ opacity: 0.6 }}>/</span>{' '}
+            <strong>dismiss</strong> {dismissPct}%
           </span>
         </div>
       </div>
@@ -2896,7 +2895,19 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
   dismissed,
   dismissRate,
 }) => {
-  const clampedRate = Math.max(0, Math.min(100, dismissRate));
+  // dismissRate が来る場合はそれを優先。無い/NaN の場合は件数から算出。
+  const computedDismissRate = (() => {
+    const dr = Number(dismissRate);
+    if (Number.isFinite(dr)) return dr;
+    if (!created) return 0;
+    return (Number(dismissed ?? 0) / Number(created)) * 100;
+  })();
+
+  const clampedDismissRate = Math.max(0, Math.min(100, computedDismissRate));
+  const openRate = Math.max(0, Math.min(100, 100 - clampedDismissRate));
+
+  // 表示は整数で（スクショに合わせる）
+  const openRateInt = Math.round(openRate);
 
   return (
     <div
@@ -2922,13 +2933,21 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
         </div>
       ) : null}
 
-      {/* ✅ 上段3つだけ（スマホでも見やすい） */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: '0.65rem' }}>
+      {/* ✅ スクショ準拠：通知数 / 開封率 / 未反応 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3,1fr)',
+          gap: 12,
+          marginBottom: '0.65rem',
+        }}
+      >
         <Stat label="通知数" value={created} />
-        <Stat label="反応率" value={`${clampedRate}%`} />
-        <Stat label="無視" value={dismissed} subtle />
+        <Stat label="開封率" value={`${openRateInt}%`} />
+        <Stat label="未反応" value={dismissed} />
       </div>
 
+      {/* ✅ バーは「開封率」を伸ばす（= 反応の可視化） */}
       <div
         style={{
           position: 'relative',
@@ -2941,7 +2960,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
       >
         <div
           style={{
-            width: `${clampedRate}%`,
+            width: `${openRate}%`,
             height: '100%',
             borderRadius: 9999,
             background: 'linear-gradient(90deg, rgba(168,85,247,.95), rgba(14,165,233,.95))',
@@ -2952,4 +2971,3 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
     </div>
   );
 };
-

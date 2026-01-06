@@ -2333,6 +2333,52 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   const clampPct = (v: any) => Math.max(0, Math.min(100, Number(v ?? 0)));
 
+  // ✅ スマホ判定（<=480px）
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 480px)');
+    const apply = () => setIsNarrow(mq.matches);
+    apply();
+
+    const mqa = mq as any; // Safari 古い実装の addListener/removeListener 用
+
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', apply);
+    } else if (typeof mqa.addListener === 'function') {
+      // eslint-disable-next-line deprecation/deprecation
+      mqa.addListener(apply);
+    }
+
+    return () => {
+      if (typeof mq.removeEventListener === 'function') {
+        mq.removeEventListener('change', apply);
+      } else if (typeof mqa.removeListener === 'function') {
+        // eslint-disable-next-line deprecation/deprecation
+        mqa.removeListener(apply);
+      }
+    };
+  }, []);
+
+  const visibleCount = isNarrow ? 4 : 6;
+
+  // ✅ ページング（points が増えた時に過去分を見れる）
+  const totalPages = Math.max(1, Math.ceil(points.length / visibleCount));
+  const [page, setPage] = useState(0);
+
+  // ✅ 初期は「最新ページ」を表示（直近が先に見える）
+  useEffect(() => {
+    const last = Math.max(0, totalPages - 1);
+    setPage((p) => (p > last ? last : last));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucket, points.length, visibleCount]);
+
+  const canPrev = page > 0;
+  const canNext = page < totalPages - 1;
+
+  const start = page * visibleCount;
+  const shownPoints = points.slice(start, start + visibleCount);
+
   // "2025/12/30-2026/01/05" / "12/30-1/5" / "12/30〜1/5" みたいなのを雑に拾う
   const parseRange = (s?: string | null) => {
     if (!s) return null;
@@ -2363,7 +2409,6 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     if (bucket === 'month') {
       const m = (p.label ?? '').match(/^(\d{4})\/(\d{2})$/);
       if (m) return { left: `${Number(m[2])}月`, right: '' };
-      // 念のため
       return { left: p.label ?? '', right: '' };
     }
 
@@ -2378,20 +2423,80 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   return (
     <div style={{ marginTop: '0.85rem', width: '100%' }}>
-      <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9, marginBottom: '0.55rem' }}>
-        達成率の推移（直近{points.length}）
+      {/* ✅ タイトル + ページャ */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          marginBottom: '0.55rem',
+        }}
+      >
+        <div style={{ fontSize: '0.85rem', fontWeight: 800, opacity: 0.9 }}>
+          達成率の推移
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
+            disabled={!canPrev}
+            style={{
+              padding: '0.25rem 0.5rem',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,.12)',
+              background: canPrev ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.03)',
+              color: 'rgba(255,255,255,.9)',
+              fontSize: '0.8rem',
+              fontWeight: 900,
+              cursor: canPrev ? 'pointer' : 'not-allowed',
+              opacity: canPrev ? 1 : 0.55,
+            }}
+            aria-label="前の期間"
+            title="前の期間"
+          >
+            ◀
+          </button>
+
+          <div style={{ fontSize: '0.75rem', opacity: 0.75, fontWeight: 850 }}>
+            {page + 1}/{totalPages}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => canNext && setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={!canNext}
+            style={{
+              padding: '0.25rem 0.5rem',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,.12)',
+              background: canNext ? 'rgba(255,255,255,.06)' : 'rgba(255,255,255,.03)',
+              color: 'rgba(255,255,255,.9)',
+              fontSize: '0.8rem',
+              fontWeight: 900,
+              cursor: canNext ? 'pointer' : 'not-allowed',
+              opacity: canNext ? 1 : 0.55,
+            }}
+            aria-label="次の期間"
+            title="次の期間"
+          >
+            ▶
+          </button>
+        </div>
       </div>
 
+      {/* ✅ 表示は “ページ分” のみ */}
       <div
         style={{
           width: '100%',
           display: 'grid',
-          gridTemplateColumns: `repeat(${points.length}, minmax(0, 1fr))`,
+          gridTemplateColumns: `repeat(${shownPoints.length}, minmax(0, 1fr))`,
           gap: '0.65rem',
           alignItems: 'end',
         }}
       >
-        {points.map((p, i) => {
+        {shownPoints.map((p, i) => {
           const isEmpty = !p.total;
           const pct = isEmpty ? 0 : clampPct(p.rate);
           const topText = isEmpty ? '—' : `${pct}%`;
@@ -2403,7 +2508,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
           ].join('\n');
 
           return (
-            <div key={`${p.label}-${i}`} style={{ minWidth: 0 }}>
+            <div key={`${p.label}-${start + i}`} style={{ minWidth: 0 }}>
               {/* ✅ 上に% */}
               <div
                 style={{
@@ -2418,7 +2523,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                 {topText}
               </div>
 
-              {/* ✅ バー（中には何も出さない） */}
+              {/* ✅ バー */}
               <div
                 title={tip}
                 style={{
@@ -2443,7 +2548,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                 />
               </div>
 
-              {/* ✅ 下：週は「開始日」左＋「〜 終了日」右 / 月は「○月」 */}
+              {/* ✅ 下：ellipsis を出さないため “左右2分割” + nowrap */}
               <div
                 style={{
                   marginTop: 10,
@@ -2457,17 +2562,24 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{bottom.left}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {bottom.left}
+                </span>
                 <span style={{ flexShrink: 0, opacity: 0.8 }}>{bottom.right}</span>
               </div>
 
-              {/* ✅ 補助：分母/分子だけ小さく（邪魔なら消してOK） */}
+              {/* ✅ (done/total) */}
               <div style={{ marginTop: 2, textAlign: 'center', fontSize: '0.72rem', opacity: 0.65 }}>
                 {isEmpty ? '—' : `(${p.done}/${p.total})`}
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* ✅ スマホ時は「4本表示中」を明示（UX向上） */}
+      <div style={{ marginTop: 6, fontSize: '0.72rem', opacity: 0.62 }}>
+        {isNarrow ? '※ スマホは4本表示（◀▶で過去へ）' : null}
       </div>
     </div>
   );

@@ -2390,18 +2390,25 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   const start = Math.max(0, end - visibleCount);
   const rawShown = points.slice(start, end);
 
-  // ✅ スマホは常に4本、PCは常に6本に“見た目”を固定する（不足分は空バーで埋める）
-  const padCount = Math.max(0, visibleCount - rawShown.length);
+  // ✅ pad は「一番古いページ（最後のページ）」だけに限定する
+  //    最新ページ(page=0)で pad が混ざるのを禁止（今回のバグの根本）
+  const isOldestPage = page === totalPages - 1;
+
+  const shouldPad =
+    points.length < visibleCount || (isOldestPage && rawShown.length < visibleCount);
+
+  const padCount = shouldPad ? Math.max(0, visibleCount - rawShown.length) : 0;
+
   const padPoints: RatePoint[] = Array.from({ length: padCount }).map((_, i) => ({
-    label: `__pad_${bucket}_${page}_${i}`,  // key衝突防止
+    label: `__pad_${bucket}_${page}_${i}`, // key衝突防止
     rangeLabel: '',
     rate: 0,
     done: 0,
     total: 0,
   }));
 
-  // ✅ 古い→新しいの順は崩さず、左側に空を足す（右端＝最新の意味が保たれる）
-  const shownPoints = [...padPoints, ...rawShown];
+  // ✅ 右端＝最新の意味を保つため、左側にpad
+  const shownPoints = padCount > 0 ? [...padPoints, ...rawShown] : rawShown;
 
   const tips = useMemo(() => {
     return shownPoints.map((p) => {
@@ -2445,6 +2452,9 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   };
 
   const formatBottom = (p: RatePoint) => {
+    // ✅ pad のラベルは絶対に見せない
+    if ((p.label ?? '').startsWith('__pad_')) return '';
+
     // 月: "2026/01" -> "1月"
     if (bucket === 'month') {
       const m = (p.label ?? '').match(/^(\d{4})\/(\d{2})$/);
@@ -2453,7 +2463,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     }
 
     const r = parseRange(p.rangeLabel ?? '');
-    if (r) return `${r.start}〜${r.end}`;
+    if (r) return `${r.start}〜`;
 
     const label = (p.label ?? '').replace(/^(\d{4})\//, '');
     return label;
@@ -2497,8 +2507,19 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
             ◀
           </button>
 
-          <div style={{ fontSize: '0.75rem', opacity: 0.75, fontWeight: 850 }}>
-            {page + 1}/{totalPages}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {Array.from({ length: totalPages }).map((_, idx) => (
+              <span
+                key={`dot-${idx}`}
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: idx === page ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.28)',
+                  display: 'inline-block',
+                }}
+              />
+            ))}
           </div>
 
           <button
@@ -2658,7 +2679,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
 const RunStatsCard: React.FC<RunStatsCardProps> = ({
   title,
-  subtitle: _subtitle, // ✅ unused回避（subtitleは受けるが使わない）
+  subtitle: _subtitle,
   run,
   summary,
   inappTotal,

@@ -1,6 +1,6 @@
 // frontend/src/components/StatsView.tsx
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { outcomesApi, OutcomeLog } from '../api/outcomes';
 import {
   analyticsOutcomesApi,
@@ -247,7 +247,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               });
               const item = res.items?.[0];
               const rate = item ? toPercent(item.done_rate) : 0;
-              return { label: w.label, rate, total: item?.total ?? 0, done: item?.done ?? 0 };
+
+              // ✅ rangeLabel を渡す（これが下段表示のSSOT）
+              return {
+                label: w.label,
+                rangeLabel: w.rangeLabel,
+                rate,
+                total: item?.total ?? 0,
+                done: item?.done ?? 0
+              };
             })
           );
 
@@ -2362,6 +2370,13 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   // ✅ ページング state（page=0 が「最新」）
   const [page, setPage] = useState(0);
+  const [pageAnimOn, setPageAnimOn] = useState(true);
+
+  // ✅ スワイプ（スマホのみ）
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const touchLastXRef = useRef<number | null>(null);
+  const touchMovedRef = useRef(false);
 
   // ✅ ページ数（最低1）
   const totalPages = Math.max(1, Math.ceil(points.length / visibleCount));
@@ -2372,13 +2387,45 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bucket, points.length, visibleCount]);
 
+  useEffect(() => {
+    // ページ切替時に軽くフェード
+    setPageAnimOn(false);
+    const t = window.setTimeout(() => setPageAnimOn(true), 0);
+    return () => window.clearTimeout(t);
+  }, [page]);
+
   // ✅ page=0 を「最新」にする（右端が最新）
   const pageIndexFromLatest = page;
 
   // ✅ 最新側から切り出す
   const end = Math.max(0, points.length - visibleCount * pageIndexFromLatest);
   const start = Math.max(0, end - visibleCount);
-  const shownPoints = points.slice(start, end);
+  const rawShown = points.slice(start, end);
+
+  // ✅ スマホは常に4本、PCは常に6本に“見た目”を固定する（不足分は空バーで埋める）
+  const padCount = Math.max(0, visibleCount - rawShown.length);
+  const padPoints: RatePoint[] = Array.from({ length: padCount }).map((_, i) => ({
+    label: `__pad_${bucket}_${page}_${i}`,  // key衝突防止
+    rangeLabel: '',
+    rate: 0,
+    done: 0,
+    total: 0,
+  }));
+
+  // ✅ 古い→新しいの順は崩さず、左側に空を足す（右端＝最新の意味が保たれる）
+  const shownPoints = [...padPoints, ...rawShown];
+
+  const tips = useMemo(() => {
+    return shownPoints.map((p) => {
+      const isEmpty = !p.total;
+      const pct = isEmpty ? 0 : clampPct(p.rate);
+      return [
+        p.rangeLabel ?? p.label,
+        isEmpty ? 'データなし' : `${pct}%（${p.done}/${p.total}）`,
+      ].join('\n');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownPoints]);
 
   // ✅ 前=過去(older) / 次=新しい(newer)
   const canPrev = page < totalPages - 1; // まだ過去がある
@@ -2413,16 +2460,15 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     // 月: "2026/01" -> "1月"
     if (bucket === 'month') {
       const m = (p.label ?? '').match(/^(\d{4})\/(\d{2})$/);
-      if (m) return { left: `${Number(m[2])}月`, right: '' };
-      return { left: p.label ?? '', right: '' };
+      if (m) return `${Number(m[2])}月`;
+      return p.label ?? '';
     }
 
     const r = parseRange(p.rangeLabel ?? '');
-    if (r) return { left: `${r.start}〜${r.end}`, right: '' };
+    if (r) return `${r.start}〜${r.end}`;
 
-    // rangeLabel が無い/パースできない場合
-    const label = (p.label ?? '').replace(/^(\d{4})\//, ''); // YYYY/ を落とす
-    return { left: label, right: '' };
+    const label = (p.label ?? '').replace(/^(\d{4})\//, '');
+    return label;
   };
 
   return (
@@ -2492,12 +2538,52 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
       {/* ✅ 表示は “ページ分” のみ */}
       <div
+        onTouchStart={(e) => {
+          if (!isNarrow) return; // ✅ スマホだけ
+          const t = e.touches?.[0];
+          if (!t) return;
+          touchStartXRef.current = t.clientX;
+          touchStartYRef.current = t.clientY;
+          touchLastXRef.current = t.clientX;
+          touchMovedRef.current = false;
+        }}
+        onTouchMove={(e) => {
+          if (!isNarrow) return;
+          const t = e.touches?.[0];
+          if (!t) return;
+          if (touchStartXRef.current == null || touchStartYRef.current == null) return;
+          const dx = t.clientX - touchStartXRef.current;
+          const dy = t.clientY - touchStartYRef.current;
+          touchLastXRef.current = t.clientX;
+          // 縦スクロール優先（横意図のときだけ）
+          if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+            touchMovedRef.current = true;
+          }
+        }}
+        onTouchEnd={() => {
+          if (!isNarrow) return;
+          if (!touchMovedRef.current) return;
+          if (touchStartXRef.current == null || touchLastXRef.current == null) return;
+
+          const dx = touchLastXRef.current - touchStartXRef.current;
+          const threshold = 28;
+          if (dx <= -threshold) {
+            // 👈 左スワイプ = 過去へ（page+1）
+            if (canPrev) setPage((p) => Math.min(totalPages - 1, p + 1));
+          } else if (dx >= threshold) {
+            // 👉 右スワイプ = 最新へ（page-1）
+            if (canNext) setPage((p) => Math.max(0, p - 1));
+          }
+        }}
         style={{
           width: '100%',
           display: 'grid',
           gridTemplateColumns: `repeat(${shownPoints.length}, minmax(0, 1fr))`,
           gap: '0.65rem',
           alignItems: 'end',
+          transition: 'opacity 160ms ease-out, transform 160ms ease-out',
+          opacity: pageAnimOn ? 1 : 0,
+          transform: pageAnimOn ? 'translateY(0px)' : 'translateY(4px)',
         }}
       >
         {shownPoints.map((p, i) => {
@@ -2506,13 +2592,8 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
           const topText = isEmpty ? '—' : `${pct}%`;
           const bottom = formatBottom(p);
 
-          const tip = [
-            p.rangeLabel ?? p.label,
-            isEmpty ? 'データなし' : `${pct}%（${p.done}/${p.total}）`,
-          ].join('\n');
-
           return (
-            <div key={`${p.label}-${start + i}`} style={{ minWidth: 0 }}>
+            <div key={p.rangeLabel ?? p.label} style={{ minWidth: 0 }}>
               {/* ✅ 上に% */}
               <div
                 style={{
@@ -2529,7 +2610,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
               {/* ✅ バー */}
               <div
-                title={tip}
+                title={tips[i]}
                 style={{
                   height: 110,
                   borderRadius: 16,
@@ -2566,7 +2647,9 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{bottom.left}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {bottom || '—'}
+                </span>
               </div>
 
               {/* ✅ (done/total) */}

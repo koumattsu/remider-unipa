@@ -2357,24 +2357,32 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     };
   }, []);
 
+  // ✅ スマホは4本、PCは6本
   const visibleCount = isNarrow ? 4 : 6;
 
-  // ✅ ページング（points が増えた時に過去分を見れる）
-  const totalPages = Math.max(1, Math.ceil(points.length / visibleCount));
+  // ✅ ページング state（page=0 が「最新」）
   const [page, setPage] = useState(0);
 
-  // ✅ 初期は「最新ページ」を表示（直近が先に見える）
+  // ✅ ページ数（最低1）
+  const totalPages = Math.max(1, Math.ceil(points.length / visibleCount));
+
+  // ✅ points/bucket が変わったら “最新(0)” に戻す
   useEffect(() => {
-    const last = Math.max(0, totalPages - 1);
-    setPage((p) => (p > last ? last : last));
+    setPage(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bucket, points.length, visibleCount]);
 
-  const canPrev = page > 0;
-  const canNext = page < totalPages - 1;
+  // ✅ page=0 を「最新」にする（右端が最新）
+  const pageIndexFromLatest = page;
 
-  const start = page * visibleCount;
-  const shownPoints = points.slice(start, start + visibleCount);
+  // ✅ 最新側から切り出す
+  const end = Math.max(0, points.length - visibleCount * pageIndexFromLatest);
+  const start = Math.max(0, end - visibleCount);
+  const shownPoints = points.slice(start, end);
+
+  // ✅ 前=過去(older) / 次=新しい(newer)
+  const canPrev = page < totalPages - 1; // まだ過去がある
+  const canNext = page > 0;              // まだ新しい方へ戻れる
 
   // "2025/12/30-2026/01/05" / "12/30-1/5" / "12/30〜1/5" みたいなのを雑に拾う
   const parseRange = (s?: string | null) => {
@@ -2409,13 +2417,12 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
       return { left: p.label ?? '', right: '' };
     }
 
-    // 週: rangeLabel から start/end を作る（なければ label を start 扱い）
     const r = parseRange(p.rangeLabel ?? '');
-    if (r) return { left: r.start, right: `〜 ${r.end}` };
+    if (r) return { left: `${r.start}〜${r.end}`, right: '' };
 
     // rangeLabel が無い/パースできない場合
     const label = (p.label ?? '').replace(/^(\d{4})\//, ''); // YYYY/ を落とす
-    return { left: label, right: '〜' };
+    return { left: label, right: '' };
   };
 
   return (
@@ -2437,7 +2444,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             type="button"
-            onClick={() => canPrev && setPage((p) => Math.max(0, p - 1))}
+            onClick={() => canPrev && setPage((p) => Math.min(totalPages - 1, p + 1))}
             disabled={!canPrev}
             style={{
               padding: '0.25rem 0.5rem',
@@ -2462,7 +2469,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
           <button
             type="button"
-            onClick={() => canNext && setPage((p) => Math.min(totalPages - 1, p + 1))}
+            onClick={() => canNext && setPage((p) => Math.max(0, p - 1))}
             disabled={!canNext}
             style={{
               padding: '0.25rem 0.5rem',
@@ -2551,7 +2558,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                   marginTop: 10,
                   display: 'flex',
                   alignItems: 'baseline',
-                  justifyContent: 'space-between',
+                  justifyContent: 'center',
                   gap: 8,
                   fontSize: '0.78rem',
                   fontWeight: 800,
@@ -2559,10 +2566,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                   whiteSpace: 'nowrap',
                 }}
               >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {bottom.left}
-                </span>
-                <span style={{ flexShrink: 0, opacity: 0.8 }}>{bottom.right}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{bottom.left}</span>
               </div>
 
               {/* ✅ (done/total) */}

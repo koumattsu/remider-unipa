@@ -2507,21 +2507,6 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
             ◀
           </button>
 
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {Array.from({ length: totalPages }).map((_, idx) => (
-              <span
-                key={`dot-${idx}`}
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: idx === page ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.28)',
-                  display: 'inline-block',
-                }}
-              />
-            ))}
-          </div>
-
           <button
             type="button"
             onClick={() => canNext && setPage((p) => Math.max(0, p - 1))}
@@ -2667,11 +2652,6 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
             </div>
           );
         })}
-      </div>
-
-      {/* ✅ スマホ時は「4本表示中」を明示（UX向上） */}
-      <div style={{ marginTop: 6, fontSize: '0.72rem', opacity: 0.62 }}>
-        {isNarrow ? '※ スマホは4本表示（◀▶で過去へ）' : null}
       </div>
     </div>
   );

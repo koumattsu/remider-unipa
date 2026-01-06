@@ -953,14 +953,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const chosenNotifDismissed = chosenNotifSummary?.dismissed ?? 0;
   const chosenNotifDismissRate = chosenNotifSummary?.dismiss_rate ?? 0;
 
-  const chosenEvents = chosenNotifSummary?.webpush_events;
-  const chosenSentEvents = chosenEvents?.sent ?? 0;
-
-  // NotifStatsCard は props 形を変えない（最小diff）
-  const chosenSent = chosenEvents?.sent ?? 0;
-  const chosenFailed = chosenEvents?.failed ?? 0;
-  const chosenDeactivated = chosenEvents?.deactivated ?? 0;
-
   const summaryInappTotal = latestRunSummary?.inapp?.total ?? 0;
   const summaryDismissed = latestRunSummary?.inapp?.dismissed_count ?? 0;
   const summaryDismissRate = latestRunSummary?.inapp?.dismiss_rate ?? 0;
@@ -1082,10 +1074,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               created={chosenNotifCreated}
               dismissed={chosenNotifDismissed}
               dismissRate={chosenNotifDismissRate}
-              sent={chosenSent}
-              failed={chosenFailed}
-              deactivated={chosenDeactivated}
-              sentEvents={chosenSentEvents}
             />
 
             <RunStatsCard
@@ -2535,7 +2523,6 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
           </button>
         </div>
       </div>
-
       {/* ✅ 表示は “ページ分” のみ */}
       <div
         onTouchStart={(e) => {
@@ -2880,16 +2867,34 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
   );
 };
 
+// ✅ NotifStatsCard 用の小コンポーネント（NotifStatsCard の直前に置く）
+const Stat: React.FC<{
+  label: string;
+  value: React.ReactNode;
+  subtle?: boolean;
+}> = ({ label, value, subtle }) => {
+  return (
+    <div>
+      <div style={{ opacity: subtle ? 0.55 : 0.7, fontSize: '0.78rem' }}>{label}</div>
+      <div style={{ fontWeight: subtle ? 800 : 900, opacity: subtle ? 0.7 : 1 }}>
+        {value}
+      </div>
+    </div>
+  );
+};
+
 interface NotifStatsCardProps {
   title: string;
-  subtitle?: string; // ✅ optional
+  subtitle?: string;
   created: number;
   dismissed: number;
   dismissRate: number;
-  sent: number;
-  failed: number;
-  deactivated: number;
-  sentEvents: number;
+
+  // ✅ 形は残す（呼び出し側を壊さない）けど、このカードでは使わない
+  sent?: number;
+  failed?: number;
+  deactivated?: number;
+  sentEvents?: number;
 }
 
 const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
@@ -2898,10 +2903,6 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
   created,
   dismissed,
   dismissRate,
-  sent,
-  failed,
-  deactivated,
-  sentEvents,
 }) => {
   const clampedRate = Math.max(0, Math.min(100, dismissRate));
 
@@ -2922,38 +2923,18 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
       <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
         {title}
       </div>
+
       {subtitle ? (
         <div style={{ marginBottom: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,.62)' }}>
           {subtitle}
         </div>
       ) : null}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '0.35rem 0.75rem',
-          fontSize: '0.88rem',
-          color: 'rgba(255,255,255,.84)',
-          marginBottom: '0.65rem',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ opacity: 0.75 }}>作成</span>
-          <span style={{ fontWeight: 800 }}>{created}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ opacity: 0.75 }}>dismiss</span>
-          <span style={{ fontWeight: 800 }}>{dismissed}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ opacity: 0.75 }}>反応率</span>
-          <span style={{ fontWeight: 900 }}>{clampedRate}%</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ opacity: 0.75 }}>sentEvents</span>
-          <span style={{ fontWeight: 800 }}>{sentEvents}</span>
-        </div>
+      {/* ✅ 上段3つだけ（スマホでも見やすい） */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: '0.65rem' }}>
+        <Stat label="通知数" value={created} />
+        <Stat label="反応率" value={`${clampedRate}%`} />
+        <Stat label="無視" value={dismissed} subtle />
       </div>
 
       <div
@@ -2963,7 +2944,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
           borderRadius: 9999,
           backgroundColor: 'rgba(255,255,255,.10)',
           overflow: 'hidden',
-          marginBottom: '0.6rem',
+          marginBottom: '0.1rem',
         }}
       >
         <div
@@ -2976,43 +2957,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
           }}
         />
       </div>
-
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.4rem',
-          alignItems: 'center',
-          fontSize: '0.78rem',
-          color: 'rgba(255,255,255,.74)',
-        }}
-      >
-        <span
-          style={{
-            padding: '0.22rem 0.5rem',
-            borderRadius: 999,
-            border: '1px solid rgba(255,255,255,.14)',
-            background: 'rgba(255,255,255,.06)',
-            fontWeight: 800,
-          }}
-        >
-          WebPush
-        </span>
-
-        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
-          sent {sent}
-        </span>
-        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
-          failed {failed}
-        </span>
-        <span style={{ padding: '0.22rem 0.5rem', borderRadius: 999, border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.04)' }}>
-          deact {deactivated}
-        </span>
-      </div>
-
-      <div style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: 'rgba(255,255,255,.62)' }}>
-        ※ sentEvents は「通知レコード（イベント）単位」
-      </div>
     </div>
   );
 };
+

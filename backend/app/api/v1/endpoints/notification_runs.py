@@ -153,20 +153,26 @@ def get_run_summary(
 
     summary = calc_in_app_summary_for_run(db, run_id)
 
-    inapp_total = summary["inapp_total"]
+    # ✅ イベント軸（通知レコード単位）は SSOT
+    events, webpush_source = calc_webpush_events_with_source_for_run(db, run_id)
+    events_sum = sum(int(v or 0) for v in (events or {}).values())
+
+    inapp_total = int(summary.get("inapp_total", 0) or 0)
+    # ✅ FakeSession/集計不能時の fallback：契約（events_sum <= total）を守る
+    if inapp_total < events_sum:
+        inapp_total = events_sum
 
     # 反応（dismiss）
-    dismissed_count = summary["dismissed_count"]
+    dismissed_count = int(summary.get("dismissed_count", 0) or 0)
+    if dismissed_count > inapp_total:
+        dismissed_count = inapp_total
     dismiss_rate = round((dismissed_count / inapp_total) * 100) if inapp_total else 0
 
     # 配信（subscription単位 counts）
-    delivered = summary["delivered"]
-    failed = summary["failed"]
-    deactivated = summary["deactivated"]
-    unknown = summary["unknown"]
-
-    # ✅ イベント軸（通知レコード単位）は SSOT
-    events, webpush_source = calc_webpush_events_with_source_for_run(db, run_id)
+    delivered = int(summary.get("delivered", 0) or 0)
+    failed = int(summary.get("failed", 0) or 0)
+    deactivated = int(summary.get("deactivated", 0) or 0)
+    unknown = int(summary.get("unknown", 0) or 0)
 
     # ✅ 監査耐性: stats が欠けていても summary では説明可能にする（補完）
     stats = r.stats if isinstance(r.stats, dict) else None

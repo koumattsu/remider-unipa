@@ -19,6 +19,7 @@ from app.models.in_app_notification import InAppNotification
 from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
+from app.models.webpush_event import WebPushEvent
 from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
@@ -124,6 +125,15 @@ class FakeQuery:
         return items[0] if items else None
 
     def scalar(self):
+        # ✅ 通知系は filter 後の件数を返せるようにする（run summary がここに依存してても壊れない）
+        items = getattr(self, "_items", None)
+        if items is not None:
+            filtered = self._apply_filters(items)
+            if self._is_dismissed_query:
+                # dismissed_at != null の件数を返したいケース
+                return sum(1 for it in filtered if getattr(it, "dismissed_at", None) is not None)
+            return len(filtered)
+
         return self._dismissed if self._is_dismissed_query else self._total
 
     def all(self):
@@ -219,6 +229,24 @@ class _FakeInApp:
         self.dismissed_at = dismissed_at
         self.extra = extra
 
+class _FakeWebPushEvent:
+    def __init__(
+        self,
+        id: int,
+        user_id: int,
+        event_type: str = "opened",
+        created_at=None,
+        notification_id: int | None = None,
+        run_id: int | None = None,
+    ):
+        self.id = id
+        self.user_id = user_id
+        self.event_type = event_type
+        self.created_at = created_at
+        self.notification_id = notification_id
+        self.run_id = run_id
+
+
 class FakeSession:
     def __init__(self):
         self._added = []
@@ -260,6 +288,19 @@ class FakeSession:
                 extra=None,  # unknown
             ),
         ]
+
+        # ✅ WebPush opened（/notifications/in-app/summary の分子テスト用）
+        self.webpush_events = [
+            _FakeWebPushEvent(
+                id=501,
+                user_id=1,
+                event_type="opened",
+                created_at=now,
+                notification_id=101,
+                run_id=1,
+            )
+        ]
+
         # ✅ Task（course_nameラベル用）
         self.tasks = [
             Task(
@@ -333,6 +374,10 @@ class FakeSession:
             q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=[])
             q._items = self.inapp_items
             return q
+        if model is WebPushEvent:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = getattr(self, "webpush_events", [])
+            return q
         if model is SuggestedActionAppliedEvent:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             # add() されたものが見えるようにする（DBっぽく）
@@ -366,7 +411,7 @@ class FakeSession:
                 users_processed=3,
                 due_candidates_total=10,
                 morning_candidates_total=5,
-                inapp_created=2,
+                inapp_created=5,
                 webpush_sent=1,
                 webpush_failed=1,
                 webpush_deactivated=1,

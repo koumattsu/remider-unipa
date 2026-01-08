@@ -16,13 +16,27 @@ export type InAppNotification = {
   extra?: any; // JSONB（webpush観測を最小で使う）
 };
 
-export type InAppNotificationsSummary = {
-  range: { from: string | null; to: string | null };
+export type InAppSummary = {
   total: number;
   dismissed: number;
   dismiss_rate: number; // 0-100
+};
+
+
+export type InAppNotificationsSummary = {
+  range: { from: string | null; to: string | null };
+  // ✅ UIの「通知反応」はここ（Web Pushのみ）に寄せる
+  // total = webpush sent, dismissed = webpush opened, dismiss_rate = open_rate
+  total: number;
+  dismissed: number;
+  dismiss_rate: number; // 0-100
+
+  // ✅ InAppNotification は資産として保持（UI分母には使わない）
+  inapp?: InAppSummary;
+
   webpush_events: {
     sent: number;
+    opened?: number;
     failed: number;
     deactivated: number;
     skipped: number;

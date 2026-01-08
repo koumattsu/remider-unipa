@@ -50,6 +50,11 @@ class WebpushEvents(BaseModel):
     skipped: int = Field(0, ge=0, description="extra.webpush.status == 'skipped'")
     unknown: int = Field(0, ge=0, description="missing/unknown status (incl. null)")
 
+class InAppSummary(BaseModel):
+    total: int = Field(0, ge=0, description="Total number of in-app notifications in range (asset only)")
+    dismissed: int = Field(0, ge=0, description="Count of dismissed in-app notifications (asset only)")
+    dismiss_rate: int = Field(0, ge=0, le=100, description="Dismissed / total * 100 (rounded). 0-100 (asset only)")
+
 class InAppNotificationSummaryResponse(BaseModel):
     range: InAppRange = Field(..., description="created_at range used for aggregation")
     total: int = Field(..., ge=0, description="Total number of in-app notifications in range")
@@ -58,4 +63,8 @@ class InAppNotificationSummaryResponse(BaseModel):
     webpush_events: WebpushEvents = Field(
         ...,
         description="Event-level status counts from extra.webpush.status (sent/failed/deactivated/skipped/unknown)",
+    )
+    inapp: Optional[InAppSummary] = Field(
+        default=None,
+        description="Asset-only: original in-app aggregation (not used for UI denominator)",
     )

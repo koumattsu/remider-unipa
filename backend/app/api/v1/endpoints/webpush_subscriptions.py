@@ -8,10 +8,12 @@ from app.core.security import get_current_user
 from app.core.config import settings
 from app.models.user import User
 from app.models.webpush_subscription import WebPushSubscription
+from app.models.webpush_event import WebPushEvent
 from app.schemas.webpush_subscription import (
     WebPushSubscriptionCreate,
     WebPushSubscriptionResponse,
 )
+from app.schemas.webpush_event import WebPushEventCreate, WebPushEventResponse
 from app.services.webpush_sender import WebPushSender
 
 router = APIRouter()
@@ -138,3 +140,25 @@ def debug_send_webpush(
     """
     result = WebPushSender.send_debug(db, user_id=current_user.id)
     return result
+
+@router.post(
+    "/events",
+    response_model=WebPushEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_webpush_event(
+    payload: WebPushEventCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    row = WebPushEvent(
+        user_id=current_user.id,
+        event_type=payload.type,  # "opened"
+        notification_id=payload.notification_id,
+        run_id=payload.run_id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row

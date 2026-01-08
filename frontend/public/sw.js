@@ -18,7 +18,12 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      data: { url },
+      data: {
+        url,
+        // ✅ クリックを観測するための識別子（payloadに入ってくる想定）
+        notification_id: data.notification_id ?? null,
+        run_id: data.run_id ?? null,
+      },
     })
   );
 });
@@ -30,6 +35,27 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     (async () => {
+      // ✅ クリック（opened）を backend に記録（最小）
+      try {
+        const payload = {
+          type: 'opened',
+          notification_id: event.notification?.data?.notification_id ?? null,
+          run_id: event.notification?.data?.run_id ?? null,
+          opened_at: new Date().toISOString(),
+        };
+        await fetch('/api/v1/webpush/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          // cookieセッション運用なら付ける（同一origin前提）
+          credentials: 'include',
+          // SWでの送信を落としにくくする（対応ブラウザのみ）
+          keepalive: true,
+        });
+      } catch (e) {
+        // 観測失敗はUXに影響させない
+      }
+
       const allClients = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,

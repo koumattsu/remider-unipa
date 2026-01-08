@@ -949,9 +949,21 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const chosenNotifSummary =
     bucket === 'week' ? weeklyNotifSummary : monthlyNotifSummary;
 
-  const chosenNotifCreated = chosenNotifSummary?.total ?? 0;
-  const chosenNotifDismissed = chosenNotifSummary?.dismissed ?? 0;
-  const chosenNotifDismissRate = chosenNotifSummary?.dismiss_rate ?? 0;
+  // ✅ UIの「通知反応」は Web Push（OS Push）のみで計算する
+  // InAppNotification(summary.total/dismissed/dismiss_rate) は資産として保持するが UI分母に使わない
+  const wp = chosenNotifSummary?.webpush_events;
+  const wpSent = wp?.sent ?? 0;
+  const wpFailed = wp?.failed ?? 0;
+  const wpDeactivated = wp?.deactivated ?? 0;
+  const wpSkipped = wp?.skipped ?? 0;
+  const wpUnknown = wp?.unknown ?? 0;
+
+  const wpTotal = wpSent + wpFailed + wpDeactivated + wpSkipped + wpUnknown;
+
+  // created/dismissed/dismissRate という “見た目のAPI” は変えず、中身だけWebPush由来にする（最小diff）
+  const chosenNotifCreated = wpTotal;
+  const chosenNotifDismissed = wpSent;
+  const chosenNotifDismissRate = wpTotal > 0 ? (wpSent / wpTotal) * 100 : 0;
 
   const summaryInappTotal = latestRunSummary?.inapp?.total ?? 0;
   const summaryDismissed = latestRunSummary?.inapp?.dismissed_count ?? 0;
@@ -2888,26 +2900,40 @@ interface NotifStatsCardProps {
   sentEvents?: number;
 }
 
-const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
-  title,
-  subtitle,
-  created,
-  dismissed,
-  dismissRate,
-}) => {
-  // dismissRate が来る場合はそれを優先。無い/NaN の場合は件数から算出。
-  const computedDismissRate = (() => {
-    const dr = Number(dismissRate);
-    if (Number.isFinite(dr)) return dr;
-    if (!created) return 0;
-    return (Number(dismissed ?? 0) / Number(created)) * 100;
+const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
+  const {
+    title,
+    subtitle,
+    created,
+    dismissed,
+    dismissRate,
+  } = props;
+
+  // ✅ dismissRate: 0-1 / 0-100 どちらでも受ける + fallback算出
+  const normalizePct = (v: any): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    // 0..1 なら割合扱い
+    const pct = n <= 1 ? n * 100 : n;
+    return Math.max(0, Math.min(100, pct));
+  };
+
+  const computedFromCounts = (() => {
+    const c = Number(created ?? 0);
+    const d = Number(dismissed ?? 0);
+    if (!Number.isFinite(c) || c <= 0) return 0;
+    const pct = (d / c) * 100;
+    return Math.max(0, Math.min(100, pct));
   })();
 
-  const clampedDismissRate = Math.max(0, Math.min(100, computedDismissRate));
-  const openRate = Math.max(0, Math.min(100, 100 - clampedDismissRate));
+  const computedDismissPct =
+    normalizePct(dismissRate) ?? computedFromCounts;
 
-  // 表示は整数で（スクショに合わせる）
-  const openRateInt = Math.round(openRate);
+  const openPct = Math.max(0, Math.min(100, 100 - computedDismissPct));
+
+  const createdN = Number(created ?? 0);
+  const dismissedN = Number(dismissed ?? 0);
 
   return (
     <div
@@ -2923,7 +2949,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
         color: 'rgba(255,255,255,.92)',
       }}
     >
-      <div style={{ marginBottom: '0.25rem', fontWeight: 800, letterSpacing: '0.02em' }}>
+      <div style={{ marginBottom: '0.25rem', fontWeight: 900, letterSpacing: '0.02em' }}>
         {title}
       </div>
 
@@ -2933,41 +2959,70 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = ({
         </div>
       ) : null}
 
-      {/* ✅ スクショ準拠：通知数 / 開封率 / 未反応 */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3,1fr)',
-          gap: 12,
-          marginBottom: '0.65rem',
-        }}
-      >
-        <Stat label="通知数" value={created} />
-        <Stat label="開封率" value={`${openRateInt}%`} />
-        <Stat label="未反応" value={dismissed} />
-      </div>
-
-      {/* ✅ バーは「開封率」を伸ばす（= 反応の可視化） */}
-      <div
-        style={{
-          position: 'relative',
-          height: 14,
-          borderRadius: 9999,
-          backgroundColor: 'rgba(255,255,255,.10)',
-          overflow: 'hidden',
-          marginBottom: '0.1rem',
-        }}
-      >
+      {/* ✅ 主役：open / dismiss */}
+      <div style={{ marginTop: '0.35rem' }}>
         <div
           style={{
-            width: `${openRate}%`,
-            height: '100%',
+            position: 'relative',
+            height: 14,
             borderRadius: 9999,
-            background: 'linear-gradient(90deg, rgba(168,85,247,.95), rgba(14,165,233,.95))',
-            transition: 'width 0.25s ease-out',
+            backgroundColor: 'rgba(255,255,255,.10)',
+            overflow: 'hidden',
+            marginBottom: '0.45rem',
           }}
-        />
+        >
+          <div
+            style={{
+              width: `${computedDismissPct}%`,
+              height: '100%',
+              borderRadius: 9999,
+              background: 'linear-gradient(90deg, rgba(168,85,247,.95), rgba(14,165,233,.95))',
+              transition: 'width 0.25s ease-out',
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '0.75rem',
+            fontSize: '0.85rem',
+            color: 'rgba(255,255,255,.82)',
+            fontWeight: 850,
+          }}
+        >
+          <span>
+            <strong>open</strong> {Math.round(openPct)}% <span style={{ opacity: 0.6 }}>/</span>{' '}
+            <strong>dismiss</strong> {Math.round(computedDismissPct)}%
+          </span>
+        </div>
       </div>
+
+      {/* ✅ 迷わない：数字は3つだけ */}
+      <div
+        style={{
+          marginTop: '0.75rem',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: '0.65rem',
+          padding: '0.75rem 0.85rem',
+          borderRadius: 14,
+          border: '1px solid rgba(255,255,255,.10)',
+          background: 'rgba(255,255,255,.04)',
+        }}
+      >
+        <Stat label="作成" value={createdN} />
+        <Stat label="dismiss" value={dismissedN} />
+        <Stat label="dismiss率" value={`${Math.round(computedDismissPct)}%`} />
+      </div>
+
+      {/* ✅ 0件のときだけ注釈（静かに） */}
+      {createdN <= 0 ? (
+        <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', opacity: 0.65 }}>
+          （この期間は通知がありません）
+        </div>
+      ) : null}
     </div>
   );
 };

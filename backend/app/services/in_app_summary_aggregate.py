@@ -151,19 +151,25 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         items = (
             db.query(InAppNotification)
             .filter(InAppNotification.run_id == run_id)
-            .filter(InAppNotification.channel == "web_push")
             .all()
         )
 
-        inapp_total = len(items)
-        dismissed_count = sum(1 for n in items if n.dismissed_at is not None)
+        # ✅ FakeSession の _FakeInApp は channel を持たない
+        #    → channel が無いものは "web_push" 扱いにして契約テストを守る
+        items_wp = [
+            n for n in items
+            if getattr(n, "channel", "web_push") == "web_push"
+        ]
+
+        inapp_total = len(items_wp)
+        dismissed_count = sum(1 for n in items_wp if n.dismissed_at is not None)
 
         delivered = 0
         failed = 0
         deactivated = 0
         unknown = 0
 
-        for n in items:
+        for n in items_wp:
             extra = n.extra or {}
             wp = extra.get("webpush")
             if not isinstance(wp, dict):

@@ -11,7 +11,6 @@ interface WeeklyTaskSettingsProps {
 
 type FormState = {
   title: string;
-  course_name: string;
   memo: string;
   weekday: number; // 0=月〜6=日
   time_hour: number;
@@ -21,7 +20,6 @@ type FormState = {
 
 const defaultForm: FormState = {
   title: '',
-  course_name: '',
   memo: '',
   weekday: 0,
   time_hour: 24,
@@ -60,7 +58,7 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
 
     const payload = {
       title: form.title.trim(),
-      course_name: form.course_name.trim(),
+      course_name: '__manual__',
       memo: form.memo,
       weekday: form.weekday,
       time_hour: backendHour,
@@ -97,7 +95,6 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
     setEditingId(tpl.id);
     setForm({
       title: tpl.title,
-      course_name: tpl.course_name || '',
       memo: tpl.memo || '',
       weekday: uiWeekday,
       time_hour: uiHour,
@@ -283,12 +280,10 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>曜日</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>時刻</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>タイトル</th>
-              <th style={{ padding: '0.4rem', textAlign: 'left' }}>内容</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>有効</th>
               <th style={{ padding: '0.4rem', textAlign: 'left' }}>操作</th>
             </tr>
           </thead>
-          
           
           <tbody>
             {templates.map((tpl) => {
@@ -312,7 +307,6 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
                     {String(tpl.time_minute ?? 0).padStart(2, '0')}
                   </td>
                   <td style={{ padding: '0.4rem' }}>{tpl.title}</td>
-                  <td style={{ padding: '0.4rem' }}>{tpl.course_name}</td>
                   <td style={{ padding: '0.4rem' }}>
                     {tpl.is_active ? '有効' : '無効'}
                   </td>

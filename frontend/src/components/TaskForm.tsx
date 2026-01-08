@@ -44,6 +44,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({
     let tempId: number | null = null;
 
     try {
+      if (!formData.title.trim()) {
+        alert('タイトルを入力してください');
+        return;
+      }
       if (!deadlineDate) {
         alert('締切日を選択してください');
         return;
@@ -106,24 +110,19 @@ export const TaskForm: React.FC<TaskFormProps> = ({
     }
   };
 
-
-
-
   return (
     <div className="glass-strong glass-card" style={{ marginBottom: '2rem' }}>
       <h2 className="glass-title">課題を追加</h2>
 
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '1rem' }}>
-          <label className="glass-label">内容</label>
+          <label className="glass-label">タイトル *</label>
           <input
             type="text"
-            value={formData.course_name}
-            onChange={(e) =>
-              setFormData({ ...formData, course_name: e.target.value })
-            }
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="glass-field"
-            placeholder="例：〇〇講義 / 第3回"
+            placeholder="例：〇〇授業"
           />
         </div>
 

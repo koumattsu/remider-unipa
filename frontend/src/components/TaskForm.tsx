@@ -67,7 +67,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       const tempTask: Task = {
         id: tempId,
         title: formData.title.trim(),
-        course_name: formData.course_name?.trim() || '',
+        course_name: '__manual__',
         memo: formData.memo?.trim() || '',
         deadline: deadlineStr,
         is_done: false,
@@ -114,18 +114,6 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       <h2 className="glass-title">課題を追加</h2>
 
       <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '1rem' }}>
-          <label className="glass-label">タイトル *</label>
-          <input
-            type="text"
-            value={formData.title}
-            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-            required
-            className="glass-field"
-            placeholder="例：レポート提出"
-          />
-        </div>
-
         <div style={{ marginBottom: '1rem' }}>
           <label className="glass-label">内容</label>
           <input

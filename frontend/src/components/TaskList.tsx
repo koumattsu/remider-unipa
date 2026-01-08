@@ -509,7 +509,17 @@ const saveTaskNotificationOptions = (
             ? (notifyOverrides?.[task.id] ?? true)
             : Boolean(task.should_notify);
 
-          const baseMemo = task.memo || task.course_name || '';
+          const MANUAL_COURSE_NAME = '__manual__';
+
+          const baseMemo =
+            (task.memo && task.memo.trim())
+              ? task.memo.trim()
+              : (task.course_name && task.course_name !== MANUAL_COURSE_NAME)
+                ? task.course_name
+                : '';
+
+          const isManual = task.course_name === MANUAL_COURSE_NAME;
+          const showContentRow = Boolean(baseMemo) || !isManual;      
 
           return (
             <div
@@ -856,35 +866,37 @@ const saveTaskNotificationOptions = (
                   </div>
                 </div>
 
-                {/* 4行目: 内容 */}
-                <div>
-                  <div
-                    style={{
-                      fontSize: '0.8rem',
-                      color: 'rgba(255,255,255,.62)',
-                      marginBottom: 2,
-                    }}
-                  >
-                    内容
+                {/* 4行目: 内容（手動タスクでメモ空なら行ごと非表示） */}
+                {showContentRow && (
+                  <div>
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        color: 'rgba(255,255,255,.62)',
+                        marginBottom: 2,
+                      }}
+                    >
+                      内容
+                    </div>
+                    <EditableTextCell
+                      value={baseMemo}
+                      placeholder="内容"
+                      onSave={async (v) => {
+                        const trimmed = v.trim();
+                        if (trimmed === baseMemo) return;
+                        const prev = task.memo ?? '';
+                        onTaskPatched?.(task.id, { memo: trimmed });
+                        if (isVirtualTask(task)) return;
+                        try {
+                          await tasksApi.update(task.id, { memo: trimmed });
+                        } catch {
+                          onTaskPatched?.(task.id, { memo: prev }); // rollback
+                          alert('内容の更新に失敗しました');
+                        }
+                      }}
+                    />
                   </div>
-                  <EditableTextCell
-                    value={baseMemo}
-                    placeholder="内容"
-                    onSave={async (v) => {
-                      const trimmed = v.trim();
-                      if (trimmed === baseMemo) return;
-                      const prev = task.memo ?? '';
-                      onTaskPatched?.(task.id, { memo: trimmed });
-                      if (isVirtualTask(task)) return;
-                      try {
-                        await tasksApi.update(task.id, { memo: trimmed });
-                      } catch {
-                        onTaskPatched?.(task.id, { memo: prev }); // rollback
-                        alert('内容の更新に失敗しました');
-                      }
-                    }}
-                  />
-                </div>
+                )}
 
                 {/* ✏️ 編集フォーム */}
                 

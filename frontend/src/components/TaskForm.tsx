@@ -1,8 +1,13 @@
 // frontend/src/components/TaskForm.tsx
 
-import { useState, useEffect} from 'react';
-import { Task, TaskCreate } from '../types';
+import { useState, useEffect } from 'react';
+import { Task } from '../types';
 import { tasksApi } from '../api/tasks';
+
+type TaskFormData = {
+  title: string;
+  memo: string;
+};
 
 interface TaskFormProps {
   onTaskCreated: () => void;
@@ -19,13 +24,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
   onTaskReplacedLocal,
   onTaskCreateFailedLocal,
 }) => {
-  const [formData, setFormData] = useState<
-    Omit<TaskCreate, 'deadline' | 'should_notify'>
-  >({
-    title: '',
-    course_name: '',
-    memo: '',
-  });
+  const [formData, setFormData] = useState<TaskFormData>({ title: '', memo: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [deadlineDate, setDeadlineDate] = useState(defaultDeadlineDate ?? ''); 
@@ -72,7 +71,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
         id: tempId,
         title: formData.title.trim(),
         course_name: '__manual__',
-        memo: formData.memo?.trim() || '',
+        memo: formData.memo.trim(),
         deadline: deadlineStr,
         is_done: false,
         should_notify: true,
@@ -92,7 +91,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       onTaskReplacedLocal?.(tempId, real);
 
       // reset
-      setFormData({ title: '', course_name: '', memo: '' });
+      setFormData({ title: '', memo: '' });
       setDeadlineDate('');
       setDeadlineHour('24');
       setDeadlineMinute('00');

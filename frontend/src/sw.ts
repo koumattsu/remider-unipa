@@ -1,14 +1,29 @@
 // frontend/src/sw.ts
 /// <reference lib="webworker" />
 
-import { precacheAndRoute } from 'workbox-precaching'
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
+import { clientsClaim } from 'workbox-core'
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: any
 }
 
+// ✅ 古いキャッシュを掃除（precacheの世代交代で残骸が残りにくい）
+cleanupOutdatedCaches()
+
 // ✅ injectManifest の注入ポイント
 precacheAndRoute(self.__WB_MANIFEST)
+
+// ✅ 新SWを即反映（“デプロイしたのに画面が変わらない”対策の本丸）
+self.addEventListener('install', () => {
+  self.skipWaiting()
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    clientsClaim()
+  })())
+})
 
 self.addEventListener('push', (event) => {
   let data: any = {}
@@ -17,12 +32,10 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {}
   }
-
   const title = data.title || 'UNIPA Reminder'
   const body = data.body || '通知があります'
   const rawUrl = data.url || '/dashboard?tab=today'
   const url = new URL(rawUrl, self.registration.scope).toString()
-
   event.waitUntil(
     self.registration.showNotification(title, {
       body,

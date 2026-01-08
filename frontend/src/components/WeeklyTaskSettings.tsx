@@ -157,19 +157,6 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
 
         <div>
           <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
-            内容（授業名など）
-          </label>
-          <input
-            type="text"
-            value={form.course_name}
-            onChange={(e) => handleChange('course_name', e.target.value)}
-            className="glass-field"
-            style={{ fontSize: '0.9rem' }}
-          />
-        </div>
-
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
             メモ
           </label>
           <textarea

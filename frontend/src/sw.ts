@@ -7,7 +7,10 @@ self.addEventListener('install', () => {
   // self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  // すぐクライアントを制御したいならコメント外す
-  // event.waitUntil(self.clients.claim());
+self.addEventListener('install', (_event) => {
+  // 何もしない最小SW（ビルド通す用）
+});
+
+self.addEventListener('activate', (_event) => {
+  // 将来 clients.claim() を入れる余地
 });

@@ -10,8 +10,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       strategies: 'injectManifest',
-      srcDir: 'src',
-      filename: 'sw.ts',
+      injectManifest: {
+        swSrc: 'src/sw.js',
+        swDest: 'sw.js',
+      },
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'UNIPA Reminder',
@@ -30,10 +32,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })

@@ -1,16 +1,88 @@
 // frontend/src/sw.ts
 /// <reference lib="webworker" />
 
-// 何もしない最小SW（ビルド通す用）
-self.addEventListener('install', () => {
-  // 即時有効化したいならコメント外す
-  // self.skipWaiting();
-});
+import { precacheAndRoute } from 'workbox-precaching'
 
-self.addEventListener('install', (_event) => {
-  // 何もしない最小SW（ビルド通す用）
-});
+declare const self: ServiceWorkerGlobalScope & {
+  __WB_MANIFEST: any
+}
 
-self.addEventListener('activate', (_event) => {
-  // 将来 clients.claim() を入れる余地
-});
+// ✅ injectManifest の注入ポイント
+precacheAndRoute(self.__WB_MANIFEST)
+
+self.addEventListener('push', (event) => {
+  let data: any = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    data = {}
+  }
+
+  const title = data.title || 'UNIPA Reminder'
+  const body = data.body || '通知があります'
+  const rawUrl = data.url || '/dashboard?tab=today'
+  const url = new URL(rawUrl, self.registration.scope).toString()
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      data: {
+        url,
+        notification_id: data.notification_id ?? null,
+        run_id: data.run_id ?? null,
+      },
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const rawUrl = (event.notification as any)?.data?.url || '/dashboard?tab=today'
+  const url = new URL(rawUrl, self.registration.scope).toString()
+
+  event.waitUntil(
+    (async () => {
+      try {
+        const payload = {
+          type: 'opened',
+          notification_id: (event.notification as any)?.data?.notification_id ?? null,
+          run_id: (event.notification as any)?.data?.run_id ?? null,
+          opened_at: new Date().toISOString(),
+        }
+        await fetch('/api/v1/webpush/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          credentials: 'include',
+          keepalive: true,
+        })
+      } catch {}
+
+      const allClients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+      const target = new URL(url)
+
+      for (const client of allClients) {
+        try {
+          const c = new URL(client.url)
+          if (c.origin !== target.origin) continue
+          // @ts-ignore
+          if (client.focus) {
+            // @ts-ignore
+            await client.focus()
+            // @ts-ignore
+            if (client.url !== url && client.navigate) {
+              // @ts-ignore
+              await client.navigate(url)
+            }
+            return
+          }
+        } catch {}
+      }
+
+      if (self.clients.openWindow) return self.clients.openWindow(url)
+    })()
+  )
+})

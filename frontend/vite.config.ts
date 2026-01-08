@@ -1,5 +1,4 @@
 // frontend/vite.config.ts
-
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -10,10 +9,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       strategies: 'injectManifest',
-      injectManifest: {
-        swSrc: 'src/sw.js',
-        swDest: 'sw.js',
-      },
+
+      // ✅ ここが重要：この方式なら "public/sw.js" に行かない
+      srcDir: 'src',
+      filename: 'sw.ts',
+
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'UNIPA Reminder',

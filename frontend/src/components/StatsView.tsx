@@ -2893,8 +2893,8 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
     subtitle,
     created,
     opened,
-    dismissed: _dismissed,       // ← 使わないと明示
-    dismissRate: _dismissRate,   // ← 使わないと明示
+    dismissed,
+    dismissRate,
   } = props;
 
   // ✅ 数値化（auditで落ちないためのガード）
@@ -2904,17 +2904,31 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
   };
 
   const createdN = Math.max(0, Math.trunc(toNum(created)));
-  const openedRaw = Math.max(0, Math.trunc(toNum(opened)));
 
-  // ✅ opened は 0..created にクランプ（不整合でもUIは壊さない）
-  const openedN = createdN > 0 ? Math.min(createdN, openedRaw) : 0;
+  // ✅ 互換：opened が来たら opened 優先、無ければ dismissed を使う
+  const reactedRaw = opened != null ? opened : dismissed;
+  const reactedN0 = Math.max(0, Math.trunc(toNum(reactedRaw)));
 
-  // ✅ 未開封数 = created - opened
-  const unopenedN = createdN > 0 ? Math.max(0, createdN - openedN) : 0;
+  // ✅ reacted は 0..created にクランプ（不整合でもUIは壊さない）
+  const reactedN = createdN > 0 ? Math.min(createdN, reactedN0) : 0;
 
-  // ✅ 開封率 = opened / created
-  const openPct: number | null =
-    createdN > 0 ? Math.max(0, Math.min(100, (openedN / createdN) * 100)) : null;
+  // ✅ 未反応数 = created - reacted
+  const unreactedN = createdN > 0 ? Math.max(0, createdN - reactedN) : 0;
+
+  // ✅ 互換：dismissRate が来たらそれを優先（0-1/0-100 両対応）、無ければ reacted/created
+  const normalizePct = (v: any): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    const pct = n <= 1 ? n * 100 : n;
+    return Math.max(0, Math.min(100, pct));
+  };
+
+  const pctFromProp = normalizePct(dismissRate);
+  const reactPct: number | null =
+    pctFromProp != null
+      ? pctFromProp
+      : (createdN > 0 ? Math.max(0, Math.min(100, (reactedN / createdN) * 100)) : null);
 
   return (
     <div
@@ -2940,7 +2954,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         </div>
       ) : null}
 
-      {/* ✅ 主役：開封率（opened/created） */}
+      {/* ✅ 主役：反応率（dismissRate / reacted/created 互換） */}
       <div style={{ marginTop: '0.35rem' }}>
         <div
           style={{
@@ -2954,7 +2968,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         >
           <div
             style={{
-              width: `${openPct ?? 0}%`,
+              width: `${reactPct ?? 0}%`,
               height: '100%',
               borderRadius: 9999,
               background: 'linear-gradient(90deg, rgba(168,85,247,.95), rgba(14,165,233,.95))',
@@ -2974,12 +2988,12 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
           }}
         >
           <span>
-            <strong>開封率</strong> {openPct == null ? '—' : `${Math.round(openPct)}%`}
+            <strong>反応率</strong> {reactPct == null ? '—' : `${Math.round(reactPct)}%`}
           </span>
         </div>
       </div>
 
-      {/* ✅ 数字は3つだけ：通知数 / 未開封数（構造維持） */}
+      {/* ✅ 数字は3つだけ：通知数 / 未反応数（構造維持） */}
       <div
         style={{
           marginTop: '0.75rem',
@@ -2993,10 +3007,9 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         }}
       >
         <Stat label="通知数" value={createdN} />
-        <Stat label="未開封数" value={unopenedN} />
+        <Stat label="未反応数" value={unreactedN} />
       </div>
 
-      {/* ✅ 0件のときだけ注釈（静かに） */}
       {createdN <= 0 ? (
         <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', opacity: 0.65 }}>
           （この期間は通知がありません）

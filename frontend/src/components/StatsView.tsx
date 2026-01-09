@@ -411,7 +411,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         });
         if (!mounted) return;
 
-        const items = res.items ?? [];
+        const items = Array.isArray(res?.items) ? res.items : [];
         const sorted = [...items].sort((a, b) => {
           const at = new Date(a.computed_at).getTime();
           const bt = new Date(b.computed_at).getTime();
@@ -448,14 +448,18 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     (async () => {
       // ✅ キャッシュ戦略：bucket 単位で一度だけ取得（read-only）
       // - 再取得したい場合は state を明示的に null に戻す
-      const shouldFetchEffectiveness = actionEffectiveness[bucket] === null;
+      const current = actionEffectiveness?.[bucket];
+      const shouldFetchEffectiveness = current == null; // null/undefined を両方「未取得」と扱う
       if (!shouldFetchEffectiveness) return;
       setActionEffectivenessLoading(true);
       setActionEffectivenessError(null);
       try {
         const eff = await analyticsActionsApi.getEffectiveness({ window_days: windowDaysOf(bucket), min_total: 5, limit_events: 500 });
         if (!mounted) return;
-        setActionEffectiveness((prev) => ({ ...prev, [bucket]: eff.items }));
+        setActionEffectiveness((prev) => ({
+          ...prev,
+          [bucket]: Array.isArray(eff?.items) ? eff.items : [],
+        }));
       } catch (e: any) {
         if (!mounted) return;
         setActionEffectivenessError(e?.message ?? 'failed to load effectiveness');
@@ -467,7 +471,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return () => {
       mounted = false;
     };
-  }, [bucket, actionEffectiveness[bucket]]);
+  }, [bucket, actionEffectiveness?.[bucket]]);
 
   useEffect(() => {
     let mounted = true;
@@ -480,7 +484,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           limit: 20,
         });
         if (!mounted) return;
-        setAppliedEvents(res.items ?? []);
+        setAppliedEvents(Array.isArray(res?.items) ? res.items : []);
       } catch (e: any) {
         if (!mounted) return;
         setAppliedEventsError(e?.message ?? 'failed to load applied events');
@@ -1033,11 +1037,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       {/* ✅ Tabs（C-1: ユーザー向け / 監査向けを分離） */}
       <div
         style={{
-          display: 'flex',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
           gap: '0.5rem',
-          flexWrap: 'wrap',
           marginTop: '0.25rem',
           marginBottom: '0.35rem',
+          width: '100%',
         }}
       >
         {([
@@ -1088,7 +1093,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           >
             {/* ✅ RateBars は必ず全幅 */}
             <div style={{ gridColumn: '1 / -1' }}>
-              <RateBars points={ratePoints} bucket={bucket} />
+              <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
             </div>
 
             <NotifStatsCard

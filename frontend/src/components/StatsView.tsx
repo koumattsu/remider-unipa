@@ -2323,7 +2323,8 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   points,
   bucket,
 }) => {
-  if (!points || points.length === 0) return null;
+  // ✅ points を必ず配列として扱う（undefined を潰す）
+  const safePoints: RatePoint[] = Array.isArray(points) ? points : [];
 
   const clampPct = (v: any) => Math.max(0, Math.min(100, Number(v ?? 0)));
 
@@ -2335,61 +2336,48 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     const apply = () => setIsNarrow(mq.matches);
     apply();
 
-    const mqa = mq as any; // Safari 古い実装の addListener/removeListener 用
-
-    if (typeof mq.addEventListener === 'function') {
-      mq.addEventListener('change', apply);
-    } else if (typeof mqa.addListener === 'function') {
-      // eslint-disable-next-line deprecation/deprecation
-      mqa.addListener(apply);
-    }
+    const mqa = mq as any;
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', apply);
+    else if (typeof mqa.addListener === 'function') mqa.addListener(apply);
 
     return () => {
-      if (typeof mq.removeEventListener === 'function') {
-        mq.removeEventListener('change', apply);
-      } else if (typeof mqa.removeListener === 'function') {
-        // eslint-disable-next-line deprecation/deprecation
-        mqa.removeListener(apply);
-      }
+      if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', apply);
+      else if (typeof mqa.removeListener === 'function') mqa.removeListener(apply);
     };
   }, []);
 
   // ✅ スマホは4本、PCは6本
   const visibleCount = isNarrow ? 4 : 6;
 
-  // ✅ ページング state（page=0 が「最新」）
   const [page, setPage] = useState(0);
   const [pageAnimOn, setPageAnimOn] = useState(true);
 
-  // ✅ スワイプ（スマホのみ）
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const touchLastXRef = useRef<number | null>(null);
-  const touchMovedRef = useRef(false);
+  const touchMovedRef = useRef<boolean>(false);
+
+  // ✅ ここでやっと “空なら表示しない” を判断（Hooks は常に呼ばれる）
+  if (safePoints.length === 0) return null;
 
   // ✅ ページ数（最低1）
-  const totalPages = Math.max(1, Math.ceil(points.length / visibleCount));
+  const totalPages = Math.max(1, Math.ceil(safePoints.length / visibleCount));
 
-  // ✅ points/bucket が変わったら “最新(0)” に戻す
   useEffect(() => {
     setPage(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bucket, points.length, visibleCount]);
+  }, [bucket, safePoints.length, visibleCount]);
 
   useEffect(() => {
-    // ページ切替時に軽くフェード
     setPageAnimOn(false);
     const t = window.setTimeout(() => setPageAnimOn(true), 0);
     return () => window.clearTimeout(t);
   }, [page]);
 
-  // ✅ page=0 を「最新」にする（右端が最新）
-  const pageIndexFromLatest = page;
-
-  // ✅ 最新側から切り出す
-  const end = Math.max(0, points.length - visibleCount * pageIndexFromLatest);
+  // 以降 points は safePoints を使う
+  const end = Math.max(0, safePoints.length - visibleCount * page);
   const start = Math.max(0, end - visibleCount);
-  const rawShown = points.slice(start, end);
+  const rawShown = safePoints.slice(start, end);
+
 
   // ✅ pad は「一番古いページ（最後のページ）」だけに限定する
   //    最新ページ(page=0)で pad が混ざるのを禁止（今回のバグの根本）

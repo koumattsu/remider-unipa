@@ -12,7 +12,7 @@ class TaskNotificationOverrideRead(TaskNotificationOverrideBase):
 
     # ✅ Pydantic v1 で ORM から読む用
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskNotificationOverrideUpdate(TaskNotificationOverrideBase):
     pass

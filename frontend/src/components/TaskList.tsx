@@ -866,7 +866,7 @@ const saveTaskNotificationOptions = (
                   </div>
                 </div>
 
-                {/* 4行目: 内容（手動タスクでメモ空なら行ごと非表示） */}
+                {/* 4行目: メモ（毎週タスクで空でも placeholder を出さず、ラベルだけ残す） */}
                 {showContentRow && (
                   <div>
                     <div
@@ -876,11 +876,11 @@ const saveTaskNotificationOptions = (
                         marginBottom: 2,
                       }}
                     >
-                      内容
+                      メモ
                     </div>
                     <EditableTextCell
                       value={baseMemo}
-                      placeholder="内容"
+                      placeholder=""   // ✅ ここがポイント：空なら表示しない
                       onSave={async (v) => {
                         const trimmed = v.trim();
                         if (trimmed === baseMemo) return;
@@ -891,7 +891,7 @@ const saveTaskNotificationOptions = (
                           await tasksApi.update(task.id, { memo: trimmed });
                         } catch {
                           onTaskPatched?.(task.id, { memo: prev }); // rollback
-                          alert('内容の更新に失敗しました');
+                          alert('メモの更新に失敗しました'); // ✅ ついでに文言も合わせる（任意）
                         }
                       }}
                     />

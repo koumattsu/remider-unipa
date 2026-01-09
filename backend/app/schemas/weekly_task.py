@@ -3,7 +3,6 @@
 from typing import Optional
 from pydantic import BaseModel, Field
 
-
 class WeeklyTaskBase(BaseModel):
     title: str = Field(..., description="タスクタイトル")
     course_name: Optional[str] = Field(None, description="授業名やカテゴリ")
@@ -18,10 +17,8 @@ class WeeklyTaskBase(BaseModel):
 
     is_active: bool = Field(True, description="有効かどうか")
 
-
 class WeeklyTaskCreate(WeeklyTaskBase):
     pass
-
 
 class WeeklyTaskUpdate(BaseModel):
     title: Optional[str] = None
@@ -32,9 +29,8 @@ class WeeklyTaskUpdate(BaseModel):
     time_minute: Optional[int] = Field(None, ge=0, le=59)
     is_active: Optional[bool] = None
 
-
 class WeeklyTaskResponse(WeeklyTaskBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

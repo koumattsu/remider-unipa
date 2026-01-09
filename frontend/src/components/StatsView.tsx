@@ -2448,7 +2448,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     }
 
     const r = parseRange(p.rangeLabel ?? '');
-    if (r) return `${r.start}〜${r.end}`;
+    if (r) return `${r.start}〜`;
 
     const label = (p.label ?? '').replace(/^(\d{4})\//, '');
     return label;

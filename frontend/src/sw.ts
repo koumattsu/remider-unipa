@@ -60,9 +60,12 @@ self.addEventListener('notificationclick', (event) => {
           type: 'opened',
           notification_id: (event.notification as any)?.data?.notification_id ?? null,
           run_id: (event.notification as any)?.data?.run_id ?? null,
-          opened_at: new Date().toISOString(),
         }
-        await fetch('/api/v1/webpush/events', {
+
+        // ✅ 同一オリジンで確実に叩く（/api を同一オリジンでプロキシしてる前提を明確化）
+        const eventsUrl = new URL('/api/v1/webpush/events', self.registration.scope).toString()
+
+        await fetch(eventsUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),

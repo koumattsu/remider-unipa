@@ -13,7 +13,9 @@ def calc_webpush_events_with_source_for_run(
     db: Session, run_id: int
 ) -> Tuple[Dict[str, int], str]:
     """
-    SSOT: WebPushDelivery を唯一の真実として集計する（attemptログ）
+    SSOT（分母側）: WebPushDelivery を唯一の真実として集計する（attemptログ）
+    - この集計は「送信attemptの結果（sent/failed/deactivated...）」のみを扱う
+    - 「通知タップ→アプリ起動(opened)」は WebPushEvent 側の別SSOTであり、ここでは扱わない
     - 可能ならDB集計（delivery）
     - 無理なら fallback で InAppNotification.extra に戻す（FakeSession/SQLite）
     戻り値: (events, source) where source in {"delivery", "inapp_extra"}

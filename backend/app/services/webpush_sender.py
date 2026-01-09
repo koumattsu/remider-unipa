@@ -206,6 +206,8 @@ class WebPushSender:
             "body": notification.body,
             "url": notification.deep_link,
             "deep_link": notification.deep_link,
+            "notification_id": notification.id,
+            "run_id": notification.run_id, 
         }
         return WebPushSender._send_payload(
             db,
@@ -224,6 +226,6 @@ class WebPushSender:
         body: str = "Web Push テスト送信です",
         url: str = "/dashboard?tab=today", 
     ) -> dict:
-        payload = {"title": title, "body": body, "url": url, "deep_link": url}
+        payload = {"title": title, "body": body, "url": url, "deep_link": url, "notification_id": None, "run_id": None,}
         return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
 

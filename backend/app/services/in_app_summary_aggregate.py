@@ -41,6 +41,9 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         dismissed_count = 0
 
         # ✅ SSOT: WebPushDelivery（subscription軸の合計）
+        # NOTE: ここでの delivered は「端末到達」ではなく
+        #       WebPushDelivery.STATUS_SENT（= Push service 受理 / 送信成功）を数える。
+        #       将来、端末到達が取れるようになったら delivered を別概念として導入する。
         delivered = 0
         failed = 0
         deactivated = 0

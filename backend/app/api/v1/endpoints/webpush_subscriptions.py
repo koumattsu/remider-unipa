@@ -155,7 +155,7 @@ def record_webpush_event(
     row = WebPushEvent(
         user_id=current_user.id,
         event_type=payload.type,  # "opened"
-        notification_id=payload.notification_id,
+        notification_id=str(payload.notification_id) if payload.notification_id is not None else None,
         run_id=payload.run_id,
     )
     db.add(row)

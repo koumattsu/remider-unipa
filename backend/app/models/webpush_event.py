@@ -1,3 +1,5 @@
+# backend/app/models/webpush_event.py
+
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship

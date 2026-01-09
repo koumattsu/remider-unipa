@@ -622,7 +622,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 or 0
             )
 
-            # ✅ SSOT: WebPushDelivery から集計
+            # ✅ SSOT: WebPushDelivery から集計（subscription軸=attempt数）
+            # NOTE:
+            # - events は「通知メッセージ数」ではなく「subscriptionごとの配信attempt数」
+            #   （= WebPushDelivery 行数）を集計している。
+            # - 反応率(opened/送信)を message軸で出す場合、この events を分母に使うと粒度がズレるので注意。
             try:
                 rows2 = (
                     db.query(WebPushDelivery.status, func.count(WebPushDelivery.id))
@@ -665,6 +669,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
             }
 
         # ✅ SSOT集計結果を直カラムへ同期（監査一貫性）
+        # NOTE: これらは attempt数（subscription軸）であり、通知メッセージ数ではない。
         run.webpush_sent = int(events.get("sent", 0))
         run.webpush_failed = int(events.get("failed", 0))
         run.webpush_deactivated = int(events.get("deactivated", 0))

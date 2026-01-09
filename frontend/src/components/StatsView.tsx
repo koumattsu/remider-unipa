@@ -199,28 +199,44 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         const iso = (d: Date) => d.toISOString();
 
         const buildWeekWindows = () => {
-          // 直近6週（1本=7日）。今日を含む最新ウィンドウは [今日-6, 明日)
-          const endExclusive0 = new Date(startOfDay(now));
-          endExclusive0.setDate(endExclusive0.getDate() + 1);
+          // ✅ 月曜始まりの「今週」を基準にする（JST想定）
+          const start = startOfDay(now); // 今日 00:00
+          const day = start.getDay(); // Sun=0, Mon=1...
+          const diffToMonday = (day === 0 ? -6 : 1) - day;
 
+          // 今週の月曜 00:00
+          const startOfThisWeek = new Date(start);
+          startOfThisWeek.setDate(startOfThisWeek.getDate() + diffToMonday);
+          startOfThisWeek.setHours(0, 0, 0, 0);
+
+          // 次週月曜 00:00（= 今週の終端 / exclusive）
+          const endExclusive0 = new Date(startOfThisWeek);
+          endExclusive0.setDate(endExclusive0.getDate() + 7);
+
+          // ✅ 直近6週（各週は [Mon 00:00, next Mon 00:00)）
           return Array.from({ length: 6 }).map((_, idx) => {
             // 古い -> 新しい の順に並べたいので idx=0 が最古
             const k = 5 - idx;
+
             const endExclusive = new Date(endExclusive0);
             endExclusive.setDate(endExclusive.getDate() - k * 7);
+
             const from = new Date(endExclusive);
             from.setDate(from.getDate() - 7);
+
+            // 表示上は endExclusive - 1日（= 日曜）までを見せる
+            const endInclusive = new Date(endExclusive.getTime() - 1);
 
             return {
               from,
               to: endExclusive,
-              // 画面に出すのは短く（週の“終わり日”だけ出す）
-              label: fmtMD(new Date(endExclusive.getTime() - 1)),
-              // hover でちゃんと範囲が分かるように残す
-              rangeLabel: `${fmtMD(from)}-${fmtMD(new Date(endExclusive.getTime() - 1))}`,
+              label: fmtMD(endInclusive),
+              rangeLabel: `${fmtMD(from)}-${fmtMD(endInclusive)}`, // ✅ 月〜日になる
             };
           });
         };
+
+
 
         const buildMonthWindows = () => {
           // 直近6ヶ月（当月含む）。idx=0が最古
@@ -2654,12 +2670,25 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
   subtitle: _subtitle,
   run,
   summary,
-  dismissRate,
+  dismissRate, 
 }) => {
-  const dismissPct = Math.max(0, Math.min(100, Number(dismissRate ?? 0)));
-  const openPct = Math.max(0, Math.min(100, 100 - dismissPct));
   const runId = run?.id ?? null;
   const runStatus = run?.status ?? 'unknown';
+
+  // ✅ 0-1 / 0-100 両対応の clamp
+  const normalizePct = (v: any): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    const pct = n <= 1 ? n * 100 : n;
+    return Math.max(0, Math.min(100, pct));
+  };
+
+  // ✅ Runカードは dismiss を主役にする（open は補助として 100 - dismiss）
+  const dismissPct = normalizePct(dismissRate) ?? 0;
+  const openPct = Math.max(0, Math.min(100, Math.round((100 - dismissPct) * 10) / 10));
+  const dismissPctRounded = Math.round(dismissPct * 10) / 10;
+
   const runCounters = run
     ? {
         inapp_created: Number(run.inapp_created ?? 0),
@@ -2740,7 +2769,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         >
           <div
             style={{
-              width: `${dismissPct}%`, // ✅ clampedRate → dismissPct
+              width: `${dismissPctRounded}%`, // ✅ clampedRate → dismissPct
               height: '100%',
               borderRadius: 9999,
               background: 'linear-gradient(90deg, rgba(251,146,60,.95), rgba(14,165,233,.95))',
@@ -2761,7 +2790,7 @@ const RunStatsCard: React.FC<RunStatsCardProps> = ({
         >
           <span>
             <strong>open</strong> {openPct}% <span style={{ opacity: 0.6 }}>/</span>{' '}
-            <strong>dismiss</strong> {dismissPct}%
+            <strong>dismiss</strong> {dismissPctRounded}%
           </span>
         </div>
       </div>
@@ -2899,18 +2928,24 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
     return Math.max(0, Math.min(100, pct));
   };
 
-  const computedFromCounts = (() => {
+  const computedFromCounts: number | null = (() => {
     const c = Number(created ?? 0);
     const d = Number(dismissed ?? 0);
-    if (!Number.isFinite(c) || c <= 0) return 0;
-    const pct = (d / c) * 100;
+    if (!Number.isFinite(c) || c <= 0) return null;
+
+    // ✅ 不整合ガード（dismissed が created を超えても UI が変にならない）
+    const dSafe = Math.max(0, Math.min(c, Number.isFinite(d) ? d : 0));
+
+    const pct = (dSafe / c) * 100;
     return Math.max(0, Math.min(100, pct));
   })();
 
-  const computedDismissPct =
+  const computedDismissPct: number | null =
     normalizePct(dismissRate) ?? computedFromCounts;
 
-  const openPct = Math.max(0, Math.min(100, 100 - computedDismissPct));
+  const openPct: number | null =
+    computedDismissPct == null ? null : Math.max(0, Math.min(100, 100 - computedDismissPct));
+
 
   const createdN = Number(created ?? 0);
   const dismissedN = Number(dismissed ?? 0);
@@ -2953,7 +2988,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         >
           <div
             style={{
-              width: `${computedDismissPct}%`,
+              width: `${computedDismissPct ?? 0}%`,
               height: '100%',
               borderRadius: 9999,
               background: 'linear-gradient(90deg, rgba(168,85,247,.95), rgba(14,165,233,.95))',
@@ -2973,8 +3008,9 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
           }}
         >
           <span>
-            <strong>open</strong> {Math.round(openPct)}% <span style={{ opacity: 0.6 }}>/</span>{' '}
-            <strong>dismiss</strong> {Math.round(computedDismissPct)}%
+            <strong>open</strong> {openPct == null ? '—' : `${Math.round(openPct)}%`}{' '}
+            <span style={{ opacity: 0.6 }}>/</span>{' '}
+            <strong>dismiss</strong> {computedDismissPct == null ? '—' : `${Math.round(computedDismissPct)}%`}
           </span>
         </div>
       </div>
@@ -2994,7 +3030,10 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
       >
         <Stat label="作成" value={createdN} />
         <Stat label="dismiss" value={dismissedN} />
-        <Stat label="dismiss率" value={`${Math.round(computedDismissPct)}%`} />
+        <Stat
+          label="dismiss率"
+          value={computedDismissPct == null ? '—' : `${Math.round(computedDismissPct)}%`}
+        />
       </div>
 
       {/* ✅ 0件のときだけ注釈（静かに） */}

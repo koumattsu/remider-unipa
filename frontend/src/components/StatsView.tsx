@@ -890,10 +890,24 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     }
 
     if (key === 'deadline_hour_jst') {
-      const h = Number(v);
-      if (!Number.isFinite(h)) return String(v);
-      // ここを時間だけにする
-      return `${h}時`;
+      if (v == null) return '—';
+
+      // "22:30" 形式
+      if (typeof v === 'string' && v.includes(':')) {
+        return v;
+      }
+
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+
+      const hour = Math.floor(n);
+      const minutes = Math.round((n - hour) * 60);
+
+      if (minutes === 0) return `${hour}:00`;
+      if (minutes === 30) return `${hour}:30`;
+
+      // 想定外でも壊れないようにフォールバック
+      return `${hour}:${String(minutes).padStart(2, '0')}`;
     }
 
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
@@ -2434,7 +2448,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     }
 
     const r = parseRange(p.rangeLabel ?? '');
-    if (r) return `${r.start}〜`;
+    if (r) return `${r.start}〜${r.end}`;
 
     const label = (p.label ?? '').replace(/^(\d{4})\//, '');
     return label;
@@ -2612,7 +2626,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
                 }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {bottom || '—'}
+                  {bottom}
                 </span>
               </div>
 

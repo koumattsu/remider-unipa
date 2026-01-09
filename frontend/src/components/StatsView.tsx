@@ -2,25 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { outcomesApi, OutcomeLog } from '../api/outcomes';
-import {
-  analyticsOutcomesApi,
-  Bucket,
-  OutcomesByCourseRow,
-  OutcomesSummaryItem,
-  OutcomesByFeatureRow,
-  OutcomesCourseXFeatureRow,
-} from '../api/analyticsOutcomes';
+import { analyticsOutcomesApi, Bucket, OutcomesByCourseRow, OutcomesSummaryItem, OutcomesByFeatureRow, OutcomesCourseXFeatureRow,} from '../api/analyticsOutcomes';
 import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
 import { Task, NotificationSetting, NotificationSettingUpdate } from '../types';
 import { settingsApi } from '../api/settings';
-import {
-  analyticsActionsApi,
-  ActionAppliedEvent,
-  ActionEffectivenessItem,
-  ActionEffectivenessByFeatureItem,
-  ActionEffectivenessSnapshotItem,
-} from '../api/analyticsActions';
+import { analyticsActionsApi, ActionAppliedEvent, ActionEffectivenessItem, ActionEffectivenessByFeatureItem, ActionEffectivenessSnapshotItem,} from '../api/analyticsActions';
 import { SnapshotHeader } from './analytics/SnapshotHeader';
 import { SnapshotItemsTable } from './analytics/SnapshotItemsTable';
 
@@ -2348,17 +2335,12 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   // ✅ スマホは4本、PCは6本
   const visibleCount = isNarrow ? 4 : 6;
-
   const [page, setPage] = useState(0);
   const [pageAnimOn, setPageAnimOn] = useState(true);
-
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const touchLastXRef = useRef<number | null>(null);
   const touchMovedRef = useRef<boolean>(false);
-
-  // ✅ ここでやっと “空なら表示しない” を判断（Hooks は常に呼ばれる）
-  if (safePoints.length === 0) return null;
 
   // ✅ ページ数（最低1）
   const totalPages = Math.max(1, Math.ceil(safePoints.length / visibleCount));
@@ -2378,13 +2360,12 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   const start = Math.max(0, end - visibleCount);
   const rawShown = safePoints.slice(start, end);
 
-
   // ✅ pad は「一番古いページ（最後のページ）」だけに限定する
   //    最新ページ(page=0)で pad が混ざるのを禁止（今回のバグの根本）
   const isOldestPage = page === totalPages - 1;
 
   const shouldPad =
-    points.length < visibleCount || (isOldestPage && rawShown.length < visibleCount);
+    safePoints.length < visibleCount || (isOldestPage && rawShown.length < visibleCount);
 
   const padCount = shouldPad ? Math.max(0, visibleCount - rawShown.length) : 0;
 
@@ -2410,6 +2391,9 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownPoints]);
+
+  // ✅ “空なら表示しない” は Hooks の後で（Reactのルールを守る）
+  if (safePoints.length === 0) return null;
 
   // ✅ 前=過去(older) / 次=新しい(newer)
   const canPrev = page < totalPages - 1; // まだ過去がある

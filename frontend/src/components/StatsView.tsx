@@ -1134,7 +1134,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                     >
                       <div style={{ fontWeight: 800 }}>
                         #{idx + 1}{' '}
-                        {labelFeatureValue(r.feature_value, r.feature_key)}
+                        {r.feature_key === 'deadline_hour_jst'
+                          ? `${r.feature_value}時`
+                          : labelFeatureValue(r.feature_value, r.feature_key)}
                       </div>
                       <div style={{ opacity: 0.82 }}>
                         {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）

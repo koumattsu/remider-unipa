@@ -2955,11 +2955,6 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
   // ✅ 最終：counts優先（無ければprop）
   const openPct: number | null = openPctFromCounts ?? openPctFromProp;
 
-  // ✅ 未開封率（表示用）
-  const unopenPct: number | null =
-    openPct == null ? null : Math.max(0, Math.min(100, 100 - openPct));
-
-
   return (
     <div
       style={{
@@ -3018,9 +3013,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
           }}
         >
           <span>
-            <strong>開封率</strong> {openPct == null ? '—' : `${Math.round(openPct)}%`}{' '}
-            <span style={{ opacity: 0.6 }}>/</span>{' '}
-            <strong>未開封率</strong> {unopenPct == null ? '—' : `${Math.round(unopenPct)}%`}
+            <strong>開封率</strong> {openPct == null ? '—' : `${Math.round(openPct)}%`}
           </span>
         </div>
       </div>
@@ -3030,7 +3023,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         style={{
           marginTop: '0.75rem',
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
+          gridTemplateColumns: '1fr 1fr',
           gap: '0.65rem',
           padding: '0.75rem 0.85rem',
           borderRadius: 14,
@@ -3039,7 +3032,6 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         }}
       >
         <Stat label="通知数" value={Number.isFinite(createdN) ? createdN : 0} />
-        <Stat label="開封率" value={openPct == null ? '—' : `${Math.round(openPct)}%`} />
         <Stat label="未開封数" value={unopenedN} />
       </div>
 

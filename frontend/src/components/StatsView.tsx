@@ -892,11 +892,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     if (key === 'deadline_hour_jst') {
       const h = Number(v);
       if (!Number.isFinite(h)) return String(v);
-      if (h <= 5) return `深夜（${h}時）`;
-      if (h <= 10) return `朝（${h}時）`;
-      if (h <= 16) return `昼（${h}時）`;
-      if (h <= 21) return `夜（${h}時）`;
-      return `深夜（${h}時）`;
+      // ここを時間だけにする
+      return `${h}時`;
     }
 
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';

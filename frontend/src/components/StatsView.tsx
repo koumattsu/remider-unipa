@@ -2556,9 +2556,16 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
         style={{
           width: '100%',
           display: 'grid',
-          gridTemplateColumns: `repeat(${shownPoints.length}, minmax(0, 1fr))`,
+
+          // ✅ ここが主修正： shownPoints.length ではなく「表示本数」で必ず等分
+          gridTemplateColumns: `repeat(${visibleCount}, minmax(0, 1fr))`,
+
           gap: '0.65rem',
-          alignItems: 'end',
+
+          // ✅ iOS/Safari対策：各セルを横幅いっぱいに引き伸ばす
+          justifyItems: 'stretch',
+          alignItems: 'stretch',
+
           transition: 'opacity 160ms ease-out, transform 160ms ease-out',
           opacity: pageAnimOn ? 1 : 0,
           transform: pageAnimOn ? 'translateY(0px)' : 'translateY(4px)',
@@ -2571,7 +2578,7 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
           const bottom = formatBottom(p);
 
           return (
-            <div key={p.label} style={{ minWidth: 0 }}>
+            <div key={p.label} style={{ minWidth: 0, width: '100%' }}>
               {/* ✅ 上に% */}
               <div
                 style={{

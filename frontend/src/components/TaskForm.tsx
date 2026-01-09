@@ -131,7 +131,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
             value={formData.memo ?? ''}
             onChange={(e) => setFormData({ ...formData, memo: e.target.value })}
             className="glass-field"
-            placeholder="補足があれば"
+            placeholder=""
             rows={3}
             style={{ resize: 'vertical' }}
           />

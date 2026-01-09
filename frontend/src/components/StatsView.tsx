@@ -1027,10 +1027,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         }}
       >
         {([
-          ['overview', 'Overview'],
+          ['overview', '全体'],
           ['hotspots', '要注意パターン'],
-          ['improve', 'Improve'],
-          ['audit', 'Audit'],
+          ['improve', '改善点'],
+          ['audit', 'audit'],
         ] as const).map(([key, label]) => {
           const isActive = activeTab === key;
           return (

@@ -807,15 +807,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return [...chosenByFeature].sort((a, b) => toPercent(b.missed_rate) - toPercent(a.missed_rate));
   }, [chosenByFeature]);
 
-  const worstFeature = sortedByFeature?.[0] ?? null;
   const hotspotSorted = useMemo(() => {
     if (!sortedByFeature) return null;
     return sortedByFeature.filter(
       (r) => r.feature_key === 'deadline_dow_jst' || r.feature_key === 'deadline_hour_jst'
     );
   }, [sortedByFeature]);
-
-  const hotspotWorst = hotspotSorted?.[0] ?? null;
 
   const hotspotDow = hotspotSorted
     ? hotspotSorted.filter((r) => r.feature_key === 'deadline_dow_jst').slice(0, 3)
@@ -1031,7 +1028,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       >
         {([
           ['overview', 'Overview'],
-          ['hotspots', 'Hotspots'],
+          ['hotspots', '要注意パターン'],
           ['improve', 'Improve'],
           ['audit', 'Audit'],
         ] as const).map(([key, label]) => {
@@ -1110,45 +1107,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           }}
         >
           <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>
-            Hotspots（落としやすいパターン）
+            要注意パターン（落としやすい傾向）
           </div>
-
-          <div
-            style={{
-              fontSize: '0.8rem',
-              opacity: 0.7,
-              marginBottom: '0.75rem',
-            }}
-          >
-            analytics/outcomes/missed-by-feature（read-only SSOT: OutcomeFeatureSnapshot）
-          </div>
-
-          {hotspotWorst && (
-            <div
-              style={{
-                marginBottom: '0.75rem',
-                fontSize: '0.92rem',
-                fontWeight: 850,
-              }}
-            >
-              {/* ✅ “この切り口で” の注意喚起に明確化 */}
-              曜日/時間帯で要注意：
-              {labelFeatureKey(hotspotWorst.feature_key)} ={' '}
-              {labelFeatureValue(hotspotWorst.feature_value, hotspotWorst.feature_key)}
-              （{toPercent(hotspotWorst.missed_rate)}% / missed{' '}
-              {hotspotWorst.missed}/{hotspotWorst.total}）
-            </div>
-          )}
-          {worstFeature && (
-            <div style={{ marginBottom: '0.6rem', fontSize: '0.9rem', fontWeight: 800 }}>
-              {/* ✅ 全体の最悪（プロダクトの弱点） */}
-              全体で最も危険：
-              {labelFeatureKey(worstFeature.feature_key)} ={' '}
-              {labelFeatureValue(worstFeature.feature_value, worstFeature.feature_key)}（
-              {toPercent(worstFeature.missed_rate)}% / missed {worstFeature.missed}/{worstFeature.total}
-              ）
-            </div>
-          )}
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             {/* 曜日 */}
             <div>

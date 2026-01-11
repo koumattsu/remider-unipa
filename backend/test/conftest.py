@@ -40,6 +40,7 @@ class FakeQuery:
         self._is_dismissed_query = False
         self._is_group_query = False
         self._eq_filters: dict[str, object] = {}
+        self._distinct_key: str | None = None
 
     def filter(self, *args, **kwargs):
         s = " ".join([str(a) for a in args])
@@ -129,6 +130,14 @@ class FakeQuery:
         items = getattr(self, "_items", None)
         if items is not None:
             filtered = self._apply_filters(items)
+
+            # ✅ count(distinct(notification_id)) など distinct 集計
+            if getattr(self, "_distinct_key", None):
+                k = self._distinct_key
+                vals = [getattr(it, k, None) for it in filtered]
+                vals = [v for v in vals if v is not None]
+                return len(set(vals))
+            
             if self._is_dismissed_query:
                 # dismissed_at != null の件数を返したいケース
                 return sum(1 for it in filtered if getattr(it, "dismissed_at", None) is not None)
@@ -370,6 +379,20 @@ class FakeSession:
         self.group_rows = [("sent", 1), ("failed", 1), (None, 1)]
 
     def query(self, model):
+        # ✅ SQLAlchemyの集計式（例: func.count(func.distinct(WebPushEvent.notification_id))）にも対応
+        try:
+            from sqlalchemy.sql.functions import Function
+        except Exception:
+            Function = None
+
+        # model が count(...) のような Function の場合
+        if Function is not None and isinstance(model, Function) and getattr(model, "name", None) == "count":
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            # filter(run_id=..., event_type=...) を効かせるため _items を webpush_events にする
+            q._items = getattr(self, "webpush_events", [])
+            # distinct(notification_id) を想定（現状の failing 箇所に一致）
+            q._distinct_key = "notification_id"
+            return q
         if model is InAppNotification:
             q = FakeQuery(total=self.total, dismissed=self.dismissed, rows=[])
             q._items = self.inapp_items

@@ -54,6 +54,23 @@ class Settings(BaseSettings):
         return uri
 
     FRONTEND_URL: str = "http://localhost:5173"
+
+    @field_validator("FRONTEND_URL", mode="before")
+    @classmethod
+    def normalize_frontend_url(cls, v: str) -> str:
+        if v is None:
+            return "http://localhost:5173"
+        if not isinstance(v, str):
+            v = str(v)
+        s = v.strip().replace("\r", "").replace("\n", "")
+        # "..." / '...' を剥がす
+        if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
+            s = s[1:-1].strip()
+        # スキーム無しを救済（本番事故の典型）
+        if s and not (s.startswith("http://") or s.startswith("https://")):
+            s = "https://" + s
+        return s
+    
     SESSION_SECRET: str = ""
     FEATURE_HASH_SECRET: str = ""
     # ✅ 監査用：どのデプロイの実行かをRunに刻む（Renderが持つcommitも拾える）

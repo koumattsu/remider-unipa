@@ -231,25 +231,6 @@ def get_run_summary(
         if snapshot.get("webpush_open_rate") is None:
             snapshot["webpush_open_rate"] = open_rate
 
-    # ✅ 反応率（通知タップ→アプリ起動）: message軸で計算（監査SSOT）
-    opened_messages = int(
-        db.query(func.count(func.distinct(WebPushEvent.notification_id)))
-        .filter(WebPushEvent.run_id == run_id)
-        .filter(WebPushEvent.event_type == "opened")
-        .scalar()
-        or 0
-    )
-
-    sent_messages = int(
-        db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
-        .filter(WebPushDelivery.run_id == run_id)
-        .filter(WebPushDelivery.status == WebPushDelivery.STATUS_SENT)
-        .scalar()
-        or 0
-    )
-
-    open_rate = round((opened_messages / sent_messages) * 100) if sent_messages else 0
-
     return {
         "summary_v": 1,
         "run": {
@@ -269,11 +250,6 @@ def get_run_summary(
                 "deactivated": deactivated,
                 "unknown": unknown,
                 "events": events,
-
-                # ✅ 追加（反応率のSSOT）
-                "opened_messages": opened_messages,
-                "sent_messages": sent_messages,
-                "open_rate": open_rate,
             },
         },
         "run_counters": {

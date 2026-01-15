@@ -46,4 +46,28 @@ def init_db():
     # ✅ 集約import（追加モデルのimport漏れ事故を防ぐ）
     import app.models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            before = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_type='BASE TABLE'")
+            ).scalar()
+        print("[INIT_DB] tables(before) =", before)
+    except Exception as e:
+        print("[INIT_DB] tables(before) check error:", e)
+
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("[INIT_DB] create_all done")
+    except Exception as e:
+        print("[INIT_DB] create_all ERROR:", e)
+        raise
+
+    try:
+        with engine.connect() as conn:
+            after = conn.execute(
+                text("SELECT count(*) FROM information_schema.tables WHERE table_type='BASE TABLE'")
+            ).scalar()
+        print("[INIT_DB] tables(after) =", after)
+    except Exception as e:
+        print("[INIT_DB] tables(after) check error:", e)

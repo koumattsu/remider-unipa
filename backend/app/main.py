@@ -7,6 +7,7 @@ from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
 from app.db.base import init_db
 from app.db.base import engine, Base
+from sqlalchemy import text
 
 def create_tables_if_needed() -> None:
     try:
@@ -22,7 +23,7 @@ def create_tables_if_needed() -> None:
         # Neon/PG 側の実体（DB名・schema・search_path）を確定
         with engine.connect() as conn:
             row = conn.execute(
-                "SELECT current_database(), current_schema(), current_user, current_setting('search_path')"
+                text("SELECT current_database(), current_schema(), current_user, current_setting('search_path')")
             ).fetchone()
         print("[BOOT] pg =", row)
     except Exception as e:

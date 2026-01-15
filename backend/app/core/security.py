@@ -13,6 +13,24 @@ serializer = URLSafeSerializer(
     salt="unipa-session",
 )
 
+def _delete_session_cookie(response: Response) -> None:
+    # ① host-only cookie を消す
+    response.delete_cookie(
+        key=settings.SESSION_COOKIE_NAME,
+        path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+        samesite=settings.SESSION_COOKIE_SAMESITE,
+        secure=settings.SESSION_COOKIE_SECURE,
+    )
+    # ② domain付き cookie を消す（過去互換）
+    if getattr(settings, "SESSION_COOKIE_DOMAIN", None):
+        response.delete_cookie(
+            key=settings.SESSION_COOKIE_NAME,
+            path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
+            domain=settings.SESSION_COOKIE_DOMAIN,
+            samesite=settings.SESSION_COOKIE_SAMESITE,
+            secure=settings.SESSION_COOKIE_SECURE,
+        )
+
 async def get_current_user(
     request: Request,
     response: Response,
@@ -44,14 +62,8 @@ async def get_current_user(
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
         except (BadSignature, ValueError, TypeError):
-                        response.delete_cookie(
-                            key=settings.SESSION_COOKIE_NAME,
-                            path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
-                            domain=getattr(settings, "SESSION_COOKIE_DOMAIN", None),
-                            samesite=settings.SESSION_COOKIE_SAMESITE,
-                            secure=settings.SESSION_COOKIE_SECURE,
-                        )
-                        raise HTTPException(status_code=401, detail="無効なセッションです")
+            _delete_session_cookie(response)
+            raise HTTPException(status_code=401, detail="無効なセッションです")
 
     else:
         # 2) Cookieが無い場合のみ、開発用ダミーヘッダー

@@ -1864,10 +1864,29 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       )}
       {activeTab === 'audit' && (
         <>
-          {/* ✅ Developer / 監査（さらに折りたたみ：Snapshot/Effectiveness系は隔離） */}
-          <details
+          {/* ✅ ユーザー向けの要約（最初に目に入る） */}
+          <div
             style={{
               marginTop: '0.9rem',
+              padding: '0.75rem 0.9rem',
+              borderRadius: 14,
+              border: '1px solid rgba(255,255,255,.12)',
+              background: 'rgba(255,255,255,.03)',
+              color: 'rgba(255,255,255,.92)',
+            }}
+          >
+            <div style={{ fontWeight: 900, marginBottom: '0.35rem' }}>
+              監査（システム状態）
+            </div>
+            <div style={{ fontSize: '0.82rem', opacity: 0.75 }}>
+              ここは開発・監査向けの詳細です。通常は見なくてOKです。
+            </div>
+          </div>
+
+          {/* ✅ Developer / 監査（詳細） */}
+          <details
+            style={{
+              marginTop: '0.75rem',
               border: '1px solid rgba(255,255,255,.12)',
               borderRadius: 14,
               background: 'rgba(255,255,255,.03)',
@@ -1876,328 +1895,376 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           >
             <summary style={{ cursor: 'pointer', fontWeight: 900, opacity: 0.9 }}>
               Developer / 監査情報
-              <span style={{ marginLeft: 10, fontWeight: 600, fontSize: '0.8rem', opacity: 0.7 }}>
-                Snapshot / 提案効果 / by-feature / measured条件
-              </span>
             </summary>
 
             <div style={{ marginTop: '0.85rem' }}>
-              {/* ✅ Priority 8-C②: Action Effectiveness Snapshot（read-only 資産） */}
-              <div style={{ marginTop: '0.9rem' }}>
-                <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
-                  提案効果の確定スナップショット（最新）
-                </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
-                  analytics/actions/effectiveness/snapshots（確定資産 / 読み取り専用 / 再計算しない）
-                </div>
+              {/* ✅ 1) Snapshot（資産） */}
+              <details
+                style={{
+                  border: '1px solid rgba(255,255,255,.10)',
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,.02)',
+                  padding: '0.6rem 0.65rem',
+                }}
+                open
+              >
+                <summary style={{ cursor: 'pointer', fontWeight: 850, opacity: 0.92 }}>
+                  提案効果スナップショット（確定資産）
+                </summary>
 
-                {effectivenessSnapshotsLoading && (
-                  <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
-                    snapshot 読み込み中...
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
+                    提案効果の確定スナップショット（最新）
                   </div>
-                )}
-
-                {effectivenessSnapshotsError && (
-                  <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
-                    {effectivenessSnapshotsError}
+                  <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
+                    analytics/actions/effectiveness/snapshots（確定資産 / 読み取り専用 / 再計算しない）
                   </div>
-                )}
 
-                {!effectivenessSnapshotsError &&
-                  (!effectivenessSnapshots || effectivenessSnapshots.length === 0) && (
-                    <>
-                      <div style={{ opacity: 0.7 }}>
-                        （まだ snapshot がありません）
-                      </div>
-                      <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.65 }}>
-                        ※ 生成には計測イベント数が必要です（min_total / window_days 条件を満たすと作成されます）
-                      </div>
-                    </>
-                  )}
-
-                {!effectivenessSnapshotsError &&
-                  effectivenessSnapshots &&
-                  effectivenessSnapshots.length > 0 && (() => {
-                    const snap =
-                      effectivenessSnapshots.find((s) => s.id === selectedSnapshotId) ??
-                      effectivenessSnapshots[0];
-
-                    const sortedSameBucket = [...effectivenessSnapshots]
-                      .filter((s) => s.bucket === snap.bucket)
-                      .sort(
-                        (a, b) =>
-                          new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()
-                      );
-
-                    const idx = sortedSameBucket.findIndex((s) => s.id === snap.id);
-                    const prevSnap = idx >= 0 ? sortedSameBucket[idx + 1] ?? null : null;
-
-                    const rankMap = (items: ActionEffectivenessItem[]) => {
-                      const rows = [...(items ?? [])].sort((a, b) => {
-                        const ar = Number(a.improved_rate ?? 0);
-                        const br = Number(b.improved_rate ?? 0);
-                        if (br !== ar) return br - ar;
-                        return Number(b.measured_count ?? 0) - Number(a.measured_count ?? 0);
-                      });
-
-                      const m = new Map<string, { rank: number; improved: number; measured: number }>();
-                      rows.forEach((x, i) => {
-                        m.set(String(x.action_id), {
-                          rank: i + 1,
-                          improved: Number(x.improved_rate ?? 0),
-                          measured: Number(x.measured_count ?? 0),
-                        });
-                      });
-                      return m;
-                    };
-
-                    const curRank = rankMap(snap.items);
-                    const prevRank = prevSnap ? rankMap(prevSnap.items) : null;
-
-                    const asOfApplied = (() => {
-                      if (!appliedEvents || appliedEvents.length === 0) return null;
-                      const snapAt = new Date(snap.computed_at).getTime();
-
-                      return (
-                        appliedEvents
-                          .filter((e) => {
-                            const t = new Date(e.applied_at).getTime();
-                            return Number.isFinite(t) && t <= snapAt;
-                          })
-                          .sort(
-                            (a, b) =>
-                              new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()
-                          )[0] ?? null
-                      );
-                    })();
-
-                    return (
-                      <>
-                        <SnapshotHeader
-                          snapshots={effectivenessSnapshots}
-                          selectedSnapshotId={selectedSnapshotId}
-                          onSelect={setSelectedSnapshotId}
-                          current={snap}
-                          previous={prevSnap}
-                          asOfApplied={asOfApplied}
-                        />
-
-                        <div
-                          style={{
-                            padding: '0.7rem 0.85rem',
-                            borderRadius: 14,
-                            border: '1px solid rgba(255,255,255,.10)',
-                            background: 'rgba(255,255,255,.04)',
-                            fontSize: '0.85rem',
-                          }}
-                        >
-                        </div>
-
-                        <SnapshotItemsTable
-                          snapshotId={snap.id}
-                          items={snap.items}
-                          currentRankMap={curRank}
-                          previousRankMap={prevRank}
-                          hasPreviousSnapshot={!!prevSnap}
-                        />
-                      </>
-                    );
-                  })()}
-              </div>
-
-              {/* ✅ Priority 4-B: action effectiveness（read-only / 監査用） */}
-              <div style={{ marginTop: '0.8rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-                  <div style={{ fontWeight: 800 }}>
-                    提案の効果（試験）
-                  </div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.65 }}>
-                    安定度: ✅ measured ≥ 30 / △ 10–29 / ⚠️ &lt; 10（計測数ベース）
-                  </div>
-                  {actionEffectivenessMeta[bucket] && (
-                    <div style={{ fontSize: '0.72rem', opacity: 0.65 }}>
-                      集計条件: 直近 {actionEffectivenessMeta[bucket]!.windowDays} 日 /
-                      再計測時刻: {actionEffectivenessMeta[bucket]!.fetchedAt.toLocaleString()}
+                  {effectivenessSnapshotsLoading && (
+                    <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                      snapshot 読み込み中...
                     </div>
                   )}
-                  <button
-                    onClick={refetchActionEffectiveness}
-                    disabled={actionEffectivenessLoading || actionEffectivenessByFeatureLoading}
+
+                  {effectivenessSnapshotsError && (
+                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
+                      {effectivenessSnapshotsError}
+                    </div>
+                  )}
+
+                  {!effectivenessSnapshotsError &&
+                    (!effectivenessSnapshots || effectivenessSnapshots.length === 0) && (
+                      <>
+                        <div style={{ opacity: 0.7 }}>
+                          （まだ snapshot がありません）
+                        </div>
+                        <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.65 }}>
+                          ※ 生成には計測イベント数が必要です（min_total / window_days 条件を満たすと作成されます）
+                        </div>
+                      </>
+                    )}
+
+                  {!effectivenessSnapshotsError &&
+                    effectivenessSnapshots &&
+                    effectivenessSnapshots.length > 0 && (() => {
+                      const snap =
+                        effectivenessSnapshots.find((s) => s.id === selectedSnapshotId) ??
+                        effectivenessSnapshots[0];
+
+                      const sortedSameBucket = [...effectivenessSnapshots]
+                        .filter((s) => s.bucket === snap.bucket)
+                        .sort(
+                          (a, b) =>
+                            new Date(b.computed_at).getTime() - new Date(a.computed_at).getTime()
+                        );
+
+                      const idx = sortedSameBucket.findIndex((s) => s.id === snap.id);
+                      const prevSnap = idx >= 0 ? sortedSameBucket[idx + 1] ?? null : null;
+
+                      const rankMap = (items: ActionEffectivenessItem[]) => {
+                        const rows = [...(items ?? [])].sort((a, b) => {
+                          const ar = Number(a.improved_rate ?? 0);
+                          const br = Number(b.improved_rate ?? 0);
+                          if (br !== ar) return br - ar;
+                          return Number(b.measured_count ?? 0) - Number(a.measured_count ?? 0);
+                        });
+
+                        const m = new Map<string, { rank: number; improved: number; measured: number }>();
+                        rows.forEach((x, i) => {
+                          m.set(String(x.action_id), {
+                            rank: i + 1,
+                            improved: Number(x.improved_rate ?? 0),
+                            measured: Number(x.measured_count ?? 0),
+                          });
+                        });
+                        return m;
+                      };
+
+                      const curRank = rankMap(snap.items);
+                      const prevRank = prevSnap ? rankMap(prevSnap.items) : null;
+
+                      const asOfApplied = (() => {
+                        if (!appliedEvents || appliedEvents.length === 0) return null;
+                        const snapAt = new Date(snap.computed_at).getTime();
+
+                        return (
+                          appliedEvents
+                            .filter((e) => {
+                              const t = new Date(e.applied_at).getTime();
+                              return Number.isFinite(t) && t <= snapAt;
+                            })
+                            .sort(
+                              (a, b) =>
+                                new Date(b.applied_at).getTime() - new Date(a.applied_at).getTime()
+                            )[0] ?? null
+                        );
+                      })();
+
+                      return (
+                        <>
+                          <SnapshotHeader
+                            snapshots={effectivenessSnapshots}
+                            selectedSnapshotId={selectedSnapshotId}
+                            onSelect={setSelectedSnapshotId}
+                            current={snap}
+                            previous={prevSnap}
+                            asOfApplied={asOfApplied}
+                          />
+
+                          <div
+                            style={{
+                              padding: '0.7rem 0.85rem',
+                              borderRadius: 14,
+                              border: '1px solid rgba(255,255,255,.10)',
+                              background: 'rgba(255,255,255,.04)',
+                              fontSize: '0.85rem',
+                            }}
+                          >
+                          </div>
+
+                          <SnapshotItemsTable
+                            snapshotId={snap.id}
+                            items={snap.items}
+                            currentRankMap={curRank}
+                            previousRankMap={prevRank}
+                            hasPreviousSnapshot={!!prevSnap}
+                          />
+                        </>
+                      );
+                    })()}
+                </div>
+              </details>
+
+              {/* ✅ 2) 試験（提案の効果） */}
+              <details
+                style={{
+                  marginTop: '0.65rem',
+                  border: '1px solid rgba(255,255,255,.10)',
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,.02)',
+                  padding: '0.6rem 0.65rem',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontWeight: 850, opacity: 0.92 }}>
+                  提案の効果（試験）
+                </summary>
+
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div
                     style={{
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,.12)',
-                      background: 'rgba(255,255,255,.06)',
-                      color: 'rgba(255,255,255,.9)',
-                      fontSize: '0.75rem',
-                      cursor: 'pointer',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      marginBottom: '0.4rem',
                     }}
                   >
-                    再計測
-                  </button>
-                </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
-                  ※ OutcomeLog（締切到達時点の結果）だけで前後比較します。Outcome不足の提案も「行は残り」、measured=0 になります。
-                </div>
-
-                {actionEffectivenessLoading && (
-                  <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
-                )}
-                {!actionEffectivenessLoading && actionEffectivenessError && (
-                  <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
-                    {actionEffectivenessError}
+                    <div style={{ fontWeight: 800 }}>
+                      提案の効果（試験）
+                    </div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.65 }}>
+                      安定度: ✅ measured ≥ 30 / △ 10–29 / ⚠️ &lt; 10（計測数ベース）
+                    </div>
+                    {actionEffectivenessMeta[bucket] && (
+                      <div style={{ fontSize: '0.72rem', opacity: 0.65 }}>
+                        集計条件: 直近 {actionEffectivenessMeta[bucket]!.windowDays} 日 /
+                        再計測時刻: {actionEffectivenessMeta[bucket]!.fetchedAt.toLocaleString()}
+                      </div>
+                    )}
+                    <button
+                      onClick={refetchActionEffectiveness}
+                      disabled={actionEffectivenessLoading || actionEffectivenessByFeatureLoading}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: 10,
+                        border: '1px solid rgba(255,255,255,.12)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: 'rgba(255,255,255,.9)',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      再計測
+                    </button>
                   </div>
-                )}
 
-                {!actionEffectivenessLoading && !actionEffectivenessError && (
-                  <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
-                    {sortedActionEffectiveness.length === 0 ? (
-                      <div>まだデータがありません（適用イベントやOutcomeが貯まると出ます）</div>
-                    ) : (
-                      <div style={{ display: 'grid', gap: '0.35rem' }}>
-                        {sortedActionEffectiveness.slice(0, 8).map((x) => (
-                          <div
-                            key={x.action_id}
-                            style={{
-                              padding: '0.55rem 0.65rem',
-                              borderRadius: 12,
-                              border: '1px solid rgba(255,255,255,.10)',
-                              background: 'rgba(255,255,255,.04)',
-                            }}
-                          >
-                            <div style={{ fontWeight: 750 }}>{x.action_id}</div>
-                            {(() => {
-                              const measured = Number(x.measured_count ?? 0);
-                              const b = stabilityBadge(measured);
-                              const recommended = isRecommendedAction(x);
-                              const caution = isCautionAction(x);
-                              const hyp = hypothesisForAction(x.action_id);
+                  <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.5rem' }}>
+                    ※ OutcomeLog（締切到達時点の結果）だけで前後比較します。Outcome不足の提案も「行は残り」、measured=0 になります。
+                  </div>
 
-                              return (
-                                <>
-                                  <div style={{ opacity: 0.8 }}>
-                                    improved_rate: {Math.round((Number(x.improved_rate ?? 0) * 100) * 10) / 10}%
-                                    {'  '} / measured: {measured}
-                                    {'  '} / applied: {Number(x.applied_count ?? 0)}
-                                    {'  '} / avgΔmissed: {Number(x.avg_delta_missed_rate ?? 0)}
-                                    {'  '} <span title={b.hint}>{b.label}</span>
+                  {actionEffectivenessLoading && (
+                    <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
+                  )}
+                  {!actionEffectivenessLoading && actionEffectivenessError && (
+                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
+                      {actionEffectivenessError}
+                    </div>
+                  )}
 
-                                    {recommended && (
-                                      <span
-                                        style={{
-                                          marginLeft: 8,
-                                          padding: '0.1rem 0.45rem',
-                                          borderRadius: 999,
-                                          fontSize: '0.7rem',
-                                          fontWeight: 800,
-                                          color: 'rgba(0,255,200,.95)',
-                                          border: '1px solid rgba(0,255,200,.45)',
-                                          background: 'rgba(0,255,200,.08)',
-                                        }}
-                                        title="改善率が高く、かつ安定しているため今すぐ使う候補"
-                                      >
-                                        今すぐ使う
-                                      </span>
-                                    )}
+                  {!actionEffectivenessLoading && !actionEffectivenessError && (
+                    <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                      {sortedActionEffectiveness.length === 0 ? (
+                        <div>まだデータがありません（適用イベントやOutcomeが貯まると出ます）</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '0.35rem' }}>
+                          {sortedActionEffectiveness.slice(0, 8).map((x) => (
+                            <div
+                              key={x.action_id}
+                              style={{
+                                padding: '0.55rem 0.65rem',
+                                borderRadius: 12,
+                                border: '1px solid rgba(255,255,255,.10)',
+                                background: 'rgba(255,255,255,.04)',
+                              }}
+                            >
+                              <div style={{ fontWeight: 750 }}>{x.action_id}</div>
+                              {(() => {
+                                const measured = Number(x.measured_count ?? 0);
+                                const b = stabilityBadge(measured);
+                                const recommended = isRecommendedAction(x);
+                                const caution = isCautionAction(x);
+                                const hyp = hypothesisForAction(x.action_id);
 
-                                    {!recommended && caution && (
-                                      <span
-                                        style={{
-                                          marginLeft: 8,
-                                          padding: '0.1rem 0.45rem',
-                                          borderRadius: 999,
-                                          fontSize: '0.7rem',
-                                          fontWeight: 800,
-                                          color: 'rgba(255,190,0,.95)',
-                                          border: '1px solid rgba(255,190,0,.45)',
-                                          background: 'rgba(255,190,0,.08)',
-                                        }}
-                                        title="改善率は高いが計測数が少ないため、まだ判断しない"
-                                      >
-                                        ⚠️ まだ信じるな
-                                      </span>
-                                    )}
-                                  </div>
+                                return (
+                                  <>
+                                    <div style={{ opacity: 0.8 }}>
+                                      improved_rate: {Math.round((Number(x.improved_rate ?? 0) * 100) * 10) / 10}%
+                                      {'  '} / measured: {measured}
+                                      {'  '} / applied: {Number(x.applied_count ?? 0)}
+                                      {'  '} / avgΔmissed: {Number(x.avg_delta_missed_rate ?? 0)}
+                                      {'  '} <span title={b.hint}>{b.label}</span>
 
-                                  {hyp && (
-                                    <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.72 }}>
-                                      仮説: {hyp}
+                                      {recommended && (
+                                        <span
+                                          style={{
+                                            marginLeft: 8,
+                                            padding: '0.1rem 0.45rem',
+                                            borderRadius: 999,
+                                            fontSize: '0.7rem',
+                                            fontWeight: 800,
+                                            color: 'rgba(0,255,200,.95)',
+                                            border: '1px solid rgba(0,255,200,.45)',
+                                            background: 'rgba(0,255,200,.08)',
+                                          }}
+                                          title="改善率が高く、かつ安定しているため今すぐ使う候補"
+                                        >
+                                          今すぐ使う
+                                        </span>
+                                      )}
+
+                                      {!recommended && caution && (
+                                        <span
+                                          style={{
+                                            marginLeft: 8,
+                                            padding: '0.1rem 0.45rem',
+                                            borderRadius: 999,
+                                            fontSize: '0.7rem',
+                                            fontWeight: 800,
+                                            color: 'rgba(255,190,0,.95)',
+                                            border: '1px solid rgba(255,190,0,.45)',
+                                            background: 'rgba(255,190,0,.08)',
+                                          }}
+                                          title="改善率は高いが計測数が少ないため、まだ判断しない"
+                                        >
+                                          ⚠️ まだ信じるな
+                                        </span>
+                                      )}
                                     </div>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
 
-              {/* ✅ Priority 4-C: action effectiveness by feature（read-only / 監査用） */}
-              <div style={{ marginTop: '0.7rem', fontSize: '0.85rem', opacity: 0.9 }}>
-                <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
-                  提案の効果（条件別 / by-feature）
+                                    {hyp && (
+                                      <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', opacity: 0.72 }}>
+                                        仮説: {hyp}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.35rem' }}>
-                  安定度: ✅ total ≥ 30 / △ 10–29 / ⚠️ &lt; 10（母数ベース）
+              </details>
+
+              {/* ✅ 3) 条件別（by-feature） */}
+              <details
+                style={{
+                  marginTop: '0.65rem',
+                  border: '1px solid rgba(255,255,255,.10)',
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,.02)',
+                  padding: '0.6rem 0.65rem',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontWeight: 850, opacity: 0.92 }}>
+                  提案の効果（条件別）
+                </summary>
+
+                <div style={{ marginTop: '0.75rem' }}>
+                  <div style={{ fontWeight: 800, marginBottom: '0.35rem' }}>
+                    提案の効果（条件別 / by-feature）
+                  </div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.35rem' }}>
+                    安定度: ✅ total ≥ 30 / △ 10–29 / ⚠️ &lt; 10（母数ベース）
+                  </div>
+
+                  {actionEffectivenessByFeatureLoading && (
+                    <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
+                  )}
+
+                  {!actionEffectivenessByFeatureLoading && actionEffectivenessByFeatureError && (
+                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
+                      {actionEffectivenessByFeatureError}
+                    </div>
+                  )}
+
+                  {!actionEffectivenessByFeatureLoading && !actionEffectivenessByFeatureError && (
+                    <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
+                      {(actionEffectivenessByFeature[bucket]?.length ?? 0) === 0 ? (
+                        <div>まだデータがありません（適用イベントやOutcomeが貯まると出ます）</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '0.35rem' }}>
+                          {actionEffectivenessByFeature[bucket]!.slice(0, 8).map((x) => (
+                            <div
+                              key={`${x.action_id}-${x.feature_key}-${x.feature_value}`}
+                              style={{
+                                padding: '0.55rem 0.65rem',
+                                borderRadius: 12,
+                                border: '1px solid rgba(255,255,255,.10)',
+                                background: 'rgba(255,255,255,.04)',
+                              }}
+                            >
+                              <div style={{ fontWeight: 750 }}>{x.action_id}</div>
+                              {(() => {
+                                const measured = Number(x.total_events ?? 0);
+                                const b = stabilityBadge(measured);
+
+                                return (
+                                  <div style={{ opacity: 0.8 }}>
+                                    {labelFeatureKey(x.feature_key)} ={' '}
+                                    {labelFeatureValue(x.feature_value, x.feature_key)}
+                                    {'  '} / improved_rate:{' '}
+                                    {Math.round(Number(x.improved_rate ?? 0) * 1000) / 10}%
+                                    {'  '} / improved: {Number(x.improved_events ?? 0)}
+                                    {'  '} / total: {measured}
+                                    {'  '} <span title={b.hint}>{b.label}</span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                {actionEffectivenessByFeatureLoading && (
-                  <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>読み込み中...</div>
-                )}
-
-                {!actionEffectivenessByFeatureLoading && actionEffectivenessByFeatureError && (
-                  <div style={{ fontSize: '0.85rem', color: 'rgba(255,120,120,.95)' }}>
-                    {actionEffectivenessByFeatureError}
-                  </div>
-                )}
-
-                {!actionEffectivenessByFeatureLoading && !actionEffectivenessByFeatureError && (
-                  <div style={{ fontSize: '0.85rem', opacity: 0.85 }}>
-                    {(actionEffectivenessByFeature[bucket]?.length ?? 0) === 0 ? (
-                      <div>まだデータがありません（適用イベントやOutcomeが貯まると出ます）</div>
-                    ) : (
-                      <div style={{ display: 'grid', gap: '0.35rem' }}>
-                        {actionEffectivenessByFeature[bucket]!.slice(0, 8).map((x) => (
-                          <div
-                            key={`${x.action_id}-${x.feature_key}-${x.feature_value}`}
-                            style={{
-                              padding: '0.55rem 0.65rem',
-                              borderRadius: 12,
-                              border: '1px solid rgba(255,255,255,.10)',
-                              background: 'rgba(255,255,255,.04)',
-                            }}
-                          >
-                            <div style={{ fontWeight: 750 }}>{x.action_id}</div>
-                            {(() => {
-                              const measured = Number(x.total_events ?? 0);
-                              const b = stabilityBadge(measured);
-
-                              return (
-                                <div style={{ opacity: 0.8 }}>
-                                  {labelFeatureKey(x.feature_key)} ={' '}
-                                  {labelFeatureValue(x.feature_value, x.feature_key)}
-                                  {'  '} / improved_rate:{' '}
-                                  {Math.round(Number(x.improved_rate ?? 0) * 1000) / 10}%
-                                  {'  '} / improved: {Number(x.improved_events ?? 0)}
-                                  {'  '} / total: {measured}
-                                  {'  '} <span title={b.hint}>{b.label}</span>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              </details>
             </div>
           </details>
-        </> 
-      )}   
+        </>
+      )}
     </div>
   );
 };

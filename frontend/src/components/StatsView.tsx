@@ -1347,7 +1347,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                   opacity: 0.7,
                 }}
               >
-                授業/特徴/理由/おすすめアクション
               </span>
             </summary>
 
@@ -1369,7 +1368,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 }}
               >
                 <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                  落ちやすい授業
+                  落としやすいカテゴリ
                 </div>
 
                 {!sortedByCourse || sortedByCourse.length === 0 ? (
@@ -1439,7 +1438,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 }}
               >
                 <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                  落ちやすい特徴
+                  特徴
                 </div>
 
                 {!sortedByFeature || sortedByFeature.length === 0 ? (
@@ -1530,7 +1529,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                   }}
                 >
                   <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                    授業ごとの「落ちやすい理由」
+                    カテゴリごとの「落ちやすい理由」
                   </div>
 
                   {courseHashList.length === 0 ? (

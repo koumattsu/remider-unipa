@@ -143,7 +143,13 @@ async def delete_task(
 ):
     task = (
         db.query(Task)
-        .filter(and_(Task.id == task_id, Task.user_id == current_user.id))
+        .filter(
+            and_(
+                Task.id == task_id,
+                Task.user_id == current_user.id,
+                Task.deleted_at.is_(None),
+            )
+        )
         .first()
     )
     if not task:
@@ -153,6 +159,7 @@ async def delete_task(
     task.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return None
+
 
 @router.post("/import-moodle-html")
 def import_moodle_html(

@@ -1,34 +1,12 @@
 # backend/app/main.py
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.api.v1.endpoints.line_webhook import router as line_webhook_router
 from app.db.base import init_db
-from app.db.base import engine, Base
-from sqlalchemy import text
 
 def create_tables_if_needed() -> None:
-    try:
-        # どこに繋いでるかを確定（パスワードは出さない）
-        url = engine.url
-        safe = f"{url.drivername}://{url.username}@{url.host}:{url.port}/{url.database}"
-        print("[BOOT] ENV =", settings.ENV)
-        print("[BOOT] AUTO_INIT_DB =", settings.AUTO_INIT_DB)
-        print("[BOOT] DB =", safe)
-        # models import が効いてるか（Baseに何テーブル載ってるか）
-        import app.models  # noqa
-        print("[BOOT] metadata tables =", len(Base.metadata.tables))
-        # Neon/PG 側の実体（DB名・schema・search_path）を確定
-        with engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT current_database(), current_schema(), current_user, current_setting('search_path')")
-            ).fetchone()
-        print("[BOOT] pg =", row)
-    except Exception as e:
-        print("[BOOT] debug error:", e)
-
     # ✅ 起動時DDLは本番で事故りやすいのでデフォOFF（必要時のみON）
     if settings.AUTO_INIT_DB:
         init_db()

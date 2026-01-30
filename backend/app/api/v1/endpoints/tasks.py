@@ -91,7 +91,13 @@ async def update_task(
     """課題を更新"""
     task = (
         db.query(Task)
-        .filter(and_(Task.id == task_id, Task.user_id == current_user.id))
+        .filter(
+            and_(
+                Task.id == task_id,
+                Task.user_id == current_user.id,
+                Task.deleted_at.is_(None),
+            )
+        )
         .first()
     )
 

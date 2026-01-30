@@ -24,9 +24,11 @@ def get_application() -> FastAPI:
     origins = settings.CORS_ORIGINS
 
     # 念のため FRONTEND_URL も許可に入れておく（入ってなければ追加）
+    # ✅ ただし production で未設定デフォルト(localhost)が混ざる事故を防ぐ
     frontend_origin = (settings.FRONTEND_URL or "").strip().rstrip("/")
-    if frontend_origin and frontend_origin not in origins:
-        origins = [*origins, frontend_origin]
+    if settings.ENV != "production":
+        if frontend_origin and frontend_origin not in origins:
+            origins = [*origins, frontend_origin]
 
     app.add_middleware(
         CORSMiddleware,

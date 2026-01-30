@@ -1224,10 +1224,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               次にやること（最優先）
             </div>
 
-            <div style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '0.65rem' }}>
-              ※ SSOTは再計算しない（OutcomeFeatureSnapshot / ActionEffectivenessSnapshot は表示のみ）
-            </div>
-
             {(!suggestedActions || suggestedActions.length === 0) ? (
               <div style={{ opacity: 0.75 }}>（まだ提案がありません）</div>
             ) : (() => {
@@ -1342,7 +1338,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 color: 'rgba(255,255,255,.92)',
               }}
             >
-              詳しい分析（Insights）
+              詳しい分析
               <span
                 style={{
                   marginLeft: 10,
@@ -1373,10 +1369,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 }}
               >
                 <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                  落ちやすい授業（missed率ランキング）
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,.62)', marginBottom: '0.65rem' }}>
-                  analytics/outcomes/by-course（read-only SSOT）
+                  落ちやすい授業
                 </div>
 
                 {!sortedByCourse || sortedByCourse.length === 0 ? (
@@ -1446,7 +1439,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 }}
               >
                 <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                  落ちやすい特徴（feature別 missed率）
+                  落ちやすい特徴
                 </div>
 
                 {!sortedByFeature || sortedByFeature.length === 0 ? (
@@ -1537,17 +1530,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                   }}
                 >
                   <div style={{ marginBottom: '0.25rem', fontWeight: 900 }}>
-                    授業ごとの「落ちやすい理由」（course × feature）
-                  </div>
-
-                  <div
-                    style={{
-                      marginBottom: '0.75rem',
-                      fontSize: '0.8rem',
-                      color: 'rgba(255,255,255,.62)',
-                    }}
-                  >
-                    analytics/outcomes/course-x-feature（read-only SSOT）
+                    授業ごとの「落ちやすい理由」
                   </div>
 
                   {courseHashList.length === 0 ? (

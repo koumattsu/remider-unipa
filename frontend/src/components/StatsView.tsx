@@ -28,7 +28,15 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
   const [rateSeriesWeek, setRateSeriesWeek] = useState<RatePoint[]>([]);
   const [rateSeriesMonth, setRateSeriesMonth] = useState<RatePoint[]>([]);
+  // ✅ audit は通常ユーザーに見せない（案A）
+  // NOTE: 将来 user.role 等に差し替え可能。まずは ENV で最小diff。
+  const isDeveloper = import.meta.env.VITE_ENABLE_AUDIT === 'true';
   const [activeTab, setActiveTab] = useState<StatsTab>('overview');
+  useEffect(() => {
+    if (!isDeveloper && activeTab === 'audit') {
+      setActiveTab('overview');
+    }
+  }, [isDeveloper, activeTab]);
   const [summaryWeek, setSummaryWeek] = useState<OutcomesSummaryItem | null>(null);
   const [summaryMonth, setSummaryMonth] = useState<OutcomesSummaryItem | null>(null);
   const [byCourseWeek, setByCourseWeek] = useState<OutcomesByCourseRow[] | null>(null);
@@ -994,6 +1002,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   if (error) {
     return <div style={{ color: '#fca5a5' }}>Failed: {error}</div>;
   }
+  type TabLayer = 'metrics' | 'insights' | 'actions' | 'audit';
+
+  const tabs = useMemo(() => ([
+    { key: 'overview' as const, label: '全体', layer: 'metrics' as TabLayer },
+    { key: 'hotspots' as const, label: '要注意パターン', layer: 'insights' as TabLayer },
+    { key: 'improve' as const, label: '改善点', layer: 'actions' as TabLayer },
+    ...(isDeveloper ? ([{ key: 'audit' as const, label: 'audit', layer: 'audit' as TabLayer }] as const) : []),
+  ] as const), [isDeveloper]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1034,25 +1050,20 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
           gap: '0.5rem',
           marginTop: '0.25rem',
           marginBottom: '0.35rem',
           width: '100%',
         }}
       >
-        {([
-          ['overview', '全体'],
-          ['hotspots', '要注意パターン'],
-          ['improve', '改善点'],
-          ['audit', 'audit'],
-        ] as const).map(([key, label]) => {
-          const isActive = activeTab === key;
+        {tabs.map((t) => {
+          const isActive = activeTab === t.key;
           return (
             <button
-              key={key}
+              key={t.key}
               type="button"
-              onClick={() => setActiveTab(key)}
+              onClick={() => setActiveTab(t.key)}
               style={{
                 padding: '0.4rem 0.65rem',
                 borderRadius: 999,
@@ -1063,7 +1074,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 cursor: 'pointer',
               }}
             >
-              {label}
+              {t.label}
             </button>
           );
         })}
@@ -1847,7 +1858,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           </details>
         </>
       )}
-      {activeTab === 'audit' && (
+      {isDeveloper && activeTab === 'audit' && (
+
         <>
           {/* ✅ ユーザー向けの要約（最初に目に入る） */}
           <div

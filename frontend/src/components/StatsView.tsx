@@ -5,7 +5,9 @@ import { outcomesApi, OutcomeLog } from '../api/outcomes';
 import { analyticsOutcomesApi, Bucket, OutcomesByCourseRow, OutcomesSummaryItem, OutcomesByFeatureRow, OutcomesCourseXFeatureRow,} from '../api/analyticsOutcomes';
 import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
 import { fetchLatestNotificationRun, fetchRunSummary, NotificationRun, RunSummary } from '../api/notificationRuns';
-import { Task, NotificationSetting, NotificationSettingUpdate } from '../types';
+import type { Task, NotificationSetting} from '../types';
+import { buildSuggestedActions } from '../analytics/suggestedActions';
+import type { SuggestedAction } from '../analytics/suggestedActions';
 import { settingsApi } from '../api/settings';
 import { analyticsActionsApi, ActionAppliedEvent, ActionEffectivenessItem, ActionEffectivenessByFeatureItem, ActionEffectivenessSnapshotItem,} from '../api/analyticsActions';
 import { SnapshotHeader } from './analytics/SnapshotHeader';
@@ -374,25 +376,21 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, []);
 
-  // ✅ 今週（月〜日）のタスク進捗（UI用）
-  // tasks は Props の tasks（= _tasks）を使う
+  // ✅ 今週（月〜日）の進捗（tasks由来 / 現在）
   const weekProgress = useMemo(() => {
     if (bucket !== 'week') return { total: 0, done: 0, rate: 0 };
 
     const now = new Date();
 
-    // 今週の月曜 00:00（ローカル=JST想定）
     const start = new Date(now);
     const day = start.getDay(); // Sun=0, Mon=1...
     const diffToMon = (day === 0 ? -6 : 1) - day;
     start.setDate(start.getDate() + diffToMon);
     start.setHours(0, 0, 0, 0);
 
-    // 来週の月曜 00:00（endExclusive）
     const end = new Date(start);
     end.setDate(end.getDate() + 7);
 
-    // “今週のタスク” は deadline が [start, end) に入るもの
     const weekTasks = (_tasks ?? []).filter((t: any) => {
       const d = t?.deadline ? new Date(t.deadline) : null;
       if (!d || Number.isNaN(d.getTime())) return false;
@@ -401,6 +399,29 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
     const total = weekTasks.length;
     const done = weekTasks.filter((t: any) => !!t?.is_done).length;
+    const rate = total === 0 ? 0 : Math.round((done / total) * 100);
+
+    return { total, done, rate };
+  }, [bucket, _tasks]);
+
+  // ✅ 今月の進捗（tasks由来 / 現在） ← 追加
+  const monthProgress = useMemo(() => {
+    if (bucket !== 'month') return { total: 0, done: 0, rate: 0 };
+
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1); // 次月1日 00:00
+
+    const monthTasks = (_tasks ?? []).filter((t: any) => {
+      const d = t?.deadline ? new Date(t.deadline) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      return d >= start && d < end;
+    });
+
+    const total = monthTasks.length;
+    const done = monthTasks.filter((t: any) => !!t?.is_done).length;
     const rate = total === 0 ? 0 : Math.round((done / total) * 100);
 
     return { total, done, rate };
@@ -533,22 +554,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // 既存があるなら残してOK（month側やfallback用）
   const fallbackRateObj = bucket === 'week' ? weekly : monthly;
 
-  // ✅ 今週は「タスク進捗」を優先
-  const shownRate =
-    bucket === 'week'
-      ? weekProgress.rate
-      : (chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate);
-
-  const shownTotal =
-    bucket === 'week'
-      ? weekProgress.total
-      : (chosenSummary?.total ?? fallbackRateObj.total);
-
-  const shownDone =
-    bucket === 'week'
-      ? weekProgress.done
-      : (chosenSummary?.done ?? fallbackRateObj.done);
-
   const chosenActionEffectiveness = actionEffectiveness[bucket] ?? [];
 
   const sortedActionEffectiveness = useMemo(() => {
@@ -627,111 +632,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       .slice(0, 5);
   }, [chosenCourseX, selectedCourseHash]);
 
-  type SuggestedAction = {
-    id: string;
-    title: string;
-    description: string;
-    // null の場合は「手動アクション」（ボタン非表示）
-    patch: NotificationSettingUpdate | null;
-    reason_keys?: string[];
-  };
-
-  const asBool = (v: any): boolean | null => {
-    if (typeof v === 'boolean') return v;
-    if (typeof v === 'string') {
-      const s = v.trim().toLowerCase();
-      if (s === 'true') return true;
-      if (s === 'false') return false;
-    }
-    return null;
-  };
-
-  const asNumber = (v: any): number | null => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const buildSuggestedActions = (rows: OutcomesCourseXFeatureRow[]): SuggestedAction[] => {
-    const actions: SuggestedAction[] = [];
-
-    // 現在値（無ければ安全デフォルト）
-    const base: NotificationSettingUpdate = {
-      reminder_offsets_hours: currentNotifSetting?.reminder_offsets_hours ?? [],
-      daily_digest_time: currentNotifSetting?.daily_digest_time ?? '08:00',
-      enable_morning_notification:
-        currentNotifSetting?.enable_morning_notification !== undefined
-          ? currentNotifSetting.enable_morning_notification
-          : true,
-      enable_webpush: currentNotifSetting?.enable_webpush ?? false,
-    };
-
-    const hasWeekend = rows.some(
-      (r) => r.feature_key === 'deadline_is_weekend' && asBool(r.feature_value) === true
-    );
-
-    const hasLateNight = rows.some((r) => {
-      if (r.feature_key !== 'deadline_hour_jst') return false;
-      const h = asNumber(r.feature_value);
-      return h !== null && h >= 0 && h <= 5;
-    });
-
-    const hasNoMemo = rows.some(
-      (r) => r.feature_key === 'has_memo' && asBool(r.feature_value) === false
-    );
-
-    if (hasWeekend) {
-      actions.push({
-        id: 'weekend_enable_morning',
-        title: '週末締切が多い → 朝通知をON（継続チェックの起点を作る）',
-        description: '週末締切が原因で missed が多いため、朝通知をONにして着手トリガーを作ります。',
-        reason_keys: ['deadline_is_weekend', 'deadline_dow_jst'],
-        patch: {
-          ...base,
-          enable_morning_notification: true,
-        },
-      });
-    }
-
-    if (hasLateNight) {
-      actions.push({
-        id: 'latenight_enable_webpush_and_1h',
-        title: '深夜締切が多い → Web Push と 1時間前通知をON',
-        description: '深夜締切は見落としやすいので、アプリ通知（Web Push）と1時間前通知で拾います。',
-        reason_keys: ['deadline_hour_jst'],
-        patch: {
-          ...base,
-          enable_webpush: true,
-          reminder_offsets_hours: [1],
-        },
-      });
-    }
-
-    if (hasNoMemo) {
-      actions.push({
-        id: 'add_memo',
-        title: 'メモ無しが多い → タスクに1行メモを追加',
-        description: '「何をやるか」を1行で書くと、完了率が上がりやすいです（これは手動アクション）。',
-        reason_keys: ['has_memo'],
-        patch: null,
-      });
-    }
-
-    // 何も引っかからない場合も、最低1個は出す（空UI回避）
-    if (actions.length === 0) {
-      actions.push({
-        id: 'generic',
-        title: 'まずは 1時間前通知（無料の基本）をONにする',
-        description: '最小の介入で取りこぼしを減らします。',
-        patch: {
-          ...base,
-          reminder_offsets_hours: [1],
-        },
-      });
-    }
-
-    return actions;
-  };
-
   const applySuggestedAction = async (a: SuggestedAction) => {
     const patch = a.patch;
     if (!patch) {
@@ -778,8 +678,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
   const suggestedActions = useMemo(() => {
     if (!reasons || reasons.length === 0) return [];
-    return buildSuggestedActions(reasons);
+    return buildSuggestedActions(reasons, currentNotifSetting);
   }, [reasons, currentNotifSetting]);
+
   // ✅ Priority 3-D: 適用前/後の達成率を比較（read-only）
   useEffect(() => {
     let mounted = true;
@@ -1009,20 +910,35 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     { key: 'improve' as const, label: '改善点', layer: 'actions' as TabLayer },
     ...(isDeveloper ? ([{ key: 'audit' as const, label: 'audit', layer: 'audit' as TabLayer }] as const) : []),
   ] as const), [isDeveloper]);
-  
   // =========================
   // Layer: Metrics (facts)
   // =========================
   const MetricsOverview = (
     <>
-      {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
-      <StatsCard
-        title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
-        subtitle={chosenSummary ? undefined : '（集計がまだありません）'}
-        rate={shownRate}
-        total={shownTotal}
-        done={shownDone}
-      />
+      {/* ✅ Metricsは「定義固定」：進捗（現在）と確定（Outcome）を分離 */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+          gap: '0.9rem',
+        }}
+      >
+        <StatsCard
+          title={bucket === 'week' ? '今週の進捗（現在）' : '今月の進捗（現在）'}
+          subtitle="tasks（現在状態）"
+          rate={bucket === 'week' ? weekProgress.rate : monthProgress.rate}
+          total={bucket === 'week' ? weekProgress.total : monthProgress.total}
+          done={bucket === 'week' ? weekProgress.done : monthProgress.done}
+        />
+
+        <StatsCard
+          title={bucket === 'week' ? '今週の確定実績（Outcome）' : '今月の確定実績（Outcome）'}
+          subtitle={chosenSummary ? 'OutcomeLog（締切到達時点）' : '（集計がまだありません）'}
+          rate={chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate}
+          total={chosenSummary?.total ?? fallbackRateObj.total}
+          done={chosenSummary?.done ?? fallbackRateObj.done}
+        />
+      </div>
 
       {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
       <div

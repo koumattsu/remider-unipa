@@ -1,6 +1,6 @@
 // frontend/src/components/StatsView.tsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { outcomesApi, OutcomeLog } from '../api/outcomes';
 import { analyticsOutcomesApi, Bucket, OutcomesByCourseRow, OutcomesSummaryItem, OutcomesByFeatureRow, OutcomesCourseXFeatureRow,} from '../api/analyticsOutcomes';
 import { fetchInAppNotificationsSummary, InAppNotificationsSummary } from '../api/notifications';
@@ -585,7 +585,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return m;
   }, [bucket, actionEffectivenessByFeature]);
 
-
   const courseHashList = useMemo(() => {
     const xs = chosenCourseX ?? [];
     const s = new Set<string>();
@@ -1010,7 +1009,139 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     { key: 'improve' as const, label: '改善点', layer: 'actions' as TabLayer },
     ...(isDeveloper ? ([{ key: 'audit' as const, label: 'audit', layer: 'audit' as TabLayer }] as const) : []),
   ] as const), [isDeveloper]);
+  
+  // =========================
+  // Layer: Metrics (facts)
+  // =========================
+  const MetricsOverview = (
+    <>
+      {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
+      <StatsCard
+        title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
+        subtitle={chosenSummary ? undefined : '（集計がまだありません）'}
+        rate={shownRate}
+        total={shownTotal}
+        done={shownDone}
+      />
 
+      {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+          gap: '0.9rem',
+        }}
+      >
+        {/* ✅ RateBars は必ず全幅 */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
+        </div>
+
+        <NotifStatsCard
+          title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
+          subtitle={undefined}
+          created={chosenNotifCreated}
+          dismissed={chosenNotifDismissed}
+          dismissRate={chosenNotifDismissRate}
+        />
+      </div>
+    </>
+  );
+
+  // =========================
+  // Layer: Insights (interpretation)
+  // =========================
+  const InsightsHotspots = (
+    <div
+      style={{
+        padding: '1rem 1.1rem',
+        borderRadius: 18,
+        border: '1px solid rgba(255,255,255,.12)',
+        background: 'rgba(255,255,255,.04)',
+      }}
+    >
+      <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>
+        要注意パターン（落としやすい傾向）
+      </div>
+      <div style={{ display: 'grid', gap: '0.75rem' }}>
+        {/* 曜日 */}
+        <div>
+          <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
+            曜日 Top3
+          </div>
+
+          {hotspotDow.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>（データなし）</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              {hotspotDow.map((r, idx) => (
+                <div
+                  key={`dow-${idx}-${String(r.feature_value)}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '0.45rem 0.6rem',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,.10)',
+                    background: 'rgba(255,255,255,.03)',
+                  }}
+                >
+                  <div style={{ fontWeight: 800 }}>
+                    #{idx + 1}{' '}
+                    {r.feature_key === 'deadline_hour_jst'
+                      ? `${r.feature_value}時`
+                      : labelFeatureValue(r.feature_value, r.feature_key)}
+                  </div>
+                  <div style={{ opacity: 0.82 }}>
+                    {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 時間帯 */}
+        <div>
+          <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
+            時間帯 Top3
+          </div>
+
+          {hotspotHour.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>（データなし）</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              {hotspotHour.map((r, idx) => (
+                <div
+                  key={`hour-${idx}-${String(r.feature_value)}`}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '0.45rem 0.6rem',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,.10)',
+                    background: 'rgba(255,255,255,.03)',
+                  }}
+                >
+                  <div style={{ fontWeight: 800 }}>
+                    #{idx + 1}{' '}
+                    {labelFeatureValue(r.feature_value, r.feature_key)}
+                  </div>
+                  <div style={{ opacity: 0.82 }}>
+                    {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // =========================
+  // Layer: Actions (next steps)
+  // =========================
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* ✅ Priority 3-A: Outcomes 可視化（read-only） */}
@@ -1079,127 +1210,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           );
         })}
       </div>
-      {activeTab === 'overview' && (
-        <>
-          {/* ✅ Overview（常時表示：ここだけ見ればOK） */}
-          <StatsCard
-            title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
-            subtitle={chosenSummary ? undefined : '（集計がまだありません）'}
-            rate={shownRate}
-            total={shownTotal}
-            done={shownDone}
-          /> 
-
-          {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
-              gap: '0.9rem',
-            }}
-          >
-            {/* ✅ RateBars は必ず全幅 */}
-            <div style={{ gridColumn: '1 / -1' }}>
-              <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
-            </div>
-
-            <NotifStatsCard
-              title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
-              subtitle={undefined}
-              created={chosenNotifCreated}
-              dismissed={chosenNotifDismissed}
-              dismissRate={chosenNotifDismissRate}
-            />
-          </div>
-        </>
-      )}
-      {activeTab === 'hotspots' && (
-        <div
-          style={{
-            padding: '1rem 1.1rem',
-            borderRadius: 18,
-            border: '1px solid rgba(255,255,255,.12)',
-            background: 'rgba(255,255,255,.04)',
-          }}
-        >
-          <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>
-            要注意パターン（落としやすい傾向）
-          </div>
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {/* 曜日 */}
-            <div>
-              <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
-                曜日 Top3
-              </div>
-
-              {hotspotDow.length === 0 ? (
-                <div style={{ opacity: 0.7 }}>（データなし）</div>
-              ) : (
-                <div style={{ display: 'grid', gap: '0.35rem' }}>
-                  {hotspotDow.map((r, idx) => (
-                    <div
-                      key={`dow-${idx}-${String(r.feature_value)}`}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '0.45rem 0.6rem',
-                        borderRadius: 12,
-                        border: '1px solid rgba(255,255,255,.10)',
-                        background: 'rgba(255,255,255,.03)',
-                      }}
-                    >
-                      <div style={{ fontWeight: 800 }}>
-                        #{idx + 1}{' '}
-                        {r.feature_key === 'deadline_hour_jst'
-                          ? `${r.feature_value}時`
-                          : labelFeatureValue(r.feature_value, r.feature_key)}
-                      </div>
-                      <div style={{ opacity: 0.82 }}>
-                        {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 時間帯 */}
-            <div>
-              <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
-                時間帯 Top3
-              </div>
-
-              {hotspotHour.length === 0 ? (
-                <div style={{ opacity: 0.7 }}>（データなし）</div>
-              ) : (
-                <div style={{ display: 'grid', gap: '0.35rem' }}>
-                  {hotspotHour.map((r, idx) => (
-                    <div
-                      key={`hour-${idx}-${String(r.feature_value)}`}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '0.45rem 0.6rem',
-                        borderRadius: 12,
-                        border: '1px solid rgba(255,255,255,.10)',
-                        background: 'rgba(255,255,255,.03)',
-                      }}
-                    >
-                      <div style={{ fontWeight: 800 }}>
-                        #{idx + 1}{' '}
-                        {labelFeatureValue(r.feature_value, r.feature_key)}
-                      </div>
-                      <div style={{ opacity: 0.82 }}>
-                        {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'overview' && MetricsOverview}
+      {activeTab === 'hotspots' && InsightsHotspots}
       {activeTab === 'improve' && (
         <>
           {/* ✅ C2-3: Next Best Action（最優先 / 固定表示） */}

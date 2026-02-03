@@ -895,13 +895,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   }, [chosenByCourse]);
 
   const worstCourse = sortedByCourse?.[0] ?? null;
-
-  if (loading) {
-    return <div style={{ color: 'rgba(255,255,255,.7)' }}>Loading…</div>;
-  }
-  if (error) {
-    return <div style={{ color: '#fca5a5' }}>Failed: {error}</div>;
-  }
+  
   type TabLayer = 'metrics' | 'insights' | 'actions' | 'audit';
 
   const tabs = useMemo(() => ([
@@ -910,6 +904,13 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     { key: 'improve' as const, label: '改善点', layer: 'actions' as TabLayer },
     ...(isDeveloper ? ([{ key: 'audit' as const, label: 'audit', layer: 'audit' as TabLayer }] as const) : []),
   ] as const), [isDeveloper]);
+
+  if (loading) {
+    return <div style={{ color: 'rgba(255,255,255,.7)' }}>Loading…</div>;
+  }
+  if (error) {
+    return <div style={{ color: '#fca5a5' }}>Failed: {error}</div>;
+  }
   // =========================
   // Layer: Metrics (facts)
   // =========================

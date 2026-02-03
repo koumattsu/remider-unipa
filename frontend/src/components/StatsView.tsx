@@ -253,38 +253,51 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
           const weekPoints = await Promise.all(
             weekWins.map(async (w) => {
-              const res = await analyticsOutcomesApi.getSummary({
-                bucket: 'week',
-                from: iso(w.from),
-                to: iso(w.to),
-              });
-              const item = res.items?.[0];
-              const rate = item ? toPercent(item.done_rate) : 0;
+              try {
+                const res = await analyticsOutcomesApi.getSummary({
+                  bucket: 'week',
+                  from: iso(w.from),
+                  to: iso(w.to),
+                });
+                const item = res.items?.[0];
+                const rate = item ? toPercent(item.done_rate) : 0;
 
-              // ✅ rangeLabel を渡す（これが下段表示のSSOT）
-              return {
-                label: w.label,
-                rangeLabel: w.rangeLabel,
-                rate,
-                total: item?.total ?? 0,
-                done: item?.done ?? 0
-              };
+                return {
+                  label: w.label,
+                  rangeLabel: w.rangeLabel,
+                  rate,
+                  total: item?.total ?? 0,
+                  done: item?.done ?? 0,
+                };
+              } catch {
+                // ✅ 1本落ちても全体Failedにしない（空として扱う）
+                return {
+                  label: w.label,
+                  rangeLabel: w.rangeLabel,
+                  rate: 0,
+                  total: 0,
+                  done: 0,
+                };
+              }
             })
           );
 
           const monthPoints = await Promise.all(
             monthWins.map(async (w) => {
-              const res = await analyticsOutcomesApi.getSummary({
-                bucket: 'month',
-                from: iso(w.from),
-                to: iso(w.to),
-              });
-              const item = res.items?.[0];
-              const rate = item ? toPercent(item.done_rate) : 0;
-              return { label: w.label, rate, total: item?.total ?? 0, done: item?.done ?? 0 };
+              try {
+                const res = await analyticsOutcomesApi.getSummary({
+                  bucket: 'month',
+                  from: iso(w.from),
+                  to: iso(w.to),
+                });
+                const item = res.items?.[0];
+                const rate = item ? toPercent(item.done_rate) : 0;
+                return { label: w.label, rate, total: item?.total ?? 0, done: item?.done ?? 0 };
+              } catch {
+                return { label: w.label, rate: 0, total: 0, done: 0 };
+              }
             })
           );
-
           setRateSeriesWeek(weekPoints);
           setRateSeriesMonth(monthPoints);
         };
@@ -303,11 +316,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           effItems,
           effByFeatureItems,
         ] = await Promise.all([
-          outcomesApi.list({ from: fromOutcomesWeek, to: toOutcomesWeek }),
-          outcomesApi.list({ from: fromOutcomesMonth, to: toOutcomesMonth }),
+          outcomesApi
+            .list({ from: fromOutcomesWeek, to: toOutcomesWeek })
+            .catch(() => [] as OutcomeLog[]),
+          outcomesApi
+            .list({ from: fromOutcomesMonth, to: toOutcomesMonth })
+            .catch(() => [] as OutcomeLog[]),
 
-          fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }),
-          fetchInAppNotificationsSummary({ from: fromNotifsMonth, to: toNotifsMonth }),
+          fetchInAppNotificationsSummary({ from: fromNotifs, to: toNotifs }).catch(() => null),
+          fetchInAppNotificationsSummary({ from: fromNotifsMonth, to: toNotifsMonth }).catch(() => null),
 
           run?.id ? fetchRunSummary(run.id).catch(() => null) : Promise.resolve(null),
 
@@ -895,7 +912,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   }, [chosenByCourse]);
 
   const worstCourse = sortedByCourse?.[0] ?? null;
-  
+
   type TabLayer = 'metrics' | 'insights' | 'actions' | 'audit';
 
   const tabs = useMemo(() => ([

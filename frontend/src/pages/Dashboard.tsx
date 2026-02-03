@@ -7,6 +7,8 @@ import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
 import { fetchInAppNotifications, dismissInAppNotification } from '../api/notifications';
 import type { InAppNotification } from '../api/notifications';
+import { fetchLatestNotificationRun as fetchLatestNotificationRunApi } from '../api/notificationRuns';
+import type { NotificationRun } from '../api/notificationRuns';
 import { TaskForm } from '../components/TaskForm';
 import { TaskList } from '../components/TaskList';
 import { NotificationSettings } from '../components/NotificationSettings';
@@ -132,51 +134,6 @@ const saveNotifyOverrides = (map: Record<number, boolean>) => {
   );
 };
 
-type LatestRunResponse =
-  | { found: false; run: null }
-  | {
-      found: true;
-      run: {
-        id: number;
-        status: string;
-        started_at: string | null;
-        finished_at: string | null;
-        users_processed: number;
-        users_with_candidates: number;
-        due_candidates_total: number;
-        morning_candidates_total: number;
-        inapp_created: number;
-        webpush_sent: number;
-        webpush_failed: number;
-        webpush_deactivated: number;
-        line_sent: number;
-        line_failed: number;
-        stats?: {
-          v?: number;
-          kind?: string;
-          generated_at?: string;
-          payload?: {
-            decision_counts?: Record<string, number>;
-            [k: string]: any;
-          };
-          [k: string]: any;
-        } | null;
-      };
-    };
-
-const fetchLatestNotificationRun = async (): Promise<LatestRunResponse> => {
-  const res = await fetch(
-    `${import.meta.env.VITE_API_BASE_URL}/api/v1/admin/notification-runs/latest`,
-    { credentials: 'include' }
-  );
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`latest run fetch failed: ${res.status} ${t}`);
-  }
-  return (await res.json()) as LatestRunResponse;
-};
-
-
 // タブ
 type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings' | 'notifications';
 type AllViewMode = 'active' | 'overdue' | 'incomplete';
@@ -244,7 +201,7 @@ export const Dashboard: React.FC = () => {
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [notifsError, setNotifsError] = useState<string | null>(null);
   // 🛠 最新 NotificationRun（admin用）
-  const [latestRun, setLatestRun] = useState<LatestRunResponse | null>(null);
+  const [latestRun, setLatestRun] = useState<NotificationRun | null>(null);
   const [latestRunLoading, setLatestRunLoading] = useState(false);
   const [latestRunError, setLatestRunError] = useState<string | null>(null);
   const [showRunDetails, setShowRunDetails] = useState(false);
@@ -338,7 +295,7 @@ export const Dashboard: React.FC = () => {
       try {
         const [items, run] = await Promise.all([
           fetchInAppNotifications(50),
-          fetchLatestNotificationRun(),
+          fetchLatestNotificationRunApi(),
         ]);
         if (!cancelled) {
           setNotifs(items);
@@ -516,7 +473,7 @@ export const Dashboard: React.FC = () => {
                   try {
                     const [items, run] = await Promise.all([
                       fetchInAppNotifications(50),
-                      fetchLatestNotificationRun(),
+                      fetchLatestNotificationRunApi(),
                     ]);
                     setNotifs(items);
                     setLatestRun(run);
@@ -589,11 +546,14 @@ export const Dashboard: React.FC = () => {
                 </div>
               )}
 
-              {!latestRunLoading && !latestRunError && showRunDetails && latestRun?.found && (
+              {!latestRunLoading && !latestRunError && showRunDetails && latestRun && (
                 (() => {
-                  const r = latestRun.run;
-                  const decisionCounts = r.stats?.payload?.decision_counts ?? {};
-                  const entries = Object.entries(decisionCounts).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+                  const r = latestRun;
+                  const decisionCounts: Record<string, number> =
+                    (r.stats?.payload?.decision_counts as Record<string, number> | undefined) ?? {};
+
+                  const entries = (Object.entries(decisionCounts) as Array<[string, number]>)
+                    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 
                   const sent = entries.filter(([k]) => k.startsWith('sent:'));
                   const skipped = entries.filter(([k]) => k.startsWith('skipped:'));
@@ -632,7 +592,6 @@ export const Dashboard: React.FC = () => {
                       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
                         {[
                           ['users_processed', r.users_processed],
-                          ['users_with_candidates', r.users_with_candidates],
                           ['due_total', r.due_candidates_total],
                           ['morning_total', r.morning_candidates_total],
                         ].map(([k, v]) => (
@@ -708,9 +667,9 @@ export const Dashboard: React.FC = () => {
                 })()
               )}
 
-              {!latestRunLoading && !latestRunError && showRunDetails && latestRun && !latestRun.found && (
+              {!latestRunLoading && !latestRunError && showRunDetails && !latestRun && (
                 <div style={{ marginTop: '0.6rem', opacity: 0.7 }}>
-                  NotificationRun が見つかりません
+                  最新Cronはまだありません（未実行 or 権限なし）
                 </div>
               )}
             </div>

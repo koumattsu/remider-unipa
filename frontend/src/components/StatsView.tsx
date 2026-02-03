@@ -24,8 +24,8 @@ interface StatsViewProps {
 }
 
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
-  const [logsWeek, setLogsWeek] = useState<OutcomeLog[]>([]);
-  const [logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);
+  const [_logsWeek, setLogsWeek] = useState<OutcomeLog[]>([]);
+  const [_logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);
   const [bucket, setBucket] = useState<Bucket>('week');
   type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
   const [rateSeriesWeek, setRateSeriesWeek] = useState<RatePoint[]>([]);
@@ -39,8 +39,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
       setActiveTab('overview');
     }
   }, [isDeveloper, activeTab]);
-  const [summaryWeek, setSummaryWeek] = useState<OutcomesSummaryItem | null>(null);
-  const [summaryMonth, setSummaryMonth] = useState<OutcomesSummaryItem | null>(null);
+  const [_summaryWeek, setSummaryWeek] = useState<OutcomesSummaryItem | null>(null);
+  const [_summaryMonth, setSummaryMonth] = useState<OutcomesSummaryItem | null>(null);
   const [byCourseWeek, setByCourseWeek] = useState<OutcomesByCourseRow[] | null>(null);
   const [byCourseMonth, setByCourseMonth] = useState<OutcomesByCourseRow[] | null>(null);
   const [byFeatureWeek, setByFeatureWeek] = useState<OutcomesByFeatureRow[] | null>(null);
@@ -544,32 +544,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, [bucket, appliedAt]);
 
-  const calcRate = (subset: OutcomeLog[]) => {
-    const total = subset.length;
-    if (total === 0) return { total: 0, done: 0, rate: 0 };
-    const done = subset.filter((x) => x.outcome === 'done').length;
-    return { total, done, rate: Math.round((done / total) * 100) };
-  };
-
-  // ✅ outcomesApi.list() で backend 側で期間絞り込み済みなので、
-  //    フロントで logs.filter による再フィルタは不要（= logs 未定義も解消）
-  const weeklyLogs = useMemo(() => logsWeek, [logsWeek]);
-  const monthlyLogs = useMemo(() => logsMonth, [logsMonth]);
-  const weekly = useMemo(() => calcRate(weeklyLogs), [weeklyLogs]);
-  const monthly = useMemo(() => calcRate(monthlyLogs), [monthlyLogs]);
-
-  // ✅ Priority 3-A: 表示対象（週 / 月） ※先に宣言する（重要）
-  const chosenSummary = bucket === 'week' ? summaryWeek : summaryMonth;
   const chosenByCourse = bucket === 'week' ? byCourseWeek : byCourseMonth;
   const chosenByFeature = bucket === 'week' ? byFeatureWeek : byFeatureMonth;
   const chosenCourseX = bucket === 'week' ? courseXWeek : courseXMonth;
   const ratePoints: RatePoint[] = bucket === 'week' ? rateSeriesWeek : rateSeriesMonth;
-
-  // ✅ done_rate を表示用%に（chosenSummary が先に必要）
-  const summaryRate = chosenSummary ? toPercent(chosenSummary.done_rate) : null;
-
-  // 既存があるなら残してOK（month側やfallback用）
-  const fallbackRateObj = bucket === 'week' ? weekly : monthly;
 
   const chosenActionEffectiveness = actionEffectiveness[bucket] ?? [];
 
@@ -942,19 +920,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         }}
       >
         <StatsCard
-          title={bucket === 'week' ? '今週の進捗（現在）' : '今月の進捗（現在）'}
+          title={bucket === 'week' ? '今週の進捗' : '今月の進捗'}
           subtitle="tasks（現在状態）"
           rate={bucket === 'week' ? weekProgress.rate : monthProgress.rate}
           total={bucket === 'week' ? weekProgress.total : monthProgress.total}
           done={bucket === 'week' ? weekProgress.done : monthProgress.done}
-        />
-
-        <StatsCard
-          title={bucket === 'week' ? '今週の確定実績（Outcome）' : '今月の確定実績（Outcome）'}
-          subtitle={chosenSummary ? 'OutcomeLog（締切到達時点）' : '（集計がまだありません）'}
-          rate={chosenSummary ? (summaryRate ?? 0) : fallbackRateObj.rate}
-          total={chosenSummary?.total ?? fallbackRateObj.total}
-          done={chosenSummary?.done ?? fallbackRateObj.done}
         />
       </div>
 
@@ -971,13 +941,24 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
         </div>
 
-        <NotifStatsCard
-          title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
-          subtitle={undefined}
-          created={chosenNotifCreated}
-          dismissed={chosenNotifDismissed}
-          dismissRate={chosenNotifDismissRate}
-        />
+        {/* ✅ 1枚だけのカードは中央寄せ（左右の無駄な隙間を作らない） */}
+        <div
+          style={{
+            gridColumn: '1 / -1',
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ width: 'min(520px, 100%)' }}>
+            <NotifStatsCard
+              title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
+              subtitle={undefined}
+              created={chosenNotifCreated}
+              dismissed={chosenNotifDismissed}
+              dismissRate={chosenNotifDismissRate}
+            />
+          </div>
+        </div>
       </div>
     </>
   );

@@ -13,7 +13,7 @@ const baseURL = `${String(rawBase).replace(/\/+$/, '')}/api/v1`;
 
 const apiClient = axios.create({
   baseURL,
-  timeout: 30000,
+  timeout: 60000,
   withCredentials: true,
 });
 

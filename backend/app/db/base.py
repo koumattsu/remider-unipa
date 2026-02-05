@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
+import os
 
 is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 
@@ -16,19 +17,26 @@ else:
     if "sslmode=" not in settings.DATABASE_URL:
         connect_args = {"sslmode": "require"}
 
-# ✅ 落ちやすい無料DB/サーバレスDBでも復帰しやすいプール設定
 engine_kwargs = {
     "pool_pre_ping": True,
 }
 if not is_sqlite:
+    # ✅ ENVで調整可能（未設定なら現状互換のデフォルト）
+    pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
+    max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "5"))
+    pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+    pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "300"))
+
     engine_kwargs.update(
         {
             # 長時間アイドルで切れるのを避ける
-            "pool_recycle": 300,      # 5分
-            # 小さめのプールで安定運用（無料枠向け）
-            "pool_size": 5,
-            "max_overflow": 5,
-            "pool_timeout": 30,
+            "pool_recycle": pool_recycle,
+            # ✅ 接続枯渇対策：本番ではENVで引き上げら允许
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_timeout": pool_timeout,
+            # ✅ 直近利用の接続を優先し、死んだ接続を掴みにくくする
+            "pool_use_lifo": True,
         }
     )
 
@@ -55,14 +63,12 @@ def init_db():
         print("[INIT_DB] tables(before) =", before)
     except Exception as e:
         print("[INIT_DB] tables(before) check error:", e)
-
     try:
         Base.metadata.create_all(bind=engine)
         print("[INIT_DB] create_all done")
     except Exception as e:
         print("[INIT_DB] create_all ERROR:", e)
         raise
-
     try:
         with engine.connect() as conn:
             after = conn.execute(

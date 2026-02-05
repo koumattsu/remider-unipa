@@ -14,15 +14,12 @@ cleanupOutdatedCaches()
 // ✅ injectManifest の注入ポイント
 precacheAndRoute(self.__WB_MANIFEST)
 
+// ✅ workbox推奨：トップレベルで claim（activate中に登録しない）
+clientsClaim()
+
 // ✅ 新SWを即反映（“デプロイしたのに画面が変わらない”対策の本丸）
 self.addEventListener('install', () => {
   self.skipWaiting()
-})
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    clientsClaim()
-  })())
 })
 
 self.addEventListener('push', (event) => {

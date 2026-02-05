@@ -214,10 +214,16 @@ export const NotificationSettings: React.FC = () => {
 
     try {
       // 1) SW 登録（public/sw.js）
-      const reg = await navigator.serviceWorker.register('/sw.js');
+      const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+
+      // ✅ 追加：activate まで待つ（push を確実に拾う）
+      await navigator.serviceWorker.ready;
 
       // 2) 通知許可
       const perm = await Notification.requestPermission();
+      // ✅ 追加：stateも更新（UIのズレ防止）
+      setPermission(perm);
+
       if (perm !== 'granted') {
         setPushError('通知が許可されませんでした（ブラウザ設定を確認してください）');
         return;
@@ -231,11 +237,14 @@ export const NotificationSettings: React.FC = () => {
         return;
       }
 
-      // 4) subscribe
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
+      // 4) subscribe（既存があれば再利用）
+      const existing = await reg.pushManager.getSubscription();
+      const sub =
+        existing ??
+        (await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        }));
 
       const json = sub.toJSON();
       const endpoint = sub.endpoint;

@@ -227,6 +227,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
     db.refresh(run)
 
     # NotificationRun counters（finallyで必ず参照するので先に初期化）
+    users_total = 0
     users_processed = 0
     users_with_candidates = 0
     due_candidates_total = 0

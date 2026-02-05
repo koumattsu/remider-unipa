@@ -109,6 +109,11 @@ class WebPushSender:
 
             except WebPushException as e:
                 status = getattr(getattr(e, "response", None), "status_code", None)
+                body = None
+                try:
+                    body = getattr(getattr(e, "response", None), "text", None)
+                except Exception:
+                    body = None
 
                 # ✅ 失効(410/404)は資産を無効化して幽霊送信を防ぐ
                 if status in (404, 410):
@@ -157,11 +162,12 @@ class WebPushSender:
                     dirty = True
 
                 logger.warning(
-                    "[webpush] failed user_id=%s sub_id=%s status=%s err=%s",
+                    "[webpush] failed user_id=%s sub_id=%s status=%s err=%s body=%s",
                     user_id,
                     sub.id,
                     status,
                     e,
+                    (body[:300] if isinstance(body, str) else body),
                 )
 
             except Exception as e:

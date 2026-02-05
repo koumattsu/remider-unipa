@@ -229,9 +229,9 @@ export const NotificationSettings: React.FC = () => {
         return;
       }
 
-      // 3) VAPID 公開鍵を backend から取得
+      // 3) VAPID 公開鍵を backend から取得（←これが抜けてた）
       const { data } = await apiClient.get('/notifications/webpush/public-key');
-      const publicKey: string = data?.publicKey;
+      const publicKey: string | undefined = data?.publicKey;
       if (!publicKey) {
         setPushError('VAPID 公開鍵の取得に失敗しました');
         return;
@@ -256,10 +256,11 @@ export const NotificationSettings: React.FC = () => {
         return;
       }
 
-      // 5) backend に登録（endpoint upsert）
       await apiClient.post('/notifications/webpush/subscriptions', {
         endpoint,
         keys: { p256dh, auth },
+        user_agent: navigator.userAgent,
+        device_label: 'primary', // 例: 端末名UIがまだなら固定でもOK（<=64）
       });
 
       // 6) ✅ ユーザー設定(enable_webpush)も即ONにして、debug-send が sent=0 にならないようにする

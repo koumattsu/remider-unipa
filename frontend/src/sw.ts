@@ -62,8 +62,8 @@ self.addEventListener('notificationclick', (event) => {
           run_id: (event.notification as any)?.data?.run_id ?? null,
         }
 
-        // ✅ 同一オリジンで確実に叩く（/api を同一オリジンでプロキシしてる前提を明確化）
-        const eventsUrl = new URL('/api/v1/webpush/events', self.registration.scope).toString()
+        // ✅ 同一オリジンで確実に叩く（FastAPI側の router prefix に合わせる）
+        const eventsUrl = new URL('/api/v1/notifications/webpush/events', self.registration.scope).toString()
 
         await fetch(eventsUrl, {
           method: 'POST',

@@ -253,6 +253,23 @@ export const NotificationSettings: React.FC = () => {
         keys: { p256dh, auth },
       });
 
+      // 6) ✅ ユーザー設定(enable_webpush)も即ONにして、debug-send が sent=0 にならないようにする
+      try {
+        if (!enableWebpush) {
+          setEnableWebpush(true);
+        }
+        const newOffsets = enableOneHour ? [1] : [];
+        const updateData: NotificationSettingUpdate = {
+          reminder_offsets_hours: newOffsets,
+          daily_digest_time: digestTime,
+          enable_morning_notification: enableMorning,
+          enable_webpush: true,
+        };
+        await settingsApi.updateNotification(updateData);
+      } catch (e) {
+        // ここで失敗しても購読自体はできているので、pushEnabled は true にする
+        console.warn('enable_webpush の保存に失敗しました:', e);
+      }
       setPushEnabled(true);
     } catch (e: any) {
       setPushError(e?.message ?? 'Web Push の有効化に失敗しました');
@@ -278,9 +295,8 @@ export const NotificationSettings: React.FC = () => {
 
       // backend 側も削除（by-endpoint を使う）
       await apiClient.delete('/notifications/webpush/subscriptions/by-endpoint', {
-        data: { endpoint: sub.endpoint },
+        params: { endpoint: sub.endpoint },
       });
-
       await sub.unsubscribe();
       setPushEnabled(false);
     } catch (e: any) {

@@ -14,6 +14,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.in_app_notification import InAppNotification
 from app.models.webpush_event import WebPushEvent
+from app.models.webpush_delivery import WebPushDelivery
 
 router = APIRouter()
 
@@ -139,54 +140,63 @@ async def summarize_in_app_notifications(
     if to:
         base = base.filter(InAppNotification.created_at <= to)
 
-    # ✅ DB集計（全件ロードしない）
-    total = (
-        base.with_entities(func.count(InAppNotification.id))
-        .scalar()
-        or 0
-    )
-
-    dismissed = (
+    # =========================
+    # InApp（資産）集計：UI分母には使わない
+    # =========================
+    inapp_total = int(base.with_entities(func.count(InAppNotification.id)).scalar() or 0)
+    inapp_dismissed = int(
         base.filter(InAppNotification.dismissed_at.isnot(None))
         .with_entities(func.count(InAppNotification.id))
         .scalar()
         or 0
     )
+    inapp_dismiss_rate = round((inapp_dismissed / inapp_total) * 100) if inapp_total else 0
 
-    dismiss_rate = round((dismissed / total) * 100) if total else 0
-
-    # ✅ webpush status をDBで group by（SQLite/Postgres 両対応）
-    if is_sqlite:
-        # SQLite: JSON1拡張（$.webpush.status）
-        status_expr = func.json_extract(InAppNotification.extra, "$.webpush.status")
-    else:
-        # Postgres: JSONB
-        status_expr = func.jsonb_extract_path_text(
-            InAppNotification.extra,
-            "webpush",
-            "status",
-        )
+    # =========================
+    # WebPush（SSOT）集計：WebPushDelivery / WebPushEvent
+    # - total = sent
+    # - dismissed = opened
+    # - dismiss_rate = open_rate
+    # =========================
+    deliveries = db.query(WebPushDelivery).filter(WebPushDelivery.user_id == current_user.id)
+    if from_:
+        deliveries = deliveries.filter(WebPushDelivery.attempted_at >= from_)
+    if to:
+        deliveries = deliveries.filter(WebPushDelivery.attempted_at <= to)
 
     rows = (
-        base.with_entities(status_expr.label("status"), func.count(InAppNotification.id).label("cnt"))
-        .group_by(status_expr)
+        deliveries.with_entities(WebPushDelivery.status, func.count(WebPushDelivery.id))
+        .group_by(WebPushDelivery.status)
         .all()
     )
-
     events = {"sent": 0, "failed": 0, "deactivated": 0, "skipped": 0, "unknown": 0}
-    for status, cnt in rows:
-        if status in events:
-            events[status] += int(cnt or 0)
-        else:
-            events["unknown"] += int(cnt or 0)
+    for st, cnt in rows or []:
+        key = st if st in events else "unknown"
+        events[key] += int(cnt or 0)
+
+    opened_q = db.query(WebPushEvent).filter(WebPushEvent.user_id == current_user.id)
+    if from_:
+        opened_q = opened_q.filter(WebPushEvent.created_at >= from_)
+    if to:
+        opened_q = opened_q.filter(WebPushEvent.created_at <= to)
+    opened = int(opened_q.with_entities(func.count(WebPushEvent.id)).scalar() or 0)
+
+    sent = int(events.get("sent", 0))
+    open_rate = round((opened / sent) * 100) if sent else 0
 
     return {
         "range": {
             "from": from_.isoformat() if from_ else None,
             "to": to.isoformat() if to else None,
         },
-        "total": int(total),
-        "dismissed": int(dismissed),
-        "dismiss_rate": int(dismiss_rate),
+        # ✅ UIの「通知反応」は WebPush に寄せる
+        "total": sent,
+        "dismissed": opened,
+        "dismiss_rate": int(open_rate),
+        "inapp": {
+            "total": inapp_total,
+            "dismissed": inapp_dismissed,
+            "dismiss_rate": int(inapp_dismiss_rate),
+        },
         "webpush_events": events,
     }

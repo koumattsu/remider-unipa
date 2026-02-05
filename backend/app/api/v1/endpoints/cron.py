@@ -217,6 +217,7 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
     started_at_utc = datetime.now(timezone.utc)
+    now_utc = started_at_utc
     # ==============================
     # NotificationRun（cron 1実行 = 1行）
     # ==============================

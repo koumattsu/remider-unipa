@@ -406,9 +406,13 @@ def get_tasks_due_in_offsets(
             )
             if debug is not None:
                 debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
-                # ✅ 監査用：taskごとの reason は上書きせずカウント（曖昧さを排除）
                 rk = f"task_reason:{task.id}:{decision.reason}"
                 debug[rk] = debug.get(rk, 0) + 1
+
+                # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
+                k1 = f"task_reason:{task.id}"
+                if k1 not in debug:
+                    debug[k1] = decision.reason
             due_map[h].append(task)
 
     return dict(due_map)
@@ -517,6 +521,11 @@ def get_tasks_due_today_morning(
                     debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
                     rk = f"task_reason:{task.id}:{decision.reason}"
                     debug[rk] = debug.get(rk, 0) + 1
+
+                    # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
+                    k1 = f"task_reason:{task.id}"
+                    if k1 not in debug:
+                        debug[k1] = decision.reason
                 result.append(task)
     return result
 

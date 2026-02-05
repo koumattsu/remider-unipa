@@ -15,7 +15,6 @@ from app.services import line_client
 
 router = APIRouter()
 
-
 def verify_line_signature(body: bytes, signature: str | None) -> None:
     """
     LINE Messaging API の署名チェック。

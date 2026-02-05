@@ -555,9 +555,12 @@ export const Dashboard: React.FC = () => {
                   const entries = (Object.entries(decisionCounts) as Array<[string, number]>)
                     .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 
-                  const sent = entries.filter(([k]) => k.startsWith('sent:'));
-                  const skipped = entries.filter(([k]) => k.startsWith('skipped:'));
-                  const other = entries.filter(([k]) => !k.startsWith('sent:') && !k.startsWith('skipped:'));
+                  const isSentKey = (k: string) => k.startsWith('sent:') || k.startsWith('decision.sent:');
+                  const isSkippedKey = (k: string) => k.startsWith('skipped:') || k.startsWith('decision.skipped:');
+
+                  const sent = entries.filter(([k]) => isSentKey(k));
+                  const skipped = entries.filter(([k]) => isSkippedKey(k));
+                  const other = entries.filter(([k]) => !isSentKey(k) && !isSkippedKey(k));
 
                   const topN = (xs: [string, number][], n: number) =>
                     showAllReasons ? xs : xs.slice(0, n);

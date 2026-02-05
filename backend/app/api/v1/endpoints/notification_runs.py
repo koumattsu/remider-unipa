@@ -72,9 +72,13 @@ def latest_notification_run(db: Session = Depends(get_db)):
         "line_failed": r.line_failed,
         "started_at": r.started_at.isoformat() if r.started_at else None,
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-        "stats": r.stats,  # ← snapshot契約があるならここで載せる
+        "stats": r.stats,
     }
-    return {"found": True, "run": run}
+
+    # ✅ 後方互換:
+    # - 旧: data.run でも動く
+    # - 現UI: data.id でも動く
+    return {"found": True, "run": run, **run}
 
 @router.get("/notification-runs/{run_id}")
 def get_notification_run(

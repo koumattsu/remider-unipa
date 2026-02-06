@@ -59,16 +59,26 @@ self.addEventListener('notificationclick', (event) => {
           run_id: (event.notification as any)?.data?.run_id ?? null,
         }
 
-        // ✅ 同一オリジンで確実に叩く（FastAPI側の router prefix に合わせる）
-        const eventsUrl = new URL('/api/v1/notifications/webpush/events', self.registration.scope).toString()
+        // ✅ backendへ直接送る（フロントscope依存を排除）
+        // - VITE_API_BASE_URL があればそれを使う（例: https://unipa-reminder-backend.onrender.com）
+        // - 無ければ本番デフォルトにフォールバック（client.ts と揃える）
+        const rawApi =
+          // injectManifestならここに埋め込まれる想定（未定義でも落ちないように）
+          ((self as any).__VITE_API_BASE_URL as string | undefined) ||
+          'https://unipa-reminder-backend.onrender.com'
+
+        const apiBase = String(rawApi).replace(/\/+$/, '')
+        const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`
 
         await fetch(eventsUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
-          credentials: 'include',
+          // ✅ cookieに依存しない（iOS/Androidの運用耐性）
+          credentials: 'omit',
           keepalive: true,
         })
+
       } catch {}
 
       const allClients = await self.clients.matchAll({

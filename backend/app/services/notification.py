@@ -198,13 +198,17 @@ def decide_notification(
 
         # 通知ウィンドウ判定（既存ロジックをSSOTに移管）
         if h == 1:
-            # 90分前〜60分前
-            if not (1.0 <= diff_hours <= 1.5):
+            # ✅ 90分前〜40分前（取り逃がし耐性）
+            # - diff_hours は「締切までの残り時間（hours）」なので
+            #   40分 = 40/60 = 0.666...
+            if not ((40.0 / 60.0) <= diff_hours <= 1.5):
                 return NotificationDecision(False, "skipped:offset_window_outside", [])
         else:
             # ±30分
             if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
                 return NotificationDecision(False, "skipped:offset_window_outside", [])
+
+        return NotificationDecision(True, "send:offset_hit", effective_offsets)
 
         return NotificationDecision(True, "send:offset_hit", effective_offsets)
 

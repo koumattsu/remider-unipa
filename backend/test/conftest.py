@@ -20,6 +20,7 @@ from app.models.notification_run import NotificationRun
 from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
 from app.models.webpush_event import WebPushEvent
+from app.models.webpush_delivery import WebPushDelivery
 from app.models.task import Task
 from app.models.task_outcome_log import TaskOutcomeLog
 from app.models.outcome_feature_snapshot import OutcomeFeatureSnapshot
@@ -310,6 +311,8 @@ class FakeSession:
             )
         ]
 
+        self.webpush_deliveries = []
+
         # ✅ Task（course_nameラベル用）
         self.tasks = [
             Task(
@@ -400,6 +403,10 @@ class FakeSession:
         if model is WebPushEvent:
             q = FakeQuery(total=0, dismissed=0, rows=[])
             q._items = getattr(self, "webpush_events", [])
+            return q
+        if model is WebPushDelivery:
+            q = FakeQuery(total=0, dismissed=0, rows=[])
+            q._items = getattr(self, "webpush_deliveries", [])
             return q
         if model is SuggestedActionAppliedEvent:
             q = FakeQuery(total=0, dismissed=0, rows=[])

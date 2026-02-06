@@ -15,7 +15,9 @@ from app.schemas.webpush_subscription import (
 )
 from app.schemas.webpush_event import WebPushEventCreate, WebPushEventResponse
 from app.services.webpush_sender import WebPushSender
-from itsdangerous import URLSafeSerializer, BadSignature
+import base64
+import hashlib
+import hmac
 
 router = APIRouter()
 
@@ -142,17 +144,50 @@ def debug_send_webpush(
     result = WebPushSender.send_debug(db, user_id=current_user.id)
     return result
 
+def _b64url_decode(s: str) -> bytes:
+    pad = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
+
+def _parse_event_token(token: str) -> dict:
+    """
+    webpush_sender._make_event_token と同一仕様で検証・復元する。
+    token = "{b64url(msg)}.{b64url(sig)}"
+    msg = "user_id.notification_id.run_id.issued_at"
+    """
+    try:
+        msg_b64, sig_b64 = token.split(".", 1)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
+    msg = _b64url_decode(msg_b64)
+    sig = _b64url_decode(sig_b64)
+
+    secret = (getattr(settings, "WEBPUSH_EVENT_SECRET", None) or "").encode("utf-8")
+    expected = hmac.new(secret, msg, hashlib.sha256).digest()
+
+    if not hmac.compare_digest(sig, expected):
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
+    try:
+        user_id_str, nid_str, rid_str, issued_at_str = msg.decode("utf-8").split(".", 3)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
+    if not user_id_str:
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
+    return {
+        "user_id": int(user_id_str),
+        "notification_id": (None if nid_str == "" else nid_str),
+        "run_id": (None if rid_str == "" else int(rid_str)),
+        "issued_at": int(issued_at_str) if issued_at_str else None,
+    }
+
 @router.post(
     "/events",
     response_model=WebPushEventResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def _event_serializer():
-    return URLSafeSerializer(
-        settings.SESSION_SECRET,
-        salt="unipa-webpush-event"
-    )
-
 def record_webpush_event(
     payload: WebPushEventCreate,
     request: Request,
@@ -161,20 +196,14 @@ def record_webpush_event(
     if not payload.event_token:
         raise HTTPException(status_code=400, detail="event_token is required")
 
-    try:
-        data = _event_serializer().loads(payload.event_token)
-    except BadSignature:
-        raise HTTPException(status_code=400, detail="invalid event_token")
+    data = _parse_event_token(payload.event_token)
 
-    user_id = data.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="invalid event_token")
-
+    # 監査上、client payload は改ざん可能なので token 内の値を優先
     row = WebPushEvent(
-        user_id=int(user_id),
+        user_id=int(data["user_id"]),
         event_type=payload.type,
-        notification_id=str(payload.notification_id) if payload.notification_id is not None else None,
-        run_id=payload.run_id,
+        notification_id=data.get("notification_id"),
+        run_id=data.get("run_id"),
     )
     db.add(row)
     db.commit()

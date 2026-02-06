@@ -40,10 +40,13 @@ self.addEventListener('push', (event) => {
         url,
         notification_id: data.notification_id ?? null,
         run_id: data.run_id ?? null,
+        // ✅ opened 記録のSSOTキー（欠けると backend が 400 になる）
+        event_token: data.event_token ?? null,
       },
     })
   )
 })
+
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()

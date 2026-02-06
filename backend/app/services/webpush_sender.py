@@ -225,8 +225,8 @@ class WebPushSender:
         issued_at = int(WebPushSender._utcnow().timestamp())
         event_token = _make_event_token(
             user_id=user_id,
-            notification_id=None,
-            run_id=None,
+            notification_id=notification.id,
+            run_id=notification.run_id,
             issued_at=issued_at,
         )
 
@@ -254,8 +254,23 @@ class WebPushSender:
         user_id: int,
         title: str = "UNIPA Reminder",
         body: str = "Web Push テスト送信です",
-        url: str = "/dashboard?tab=today", 
+        url: str = "/dashboard?tab=today",
     ) -> dict:
-        payload = {"title": title, "body": body, "url": url, "deep_link": url, "notification_id": None, "run_id": None, "event_token": WebPushSender._make_event_token(user_id),}
-        return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
+        issued_at = int(WebPushSender._utcnow().timestamp())
+        event_token = _make_event_token(
+            user_id=user_id,
+            notification_id=None,
+            run_id=None,
+            issued_at=issued_at,
+        )
 
+        payload = {
+            "title": title,
+            "body": body,
+            "url": url,
+            "deep_link": url,
+            "notification_id": None,
+            "run_id": None,
+            "event_token": event_token,
+        }
+        return WebPushSender._send_payload(db, user_id=user_id, payload=payload)

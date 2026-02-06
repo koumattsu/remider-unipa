@@ -8,9 +8,10 @@ import './app.css'; // ← 追加（App全体の外装）
 import { registerSW } from 'virtual:pwa-register'
 
 const updateSW = registerSW({
-  immediate: false, // 初回ロードでは制御させない
+  // ✅ 初回からSWの登録/更新を進め、世代ズレで起動に失敗する確率を下げる
+  immediate: true,
   onNeedRefresh() {
-    // 新しいSWが来たら自動リロード
+    // ✅ 新しいSWが来たら即適用してリロード（“開かない”より圧倒的に安全）
     updateSW(true)
   },
   onOfflineReady() {

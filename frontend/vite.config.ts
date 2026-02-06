@@ -7,9 +7,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt', // autoRegister をやめる
+      registerType: 'autoUpdate',
       strategies: 'injectManifest',
-
       srcDir: 'src',
       filename: 'sw.ts',
 

@@ -2,7 +2,9 @@
 
 import json
 import logging
-from itsdangerous import URLSafeSerializer
+import hmac
+import hashlib
+import base64
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from pywebpush import webpush, WebPushException
@@ -11,6 +13,19 @@ from app.models.notification_setting import NotificationSetting
 from app.models.webpush_subscription import WebPushSubscription
 from app.models.webpush_delivery import WebPushDelivery
 from app.models.in_app_notification import InAppNotification
+
+def _b64url(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
+
+def _make_event_token(*, user_id: int, notification_id: int | None, run_id: int | None, issued_at: int) -> str:
+    # payload: "user_id.notification_id.run_id.issued_at"
+    nid = "" if notification_id is None else str(notification_id)
+    rid = "" if run_id is None else str(run_id)
+    msg = f"{user_id}.{nid}.{rid}.{issued_at}".encode("utf-8")
+
+    secret = (getattr(settings, "WEBPUSH_EVENT_SECRET", None) or "").encode("utf-8")
+    sig = hmac.new(secret, msg, hashlib.sha256).digest()
+    return f"{_b64url(msg)}.{_b64url(sig)}"
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +54,6 @@ class WebPushSender:
         if not setting:
             return False
         return bool(setting.enable_webpush)
-    
-    @staticmethod
-    def _event_serializer():
-        return URLSafeSerializer(
-            settings.SESSION_SECRET,
-            salt="unipa-webpush-event"
-        )
-
-    @staticmethod
-    def _make_event_token(user_id: int) -> str:
-        return WebPushSender._event_serializer().dumps({
-            "user_id": user_id
-        })
 
     @staticmethod
     def _send_payload(
@@ -220,15 +222,22 @@ class WebPushSender:
         user_id: int,
         notification: InAppNotification,
     ) -> dict:
-        # ✅ sw.js 側が url を見る想定なので url も入れる（deep_link も残す）
+        issued_at = int(WebPushSender._utcnow().timestamp())
+        event_token = _make_event_token(
+            user_id=user_id,
+            notification_id=None,
+            run_id=None,
+            issued_at=issued_at,
+        )
+
         payload = {
             "title": notification.title,
             "body": notification.body,
             "url": notification.deep_link,
             "deep_link": notification.deep_link,
             "notification_id": notification.id,
-            "run_id": notification.run_id, 
-            "event_token": WebPushSender._make_event_token(user_id), 
+            "run_id": notification.run_id,
+            "event_token": event_token,
         }
         return WebPushSender._send_payload(
             db,

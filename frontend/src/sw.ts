@@ -57,6 +57,7 @@ self.addEventListener('notificationclick', (event) => {
           type: 'opened',
           notification_id: (event.notification as any)?.data?.notification_id ?? null,
           run_id: (event.notification as any)?.data?.run_id ?? null,
+          event_token: (event.notification as any)?.data?.event_token ?? null,
         }
 
         // ✅ backendへ直接送る（フロントscope依存を排除）

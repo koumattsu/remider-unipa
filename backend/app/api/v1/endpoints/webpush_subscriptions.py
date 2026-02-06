@@ -15,6 +15,7 @@ from app.schemas.webpush_subscription import (
 )
 from app.schemas.webpush_event import WebPushEventCreate, WebPushEventResponse
 from app.services.webpush_sender import WebPushSender
+from itsdangerous import URLSafeSerializer, BadSignature
 
 router = APIRouter()
 
@@ -146,15 +147,32 @@ def debug_send_webpush(
     response_model=WebPushEventResponse,
     status_code=status.HTTP_201_CREATED,
 )
+def _event_serializer():
+    return URLSafeSerializer(
+        settings.SESSION_SECRET,
+        salt="unipa-webpush-event"
+    )
+
 def record_webpush_event(
     payload: WebPushEventCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
+    if not payload.event_token:
+        raise HTTPException(status_code=400, detail="event_token is required")
+
+    try:
+        data = _event_serializer().loads(payload.event_token)
+    except BadSignature:
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
+    user_id = data.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="invalid event_token")
+
     row = WebPushEvent(
-        user_id=current_user.id,
-        event_type=payload.type,  # "opened"
+        user_id=int(user_id),
+        event_type=payload.type,
         notification_id=str(payload.notification_id) if payload.notification_id is not None else None,
         run_id=payload.run_id,
     )

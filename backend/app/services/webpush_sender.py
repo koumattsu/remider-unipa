@@ -2,6 +2,7 @@
 
 import json
 import logging
+from itsdangerous import URLSafeSerializer
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from pywebpush import webpush, WebPushException
@@ -38,6 +39,19 @@ class WebPushSender:
         if not setting:
             return False
         return bool(setting.enable_webpush)
+    
+    @staticmethod
+    def _event_serializer():
+        return URLSafeSerializer(
+            settings.SESSION_SECRET,
+            salt="unipa-webpush-event"
+        )
+
+    @staticmethod
+    def _make_event_token(user_id: int) -> str:
+        return WebPushSender._event_serializer().dumps({
+            "user_id": user_id
+        })
 
     @staticmethod
     def _send_payload(
@@ -214,6 +228,7 @@ class WebPushSender:
             "deep_link": notification.deep_link,
             "notification_id": notification.id,
             "run_id": notification.run_id, 
+            "event_token": WebPushSender._make_event_token(user_id), 
         }
         return WebPushSender._send_payload(
             db,
@@ -232,6 +247,6 @@ class WebPushSender:
         body: str = "Web Push テスト送信です",
         url: str = "/dashboard?tab=today", 
     ) -> dict:
-        payload = {"title": title, "body": body, "url": url, "deep_link": url, "notification_id": None, "run_id": None,}
+        payload = {"title": title, "body": body, "url": url, "deep_link": url, "notification_id": None, "run_id": None, "event_token": WebPushSender._make_event_token(user_id),}
         return WebPushSender._send_payload(db, user_id=user_id, payload=payload)
 

@@ -254,8 +254,6 @@ export const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    // まずはキャッシュで描画済み（isLoadingもfalseになってる想定）
-    // 裏で最新化
     (async () => {
       try {
         await weeklyTasksApi.materialize();
@@ -263,8 +261,10 @@ export const Dashboard: React.FC = () => {
         console.error('weekly materialize 失敗:', e);
       }
 
-      // ここからは silent で（画面をブロックしない）
-      await loadTasks({ silent: true });
+      // ✅ キャッシュが無い初回だけは silent にしない（永久ローディング防止）
+      const hasCache = !!loadCache<Task[]>(TASKS_CACHE_KEY);
+
+      await loadTasks({ silent: hasCache });
       await loadWeeklyTemplates();
       await loadTaskNotificationOverrides();
     })();

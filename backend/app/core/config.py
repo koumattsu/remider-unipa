@@ -100,9 +100,16 @@ class Settings(BaseSettings):
     def SESSION_COOKIE_SECURE(self) -> bool:
         return self.ENV == "production"
 
+    # ✅ 将来のドメイン分離にも耐えるため、envで上書き可能にする
+    # 例: productionで本当に cross-site が必要なら "none" を渡す
+    SESSION_COOKIE_SAMESITE_OVERRIDE: Optional[str] = None
+
     @property
     def SESSION_COOKIE_SAMESITE(self) -> str:
-        return "none" if self.ENV == "production" else "lax"
+        if self.SESSION_COOKIE_SAMESITE_OVERRIDE:
+            return self.SESSION_COOKIE_SAMESITE_OVERRIDE
+        # ✅ onrenderサブドメイン運用（同一site）では Lax の方がiOS/PWA含め安定
+        return "lax"
 
     class Config:
         env_file = ".env"

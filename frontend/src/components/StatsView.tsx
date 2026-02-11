@@ -1152,7 +1152,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               <div style={{ opacity: 0.75 }}>（まだ提案がありません）</div>
             ) : (() => {
               const a = suggestedActions[0];
-
               const ev = evidenceForAction(a, reasons);
               const hyp = hypothesisForAction(a.id);
 

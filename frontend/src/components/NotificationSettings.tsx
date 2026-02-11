@@ -37,42 +37,61 @@ const MORNING_TIME_OPTIONS = Array.from({ length: 11 }, (_, i) => {
 interface ToggleSwitchProps {
   checked: boolean;
   onChange: () => void;
+  disabled?: boolean;
 }
 
-// ちょい近未来寄りのトグル
-const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange }) => (
-  <div
-    onClick={onChange}
-    style={{
-      width: 50,
-      height: 26,
-      borderRadius: 9999,
-      padding: 3,
-      background: checked
-        ? 'linear-gradient(90deg, #00d4ff, #007aff)'
-        : '#ccc',
-      boxShadow: checked
-        ? '0 0 10px rgba(0, 212, 255, 0.7)'
-        : 'inset 0 0 4px rgba(0,0,0,0.2)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: checked ? 'flex-end' : 'flex-start',
-      cursor: 'pointer',
-      transition:
-        'background 0.2s ease, box-shadow 0.2s ease, justify-content 0.2s ease',
-    }}
-  >
+const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, disabled }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
     <div
-      style={{
-        width: 20,
-        height: 20,
-        borderRadius: '50%',
-        background: checked
-          ? 'radial-gradient(circle at 30% 30%, #ffffff, #e0f7ff)'
-          : '#fff',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+      onClick={() => {
+        if (disabled) return;
+        onChange();
       }}
-    />
+      role="switch"
+      aria-checked={checked}
+      aria-disabled={!!disabled}
+      style={{
+        width: 56,
+        height: 30,
+        borderRadius: 9999,
+        padding: 3,
+        background: disabled
+          ? '#e5e5e5'
+          : checked
+          ? 'linear-gradient(90deg, #00d4ff, #007aff)'
+          : '#ccc',
+        boxShadow: disabled
+          ? 'inset 0 0 4px rgba(0,0,0,0.12)'
+          : checked
+          ? '0 0 10px rgba(0, 212, 255, 0.7)'
+          : 'inset 0 0 4px rgba(0,0,0,0.2)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: checked ? 'flex-end' : 'flex-start',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.7 : 1,
+        transition:
+          'background 0.2s ease, box-shadow 0.2s ease, justify-content 0.2s ease',
+        userSelect: 'none',
+      }}
+    >
+      <div
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: '50%',
+          background: checked
+            ? 'radial-gradient(circle at 30% 30%, #ffffff, #e0f7ff)'
+            : '#fff',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        }}
+      />
+    </div>
+
+    {/* ✅ 状態が一瞬で分かるラベル */}
+    <span style={{ fontSize: 12, fontWeight: 800, opacity: disabled ? 0.6 : 0.85 }}>
+      {checked ? 'ON' : 'OFF'}
+    </span>
   </div>
 );
 
@@ -543,23 +562,61 @@ export const NotificationSettings: React.FC = () => {
 
             {pushError && <div style={{ fontSize: '0.9rem' }}>⚠️ {pushError}</div>}
 
-            {pushEnabled ? (
-              <button onClick={disableWebPush}>通知をオフ（この端末）</button>
-            ) : (
-              <button
-                onClick={enableWebPush}
-                disabled={!pushSupported || permission !== 'granted'}
-              >
-                通知をオン（この端末）
-              </button>
-            )}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '0.75rem 0.9rem',
+                border: '1px solid #e5e5e5',
+                borderRadius: 10,
+                background: '#fafafa',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 2 }}>
+                <div style={{ fontWeight: 700 }}>この端末で通知を受け取る</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+                  {pushEnabled ? '購読済み（ON）' : '未購読（OFF）'}
+                </div>
+              </div>
 
+              <ToggleSwitch
+                checked={pushEnabled}
+                disabled={!pushSupported || permission !== 'granted'}
+                onChange={() => {
+                  if (pushEnabled) {
+                    disableWebPush();
+                  } else {
+                    enableWebPush();
+                  }
+                }}
+              />
+            </div>
             {/* ✅ 追加：即テスト */}
             <button
               onClick={testWebPush}
               disabled={!pushEnabled || permission !== 'granted'}
+              style={{
+                marginTop: 6,
+                padding: '0.85rem 1.1rem',
+                fontSize: '1rem',
+                fontWeight: 800,
+                borderRadius: 12,
+                border: 'none',
+                cursor: (!pushEnabled || permission !== 'granted') ? 'not-allowed' : 'pointer',
+                background:
+                  (!pushEnabled || permission !== 'granted')
+                    ? '#d7d7d7'
+                    : 'linear-gradient(90deg, #00d4ff, #007aff)',
+                color: '#fff',
+                boxShadow:
+                  (!pushEnabled || permission !== 'granted')
+                    ? 'none'
+                    : '0 8px 20px rgba(0, 122, 255, 0.25)',
+              }}
             >
-              テスト送信（この端末）
+              テスト送信
             </button>
 
             {pushTestResult && (

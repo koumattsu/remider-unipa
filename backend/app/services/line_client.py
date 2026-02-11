@@ -100,51 +100,41 @@ def _build_deadline_message(tasks, hours: int) -> str:
 # 実際の LINE送信（Push API）
 # ============================================
 
-async def _push_text_message(line_user_id: str, text: str) -> None:
+async def _push_text_message(line_user_id: str, text: str) -> str:
     access_token = _get_line_access_token()
 
     if not access_token:
         print("[LINE通知: ダミー出力] →", line_user_id)
         print(text)
-        return
+        return "dummy"
 
     if not line_user_id or not line_user_id.startswith("U"):
         print("[LINE WARN] invalid line_user_id:", line_user_id)
-        return
+        return "invalid"
 
     text = _safe_line_text(text)
 
     trace_id = str(uuid.uuid4())
 
-    print("[LINE DEBUG]", "trace_id=", trace_id, "to=", line_user_id)
-    print("[LINE DEBUG]", "trace_id=", trace_id, "text length =", len(text))
-
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
-        # ✅ これがあると追いやすい（なくてもOK）
         "X-Line-Retry-Key": trace_id,
     }
 
-    body = {
-        "to": line_user_id,
-        "messages": [{"type": "text", "text": text}],
-    }
+    body = {"to": line_user_id, "messages": [{"type": "text", "text": text}]}
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(LINE_PUSH_URL, headers=headers, json=body)
 
     if resp.status_code >= 400:
         req_id = resp.headers.get("x-line-request-id")
-        print("[LINE ERROR]", "trace_id=", trace_id, "status=", resp.status_code)
-        print("[LINE ERROR]", "trace_id=", trace_id, "body=", resp.text)
-        print("[LINE ERROR]", "trace_id=", trace_id, "x-line-request-id=", req_id)
-        # ✅ cron 側で「失敗ならログ保存しない」にできるよう例外を投げる
         raise RuntimeError(
             f"LINE push failed status={resp.status_code} x-line-request-id={req_id} body={resp.text}"
         )
 
-    print("[LINE PUSH OK]", "trace_id=", trace_id, "status=", resp.status_code)
+    return trace_id
+
 
 # ============================================
 # 外部向け: ◯時間前通知
@@ -153,23 +143,23 @@ async def send_deadline_reminder(
     line_user_id: str,
     tasks: List[Task],
     hours: int,
-) -> None:
+) -> str | None:
     if not tasks:
-        return
-
+        return None
     text = _build_deadline_message(tasks, hours)
-    await _push_text_message(line_user_id, text)
+    return await _push_text_message(line_user_id, text)
 
-# ============================================
-# 外部向け: 朝8時通知
-# ============================================
-async def send_daily_digest(line_user_id: str, tasks: List[Task]) -> None:
+async def send_daily_digest(
+    line_user_id: str,
+    tasks: List[Task],
+) -> str:
     text = _build_morning_digest_message(tasks)
-    await _push_text_message(line_user_id, text)
+    return await _push_text_message(line_user_id, text)
+
 
 
 # ============================================
 # 任意テキスト送信用（デバッグ用）
 # ============================================
 async def send_simple_text(line_user_id: str, text: str) -> None:
-    await _push_text_message(line_user_id, text)
+    return await _push_text_message(line_user_id, text)

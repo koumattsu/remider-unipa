@@ -453,19 +453,36 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     if touched:
                         db.commit()
 
-                # ✅ LINE（有料のみ）
                 if user.plan != "free" and line_user_id:
                     try:
-                        await send_deadline_reminder(
-                            line_user_id=line_user_id,
-                            tasks=tasks_3h,
-                            hours=hours,
-                        )
+                        trace_id = await send_deadline_reminder(...)
                         line_sent += len(tasks_3h)
+
+                        if created_inapps:
+                            for n in created_inapps:
+                                n.extra = {
+                                    **(n.extra or {}),
+                                    "line": {"status": "sent", "at": now_utc.isoformat(), "trace_id": trace_id},
+                                }
+                                db.add(n)
+                            db.commit()
+
                     except Exception as e:
                         print("[CRON] send_deadline_reminder failed:", str(e))
                         line_failed += len(tasks_3h)
-                        # LINE失敗でもWebPush成功分は残すので continue しない
+
+                        if created_inapps:
+                            for n in created_inapps:
+                                n.extra = {
+                                    **(n.extra or {}),
+                                    "line": {
+                                        "status": "failed",
+                                        "at": now_utc.isoformat(),
+                                        "error": str(e)[:300],
+                                    },
+                                }
+                                db.add(n)
+                            db.commit()
 
                 if hours == 3:
                     results["three_hours_before"] += len(tasks_3h)
@@ -566,16 +583,38 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     if touched:
                         db.commit()
                 if tasks_today:
-                    # ✅ LINE（有料のみ・朝ダイジェスト）
                     if user.plan != "free" and line_user_id:
                         try:
-                            await send_daily_digest(
+                            trace_id = await send_daily_digest(
                                 line_user_id=line_user_id,
                                 tasks=tasks_today,
                             )
+                            if created_morning:
+                                for n in created_morning:
+                                    n.extra = {
+                                        **(n.extra or {}),
+                                        "line": {
+                                            "status": "sent",
+                                            "at": now_utc.isoformat(),
+                                            "trace_id": trace_id,
+                                        },
+                                    }
+                                    db.add(n)
+                                db.commit()
                         except Exception as e:
                             print("[CRON] send_daily_digest failed:", str(e))
-
+                            if created_morning:
+                                for n in created_morning:
+                                    n.extra = {
+                                        **(n.extra or {}),
+                                        "line": {
+                                            "status": "failed",
+                                            "at": now_utc.isoformat(),
+                                            "error": str(e)[:300],
+                                        },
+                                    }
+                                    db.add(n)
+                                db.commit()
                     results["morning"] += len(tasks_today)
 
         # API 表示用に名前を正規化（内部ロジックには触らない）

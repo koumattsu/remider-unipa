@@ -213,14 +213,77 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, [bucket, actionEffectivenessByFeature[bucket]]);
 
+  // ✅ UI: キャッシュ即表示 → 裏で再取得（stale-while-revalidate）
+  const [refreshing, setRefreshing] = useState(false);
+  const [cacheSavedAt, setCacheSavedAt] = useState<Date | null>(null);
+
   useEffect(() => {
+    // 1) まずキャッシュがあれば即表示（待たせない）
+    const cached = loadStatsViewCache();
+    if (cached?.data) {
+      setLogsWeek(cached.data.logsWeek ?? []);
+      setLogsMonth(cached.data.logsMonth ?? []);
+      setSummaryWeek(cached.data.summaryWeek ?? null);
+      setSummaryMonth(cached.data.summaryMonth ?? null);
+
+      setByCourseWeek(cached.data.byCourseWeek ?? null);
+      setByCourseMonth(cached.data.byCourseMonth ?? null);
+      setByFeatureWeek(cached.data.byFeatureWeek ?? null);
+      setByFeatureMonth(cached.data.byFeatureMonth ?? null);
+
+      setWeeklyNotifSummary(cached.data.weeklyNotifSummary ?? null);
+      setMonthlyNotifSummary(cached.data.monthlyNotifSummary ?? null);
+
+      setLatestRun(cached.data.latestRun ?? null);
+      setLatestRunSummary(cached.data.latestRunSummary ?? null);
+
+      setCourseXWeek(cached.data.courseXWeek ?? null);
+      setCourseXMonth(cached.data.courseXMonth ?? null);
+
+      setRateSeriesWeek(Array.isArray(cached.data.rateSeriesWeek) ? cached.data.rateSeriesWeek : []);
+      setRateSeriesMonth(Array.isArray(cached.data.rateSeriesMonth) ? cached.data.rateSeriesMonth : []);
+
+      setCurrentNotifSetting(cached.data.currentNotifSetting ?? null);
+
+      setActionEffectiveness((prev) => ({
+        ...prev,
+        week: cached.data.actionEffectivenessWeek ?? null,
+        month: cached.data.actionEffectivenessMonth ?? null,
+      }));
+
+      setActionEffectivenessByFeature((prev) => ({
+        ...prev,
+        week: cached.data.actionEffectivenessByFeatureWeek ?? null,
+        month: cached.data.actionEffectivenessByFeatureMonth ?? null,
+      }));
+
+      setActionEffectivenessMeta((prev) => ({
+        ...prev,
+        week: cached.data.actionEffectivenessMetaWeek
+          ? { windowDays: cached.data.actionEffectivenessMetaWeek.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaWeek.fetchedAt) }
+          : null,
+        month: cached.data.actionEffectivenessMetaMonth
+          ? { windowDays: cached.data.actionEffectivenessMetaMonth.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaMonth.fetchedAt) }
+          : null,
+      }));
+
+      setCacheSavedAt(new Date(cached.saved_at));
+      setLoading(false); // ✅ ここが肝：キャッシュがあれば即描画
+      setRefreshing(true);
+    }
+
     let mounted = true;
     (async () => {
       try {
-        setLoading(true);
+        // 2) 裏で再取得（SSOT）
+        if (!cached) {
+          setLoading(true);
+        }
         setError(null);
+
         // まずは全件取得（重くなったら from/to で絞る）
         const run = await fetchLatestNotificationRun().catch(() => null);
+
         // 期間（deadline基準でbackendへ渡す）
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -238,9 +301,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        const endOfToday = new Date(startOfToday);
-        endOfToday.setDate(endOfToday.getDate() + 1);
 
         const endOfMonthEnd = new Date(endOfMonth);
         endOfMonthEnd.setHours(23, 59, 59, 999);
@@ -302,8 +362,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             };
           });
         };
-
-
 
         const buildMonthWindows = () => {
           // 直近6ヶ月（当月含む）。idx=0が最古
@@ -368,11 +426,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               }
             })
           );
+
+          if (!mounted) return;
           setRateSeriesWeek(weekPoints);
           setRateSeriesMonth(monthPoints);
         };
 
-        await fetchSeries();
+        // ✅ ここが改善ポイント：
+        //   fetchSeries(12回API)を await せず、他のデータ取得と並行で走らせる
+        fetchSeries().catch(() => null);
 
         const [
           outcomeWeek,
@@ -450,14 +512,67 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         setCourseXWeek(cxW);
         setCourseXMonth(cxM);
         setCurrentNotifSetting(notifSetting);
+
+        // 3) 再取得結果をキャッシュに保存（UI用）
+        const savedAt = new Date();
+        const payload: StatsViewCachePayload = {
+          version: STATS_VIEW_CACHE_VERSION,
+          saved_at: savedAt.toISOString(),
+          data: {
+            logsWeek: outcomeWeek ?? [],
+            logsMonth: outcomeMonth ?? [],
+            summaryWeek: sumW ?? null,
+            summaryMonth: sumM ?? null,
+
+            byCourseWeek: byW ?? null,
+            byCourseMonth: byM ?? null,
+            byFeatureWeek: featW ?? null,
+            byFeatureMonth: featM ?? null,
+
+            weeklyNotifSummary: weeklySummary ?? null,
+            monthlyNotifSummary: monthlySummary ?? null,
+
+            latestRun: run ?? null,
+            latestRunSummary: runSummary ?? null,
+
+            courseXWeek: cxW ?? null,
+            courseXMonth: cxM ?? null,
+
+            // ✅ rateSeriesは fetchSeries が後で更新するので、ここでは現時点stateを保存（壊さない）
+            rateSeriesWeek: Array.isArray(rateSeriesWeek) ? rateSeriesWeek : [],
+            rateSeriesMonth: Array.isArray(rateSeriesMonth) ? rateSeriesMonth : [],
+
+            currentNotifSetting: notifSetting ?? null,
+
+            actionEffectivenessWeek: effItems ?? null,
+            actionEffectivenessMonth: actionEffectiveness.month ?? null,
+
+            actionEffectivenessByFeatureWeek: effByFeatureItems ?? null,
+            actionEffectivenessByFeatureMonth: actionEffectivenessByFeature.month ?? null,
+
+            actionEffectivenessMetaWeek: actionEffectivenessMeta.week
+              ? { windowDays: actionEffectivenessMeta.week.windowDays, fetchedAt: actionEffectivenessMeta.week.fetchedAt.toISOString() }
+              : null,
+            actionEffectivenessMetaMonth: actionEffectivenessMeta.month
+              ? { windowDays: actionEffectivenessMeta.month.windowDays, fetchedAt: actionEffectivenessMeta.month.fetchedAt.toISOString() }
+              : null,
+          },
+        };
+        saveStatsViewCache(payload);
+        setCacheSavedAt(savedAt);
       } catch (e: any) {
         if (!mounted) return;
-        setError(e?.message ?? 'failed to load outcomes');
+        // キャッシュ表示がある場合は「致命エラーで真っ白」にしない（UX）
+        if (!cached) {
+          setError(e?.message ?? 'failed to load outcomes');
+        }
       } finally {
         if (!mounted) return;
         setLoading(false);
+        setRefreshing(false);
       }
     })();
+
     return () => {
       mounted = false;
     };
@@ -1141,6 +1256,29 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // =========================
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      {(refreshing || cacheSavedAt) && (
+        <div
+          style={{
+            padding: '0.55rem 0.7rem',
+            borderRadius: 12,
+            border: '1px solid rgba(255,255,255,.12)',
+            background: 'rgba(255,255,255,.03)',
+            color: 'rgba(255,255,255,.85)',
+            fontSize: '0.82rem',
+            lineHeight: 1.35,
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>
+            {refreshing ? '更新中…（前回の分析を表示しています）' : '分析を表示しました'}
+          </div>
+          {cacheSavedAt && (
+            <div style={{ opacity: 0.75, marginTop: '0.15rem' }}>
+              最終更新: {cacheSavedAt.toLocaleString()}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ✅ Priority 3-A: Outcomes 可視化（read-only） */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
         <button

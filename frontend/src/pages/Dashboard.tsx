@@ -284,7 +284,8 @@ export const Dashboard: React.FC = () => {
   // 🔔 notifications タブを開いたら通知一覧を取得
   useEffect(() => {
     if (activeTab !== 'notifications') return;
-
+    // ✅ これが出れば「通知タブに入って取得処理が走った」が確定
+    console.log('[notifications] loading in-app notifications...');
     let cancelled = false;
 
     (async () => {
@@ -1087,11 +1088,15 @@ export const Dashboard: React.FC = () => {
           onClick={() => setActiveTab('stats')}
         />
         <TabButton
-          label="通知"
-          icon="🔔"
-          active={activeTab === 'notifications'}
-          onClick={() => setActiveTab('notifications')}
-        />
+        label="通知"
+        icon="🔔"
+        active={activeTab === 'notifications'}
+        onClick={() => {
+          // ✅ HashRouter前提：/dashboard?tab=notifications を hash に載せて「確実に通知タブへ」
+          window.location.hash = '/dashboard?tab=notifications';
+          setActiveTab('notifications'); // 体感を即時にする（hash反映の前でもUIが切り替わる）
+        }}
+      />
       </nav>
 
       {/* ハンバーガーメニューのオーバーレイ */}

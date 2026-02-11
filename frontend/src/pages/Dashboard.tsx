@@ -207,7 +207,7 @@ export const Dashboard: React.FC = () => {
   const [showRunDetails, setShowRunDetails] = useState(false);
   const [showAllReasons, setShowAllReasons] = useState(false);
 
-    // 🔔 通知ON/OFFの上書き状態（today / all で共有）
+  // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
   const [notifyOverrides, setNotifyOverrides] =
     useState<Record<number, boolean>>(() => loadNotifyOverrides());
@@ -267,13 +267,22 @@ export const Dashboard: React.FC = () => {
       await loadTasks({ silent: hasCache });
       await loadWeeklyTemplates();
       await loadTaskNotificationOverrides();
+
+      // ✅ 観測用：通知APIが生きているかをNetworkで必ず確認できるように1回だけ叩く（UIは更新しない）
+      try {
+        console.log('[boot] ping notifications/in-app ...');
+        await fetchInAppNotifications(1);
+        console.log('[boot] ping notifications/in-app OK');
+      } catch (e) {
+        console.error('[boot] ping notifications/in-app FAILED', e);
+      }
     })();
   }, []);
+
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const tab = sp.get('tab');
-
     // 許可リスト（壊れない）
     const allowed: TabKey[] = ['today', 'all', 'stats', 'weekly', 'add', 'settings', 'notifications'];
     if (tab && allowed.includes(tab as TabKey)) {

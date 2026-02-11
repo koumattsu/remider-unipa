@@ -398,14 +398,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                   done: item?.done ?? 0,
                 };
               } catch {
-                // ✅ 1本落ちても全体Failedにしない（空として扱う）
-                return {
-                  label: w.label,
-                  rangeLabel: w.rangeLabel,
-                  rate: 0,
-                  total: 0,
-                  done: 0,
-                };
+                return { label: w.label, rangeLabel: w.rangeLabel, rate: 0, total: 0, done: 0 };
               }
             })
           );
@@ -428,13 +421,57 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           );
 
           if (!mounted) return;
+
+          // ✅ UI表示は即更新
           setRateSeriesWeek(weekPoints);
           setRateSeriesMonth(monthPoints);
+
+          // ✅ 推移だけは「完成した瞬間」にキャッシュへ保存（次回即表示のため）
+          try {
+            const prev = loadStatsViewCache();
+            if (prev?.data) {
+              const savedAt = new Date();
+              const next: StatsViewCachePayload = {
+                ...prev,
+                saved_at: savedAt.toISOString(),
+                data: {
+                  ...prev.data,
+                  rateSeriesWeek: weekPoints,
+                  rateSeriesMonth: monthPoints,
+                },
+              };
+              saveStatsViewCache(next);
+              setCacheSavedAt(savedAt);
+            }
+          } catch {
+            // 表示キャッシュなので失敗しても致命にしない
+          }
+
+
+          // ✅ 重要：推移だけは “計算完了時点” でキャッシュへ追記（次回即表示）
+          try {
+            const cur = loadStatsViewCache();
+            if (cur?.data) {
+              const savedAt = new Date();
+              saveStatsViewCache({
+                ...cur,
+                saved_at: savedAt.toISOString(),
+                data: {
+                  ...cur.data,
+                  rateSeriesWeek: weekPoints,
+                  rateSeriesMonth: monthPoints,
+                },
+              });
+              setCacheSavedAt(savedAt);
+            }
+          } catch {
+            // キャッシュ更新失敗は無視（SSOTではない）
+          }
         };
 
-        // ✅ ここが改善ポイント：
-        //   fetchSeries(12回API)を await せず、他のデータ取得と並行で走らせる
+        // ✅ ここが改善ポイント： fetchSeries(12回API)を await せず、他のデータ取得と並行で走らせる
         fetchSeries().catch(() => null);
+
 
         const [
           outcomeWeek,
@@ -538,9 +575,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             courseXWeek: cxW ?? null,
             courseXMonth: cxM ?? null,
 
-            // ✅ rateSeriesは fetchSeries が後で更新するので、ここでは現時点stateを保存（壊さない）
-            rateSeriesWeek: Array.isArray(rateSeriesWeek) ? rateSeriesWeek : [],
-            rateSeriesMonth: Array.isArray(rateSeriesMonth) ? rateSeriesMonth : [],
+            rateSeriesWeek: rateSeriesWeek ?? [],
+            rateSeriesMonth: rateSeriesMonth ?? [],
 
             currentNotifSetting: notifSetting ?? null,
 

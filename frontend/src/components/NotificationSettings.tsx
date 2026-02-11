@@ -630,10 +630,7 @@ export const NotificationSettings: React.FC = () => {
             >
               <div>
                 <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-                  締切1時間前通知
-                </div>
-                <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                  締切の60〜90分前に通知します
+                  締切約1時間前通知
                 </div>
               </div>
 

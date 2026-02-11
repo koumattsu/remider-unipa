@@ -19,6 +19,21 @@ JST = timezone(timedelta(hours=9))
 # ✅ SSOT契約：朝通知は offset_hours=0 として扱う
 MORNING_OFFSET_HOURS = 0
 
+# ✅ 締切前通知 window（SSOT）
+WINDOW_MINUTES = 40
+WINDOW_MAXUTES = 90
+
+def is_in_deadline_window_by_offset(*, deadline_utc: datetime, now_utc: datetime, offset_hours: int) -> bool:
+    """
+    ✅ SSOT: 締切前通知window判定
+    判定対象時刻 = deadline - offset_hours
+    その時刻までの残り分数が [40, 90] に入ったら「送る」
+    """
+    target_utc = deadline_utc - timedelta(hours=int(offset_hours))
+    diff_minutes = (target_utc - now_utc).total_seconds() / 60.0
+    return (WINDOW_MINUTES <= diff_minutes <= WINDOW_MAXUTES)
+
+
 # ================================
 # UTC変換ヘルパー（最重要）
 # ================================
@@ -194,21 +209,13 @@ def decide_notification(
         if h not in (effective_offsets or []):
             return NotificationDecision(False, "skipped:offset_not_enabled", [])
 
-        diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
-
-        # 通知ウィンドウ判定（既存ロジックをSSOTに移管）
-        if h == 1:
-            # ✅ 90分前〜40分前（取り逃がし耐性）
-            # - diff_hours は「締切までの残り時間（hours）」なので
-            #   40分 = 40/60 = 0.666...
-            if not ((40.0 / 60.0) <= diff_hours <= 1.5):
-                return NotificationDecision(False, "skipped:offset_window_outside", [])
-        else:
-            # ±30分
-            if not ((h - 0.5) <= diff_hours <= (h + 0.5)):
-                return NotificationDecision(False, "skipped:offset_window_outside", [])
-
-        return NotificationDecision(True, "send:offset_hit", effective_offsets)
+        # ✅ 締切前通知window判定（SSOT）
+        if not is_in_deadline_window_by_offset(
+            deadline_utc=deadline_utc,
+            now_utc=now_utc,
+            offset_hours=h,
+        ):
+            return NotificationDecision(False, "skipped:offset_window_outside", [])
 
         return NotificationDecision(True, "send:offset_hit", effective_offsets)
 

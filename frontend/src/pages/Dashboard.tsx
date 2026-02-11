@@ -701,7 +701,7 @@ export const Dashboard: React.FC = () => {
                   onClick={() => {
                     // deep_link は "/#/dashboard?tab=today" 形式
                     // HashRouterなので hash を直接いじるのが最小diffで確実
-                    window.location.href = n.deep_link; // BrowserRouter前提
+                    window.location.hash = n.deep_link;
                   }}
                   style={{
                     borderRadius: '1rem',
@@ -1097,15 +1097,15 @@ export const Dashboard: React.FC = () => {
           onClick={() => setActiveTab('stats')}
         />
         <TabButton
-        label="通知"
-        icon="🔔"
-        active={activeTab === 'notifications'}
-        onClick={() => {
-          // ✅ HashRouter前提：/dashboard?tab=notifications を hash に載せて「確実に通知タブへ」
-          window.location.hash = '/dashboard?tab=notifications';
-          setActiveTab('notifications'); // 体感を即時にする（hash反映の前でもUIが切り替わる）
-        }}
-      />
+          label="通知"
+          icon="🔔"
+          active={activeTab === 'notifications'}
+          onClick={() => {
+            // ✅ HashRouter前提：URLとstateを同期（リロード耐性）
+            window.location.hash = '/dashboard?tab=notifications';
+            setActiveTab('notifications');
+          }}
+        />
       </nav>
 
       {/* ハンバーガーメニューのオーバーレイ */}

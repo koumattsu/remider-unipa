@@ -17,18 +17,44 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
+// ✅ 任意：APIデバッグ（本番でも env でON/OFFできる）
+const API_DEBUG = String(import.meta.env.VITE_API_DEBUG ?? '') === '1';
+
 apiClient.interceptors.request.use(
   (config) => {
     const headers = (config.headers ?? {}) as any;
     config.headers = headers;
+
+    if (API_DEBUG) {
+      const method = String(config.method ?? 'GET').toUpperCase();
+      const url = `${config.baseURL ?? ''}${config.url ?? ''}`;
+      console.log('[api:req]', method, url, { params: config.params });
+    }
     return config;
   },
   (error) => Promise.reject(error),
 );
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (API_DEBUG) {
+      const method = String(response.config.method ?? 'GET').toUpperCase();
+      const url = `${response.config.baseURL ?? ''}${response.config.url ?? ''}`;
+      console.log('[api:res]', method, url, response.status);
+    }
+    return response;
+  },
   (error: AxiosError) => {
+    if (API_DEBUG) {
+      const cfg = (error.config ?? undefined) as
+        | { method?: unknown; url?: unknown; baseURL?: unknown }
+        | undefined;
+
+      const method = String(cfg?.method ?? 'GET').toUpperCase();
+      const url = `${String(cfg?.baseURL ?? '')}${String(cfg?.url ?? '')}`;
+
+      console.log('[api:err]', method, url, error.response?.status ?? 'NO_STATUS');
+    }
     return Promise.reject(error);
   },
 );

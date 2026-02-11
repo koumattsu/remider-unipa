@@ -432,7 +432,7 @@ export const Dashboard: React.FC = () => {
         return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
       });
   }, [tasks]);
-  
+
   const formatYmd = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -469,13 +469,19 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        読み込み中...
-      </div>
-    );
-  }
+  // ✅ キャッシュが無い初回だけは全画面ローディング（真っ白防止）
+    const hasTasksCache = useMemo(() => {
+      const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
+      return !!(cached && Array.isArray(cached.data) && cached.data.length >= 0);
+    }, []);
+
+    if (isLoading && !hasTasksCache) {
+      return (
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          読み込み中...
+        </div>
+      );
+    }
 
   // メインコンテンツの切り替え
   const renderContent = () => {
@@ -987,6 +993,22 @@ export const Dashboard: React.FC = () => {
         minHeight: '100dvh',
       }}
     >
+      {/* ✅ キャッシュ表示中に裏で更新している場合の軽い表示 */}
+      {isLoading && (
+        <div
+          style={{
+            marginBottom: '0.6rem',
+            padding: '0.55rem 0.75rem',
+            borderRadius: 14,
+            border: '1px solid rgba(255,255,255,.10)',
+            background: 'rgba(255,255,255,.06)',
+            color: 'rgba(255,255,255,.82)',
+            fontSize: '0.85rem',
+          }}
+        >
+          更新中…
+        </div>
+      )}
       {/* ヘッダー（左上ハンバーガー） */}
       <header
         style={{

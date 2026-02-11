@@ -281,14 +281,19 @@ export const Dashboard: React.FC = () => {
 
 
   useEffect(() => {
-    const sp = new URLSearchParams(location.search);
+    // ✅ HashRouter: "#/dashboard?tab=notifications" から tab を読む
+    const hash = location.hash ?? '';
+    const qIndex = hash.indexOf('?');
+    const query = qIndex >= 0 ? hash.slice(qIndex + 1) : '';
+    const sp = new URLSearchParams(query);
     const tab = sp.get('tab');
+
     // 許可リスト（壊れない）
     const allowed: TabKey[] = ['today', 'all', 'stats', 'weekly', 'add', 'settings', 'notifications'];
     if (tab && allowed.includes(tab as TabKey)) {
       setActiveTab(tab as TabKey);
     }
-  }, [location.search]);
+  }, [location.hash]);
 
   // 🔔 notifications タブを開いたら通知一覧を取得
   useEffect(() => {

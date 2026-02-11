@@ -139,6 +139,21 @@ type TabKey = 'today' | 'all' | 'stats' | 'weekly' | 'add' | 'settings' | 'notif
 type AllViewMode = 'active' | 'overdue' | 'incomplete';
 
 export const Dashboard: React.FC = () => {
+  // ✅ 通知本文の表示用：括弧「( … ) / （ … ）」はUIに出さない（資産のbody自体は保持）
+  const formatNotifBodyForUi = (body: string) => {
+    return (body ?? '')
+      .split('\n')
+      .map((line) =>
+        line
+          // 半角/全角の括弧と中身を削除
+          .replace(/[\(（][^)\）]*[\)）]/g, '')
+          // 余分なスペースを整理（行末はtrimEndでOK）
+          .replace(/[ \t]{2,}/g, ' ')
+          .trimEnd()
+      )
+      .join('\n')
+      .trim();
+  };
   const [tasks, setTasks] = useState<Task[]>(() => {
     const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
     return cached?.data ?? [];
@@ -417,7 +432,7 @@ export const Dashboard: React.FC = () => {
         return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
       });
   }, [tasks]);
-
+  
   const formatYmd = (d: Date) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -720,8 +735,9 @@ export const Dashboard: React.FC = () => {
                         {n.title}
                       </div>
                       <div style={{ whiteSpace: 'pre-wrap', opacity: 0.85, lineHeight: 1.35 }}>
-                        {n.body}
+                        {formatNotifBodyForUi(n.body)}
                       </div>
+
                       <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.6 }}>
                         {new Date(n.created_at).toLocaleString()}
                       </div>

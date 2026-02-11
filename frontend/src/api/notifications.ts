@@ -7,6 +7,7 @@ export type InAppNotification = {
   kind: string;
   title: string;
   body: string;
+  body_ui?: string; // ✅ UI表示用（括弧内を除去した本文）
   deep_link: string;
   task_id: number | null;
   deadline_at_send: string;
@@ -44,6 +45,21 @@ export type InAppNotificationsSummary = {
   };
 };
 
+// ✅ UI表示用：本文の括弧内を非表示にする（監査用のbodyは残す）
+  const simplifyNotifBodyForUi = (s: string) => {
+    if (!s) return s;
+    return s
+      .split('\n')
+      .map((line) =>
+        line
+          .replace(/\s*\([^)]*\)\s*/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim()
+      )
+      .join('\n')
+      .trim();
+  };
+
 export async function fetchInAppNotifications(
   limit = 30,
   opts?: { includeDismissed?: boolean; from?: string; to?: string }
@@ -56,7 +72,11 @@ export async function fetchInAppNotifications(
       to: opts?.to,
     },
   });
-  return res.data.items ?? [];
+  const items = (res.data.items ?? []) as InAppNotification[];
+  return items.map((n) => ({
+    ...n,
+    body_ui: simplifyNotifBodyForUi(n.body),
+  }));
 }
 
 export async function fetchInAppNotificationsSummary(opts?: { from?: string; to?: string }): Promise<InAppNotificationsSummary> {

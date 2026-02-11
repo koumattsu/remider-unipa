@@ -1,11 +1,13 @@
 # backend/app/services/in_app_notifications.py
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from app.models.task import Task
 from app.models.in_app_notification import InAppNotification
 
 TODAY_DEEPLINK = "/#/dashboard?tab=today"
+MANUAL_COURSE_NAME = "__manual__"
+JST = timezone(timedelta(hours=9))
 
 def build_inapp_title(offset_hours: int) -> str:
     return "朝通知" if offset_hours == 0 else f"{offset_hours}時間前"
@@ -15,9 +17,20 @@ def build_inapp_body(tasks: List[Task]) -> str:
     # 例：• タイトル（締切）- メモ先頭
     lines = []
     for t in tasks:
-        deadline = t.deadline.isoformat()
+        # ✅ 通知はユーザー向け表現（JSTで短く）
+        try:
+            d = t.deadline
+            if d.tzinfo is None:
+                # naive はUTC想定でJSTへ（既存DBがJST-naiveならここは合わせた方がいいので後で統一）
+                d = d.replace(tzinfo=timezone.utc)
+            deadline = d.astimezone(JST).strftime("%m/%d %H:%M")
+        except Exception:
+            deadline = str(t.deadline)
+
         memo = (t.memo or "").strip()
         memo_short = (memo[:40] + "…") if len(memo) > 40 else memo
+        # ✅ `__manual__` は内部識別子。通知文言には絶対出さない
+        # （memo が空でも course_name を代替に使わない）
         if memo_short:
             lines.append(f"• {t.title}（{deadline}）- {memo_short}")
         else:

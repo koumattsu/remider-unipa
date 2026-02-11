@@ -80,10 +80,9 @@ export const TaskForm: React.FC<TaskFormProps> = ({
       };
       onTaskAddedLocal?.(tempTask);
 
-      // ✅ ② API成功で仮→実に置換
       const real = await tasksApi.create({
         title: tempTask.title,
-        course_name: tempTask.course_name,
+        course_name: '__manual__',
         memo: tempTask.memo,
         deadline: tempTask.deadline,
         should_notify: true,

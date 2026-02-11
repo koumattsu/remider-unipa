@@ -14,6 +14,29 @@ from app.models.webpush_subscription import WebPushSubscription
 from app.models.webpush_delivery import WebPushDelivery
 from app.models.in_app_notification import InAppNotification
 
+MANUAL_COURSE_NAME = "__manual__"
+
+def _sanitize_push_text(s: str | None) -> str | None:
+    if s is None:
+        return None
+    if MANUAL_COURSE_NAME not in s:
+        return s
+
+    out = s
+
+    # よくあるパターンを先に潰す
+    out = out.replace(f"({MANUAL_COURSE_NAME} / ", "(")
+    out = out.replace(f"{MANUAL_COURSE_NAME} / ", "")
+    out = out.replace(MANUAL_COURSE_NAME, "")
+
+    # 体裁を軽く整える（最小）
+    out = out.replace("( / ", "(").replace(" / )", ")")
+    out = out.replace("()", "").replace("（ ）", "")
+    out = " ".join(out.split())  # 連続空白を1つに
+
+    return out
+
+
 def _b64url(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
 
@@ -231,8 +254,8 @@ class WebPushSender:
         )
 
         payload = {
-            "title": notification.title,
-            "body": notification.body,
+            "title": _sanitize_push_text(notification.title),
+            "body": _sanitize_push_text(notification.body),
             "url": notification.deep_link,
             "deep_link": notification.deep_link,
             "notification_id": notification.id,

@@ -25,14 +25,28 @@ WINDOW_MAXUTES = 90
 
 def is_in_deadline_window_by_offset(*, deadline_utc: datetime, now_utc: datetime, offset_hours: int) -> bool:
     """
-    ✅ SSOT: 締切前通知window判定
-    判定対象時刻 = deadline - offset_hours
-    その時刻までの残り分数が [40, 90] に入ったら「送る」
+    ✅ SSOT: 締切前通知window判定（deadline基準）
+    - offset_hours=1 のとき「締切まで残り40〜90分」で送る
+    - offset_hours=h のときは、1hの許容ブレ（早め20分 / 遅め30分）をそのままスケールして
+      (h*60 - 20) 〜 (h*60 + 30) 分の範囲で送る
     """
-    target_utc = deadline_utc - timedelta(hours=int(offset_hours))
-    diff_minutes = (target_utc - now_utc).total_seconds() / 60.0
-    return (WINDOW_MINUTES <= diff_minutes <= WINDOW_MAXUTES)
+    try:
+        h = int(offset_hours)
+    except (TypeError, ValueError):
+        return False
+    if h <= 0:
+        return False
 
+    # 締切までの残り分（deadline基準）
+    remaining_minutes = (deadline_utc - now_utc).total_seconds() / 60.0
+
+    # 1h=60分に対する許容ブレをそのまま利用
+    early_slack = 60 - WINDOW_MINUTES   # 20
+    late_slack = WINDOW_MAXUTES - 60    # 30
+
+    min_m = h * 60 - early_slack
+    max_m = h * 60 + late_slack
+    return (min_m <= remaining_minutes <= max_m)
 
 # ================================
 # UTC変換ヘルパー（最重要）
@@ -420,10 +434,9 @@ def get_tasks_due_in_offsets(
                 rk = f"task_reason:{task.id}:{decision.reason}"
                 debug[rk] = debug.get(rk, 0) + 1
 
-                # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
+                # ✅ UI/通知extra用：送信ヒット理由を確定
                 k1 = f"task_reason:{task.id}"
-                if k1 not in debug:
-                    debug[k1] = decision.reason
+                debug[k1] = offset_decision.reason
             due_map[h].append(task)
 
     return dict(due_map)

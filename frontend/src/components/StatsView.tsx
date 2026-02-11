@@ -23,6 +23,76 @@ interface StatsViewProps {
   tasks: Task[]; // 互換のため残す（今後 outcomes だけにするなら削除OK）
 }
 
+// =========================
+// ✅ StatsView UI Cache (stale-while-revalidate)
+// - SSOTはサーバの資産ログ。ここは「表示最適化」だけ。
+// - localStorage に前回の集計結果を保存して即表示し、裏で再取得して差し替える。
+// =========================
+const STATS_VIEW_CACHE_VERSION = 1;
+const STATS_VIEW_CACHE_KEY = `unipa.statsView.cache.v${STATS_VIEW_CACHE_VERSION}`;
+
+type StatsViewCachePayload = {
+  version: number;
+  saved_at: string; // ISO
+  data: {
+    logsWeek: OutcomeLog[];
+    logsMonth: OutcomeLog[];
+    summaryWeek: OutcomesSummaryItem | null;
+    summaryMonth: OutcomesSummaryItem | null;
+
+    byCourseWeek: OutcomesByCourseRow[] | null;
+    byCourseMonth: OutcomesByCourseRow[] | null;
+    byFeatureWeek: OutcomesByFeatureRow[] | null;
+    byFeatureMonth: OutcomesByFeatureRow[] | null;
+
+    weeklyNotifSummary: InAppNotificationsSummary | null;
+    monthlyNotifSummary: InAppNotificationsSummary | null;
+
+    latestRun: NotificationRun | null;
+    latestRunSummary: RunSummary | null;
+
+    courseXWeek: OutcomesCourseXFeatureRow[] | null;
+    courseXMonth: OutcomesCourseXFeatureRow[] | null;
+
+    rateSeriesWeek: RatePoint[];
+    rateSeriesMonth: RatePoint[];
+
+    currentNotifSetting: NotificationSetting | null;
+
+    // ✅ ここは「表示キャッシュ」。SSOTではない（SSOTはサーバ資産）
+    actionEffectivenessWeek: ActionEffectivenessItem[] | null;
+    actionEffectivenessMonth: ActionEffectivenessItem[] | null;
+
+    actionEffectivenessByFeatureWeek: ActionEffectivenessByFeatureItem[] | null;
+    actionEffectivenessByFeatureMonth: ActionEffectivenessByFeatureItem[] | null;
+
+    actionEffectivenessMetaWeek: { windowDays: number; fetchedAt: string } | null;
+    actionEffectivenessMetaMonth: { windowDays: number; fetchedAt: string } | null;
+  };
+};
+
+function loadStatsViewCache(): StatsViewCachePayload | null {
+  try {
+    const raw = localStorage.getItem(STATS_VIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StatsViewCachePayload;
+    if (!parsed || parsed.version !== STATS_VIEW_CACHE_VERSION) return null;
+    if (!parsed.saved_at || !parsed.data) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveStatsViewCache(payload: StatsViewCachePayload) {
+  try {
+    localStorage.setItem(STATS_VIEW_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // storage full / blocked は無視（UX最適化なので致命傷にしない）
+  }
+}
+
+
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [_logsWeek, setLogsWeek] = useState<OutcomeLog[]>([]);
   const [_logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);

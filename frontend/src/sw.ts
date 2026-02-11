@@ -29,8 +29,22 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {}
   }
+  const sanitizeBody = (s: string) => {
+    if (!s) return s
+    // ✅ 内部識別子 __manual__ を通知表示から除去
+    // 例: "(__manual__/ 02/11 23:00)" -> "(02/11 23:00)" に寄せる
+    let out = s
+      .replace(/\(\s*__manual__\s*\/\s*/g, '(')
+      .replace(/__manual__/g, '')
+      .replace(/\(\s*\/\s*/g, '(')        // 念のため "( / xx" を潰す
+      .replace(/\(\s*\)/g, '')            // 空カッコ除去
+      .replace(/[ \t]{2,}/g, ' ')         // 連続スペース整理
+      .trim()
+    return out
+  }
+
   const title = data.title || 'UNIPA Reminder'
-  const body = data.body || '通知があります'
+  const body = sanitizeBody(data.body || '通知があります')
   const rawUrl = data.url || '/dashboard?tab=today'
   const url = new URL(rawUrl, self.registration.scope).toString()
   event.waitUntil(

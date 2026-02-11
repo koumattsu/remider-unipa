@@ -953,9 +953,21 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             <NotifStatsCard
               title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
               subtitle={undefined}
-              created={chosenNotifCreated}
+              // ✅ 開封率（run summaryが取れるならそれを優先）
+              // 分母: sent_messages（成功送信のみ）
+              created={
+                Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0) > 0
+                  ? Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0)
+                  : chosenNotifCreated
+              }
+              opened={Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0)}
+              // ✅ 互換（open系が無い環境では従来ロジックへ）
               dismissed={chosenNotifDismissed}
-              dismissRate={chosenNotifDismissRate}
+              dismissRate={
+                (latestRunSummary as any)?.inapp?.webpush?.open_rate != null
+                  ? Number((latestRunSummary as any)?.inapp?.webpush?.open_rate)
+                  : chosenNotifDismissRate
+              }
             />
           </div>
         </div>

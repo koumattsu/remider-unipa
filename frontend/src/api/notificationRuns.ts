@@ -43,6 +43,10 @@ export type RunSummary = {
         skipped: number;
         unknown: number;
       };
+      // ✅ message軸（開封率）
+      sent_messages?: number;
+      opened_messages?: number;
+      open_rate?: number; // 0..100 想定（backendで丸め）
     };
   };
   run_counters: {

@@ -181,32 +181,11 @@ def get_run_summary(
     deactivated = int(summary.get("deactivated", 0) or 0)
     unknown = int(summary.get("unknown", 0) or 0)
 
-    # ✅ 反応率（通知タップ→アプリ起動）: message軸で計算
-    # - 分子: opened の distinct(notification_id)
-    # - 分母: sent の distinct(in_app_notification_id)
-    opened_messages = int(
-        db.query(func.count(func.distinct(WebPushEvent.notification_id)))
-        .filter(WebPushEvent.run_id == run_id)
-        .filter(WebPushEvent.event_type == "opened")
-        .filter(WebPushEvent.notification_id.isnot(None))
-        .scalar()
-        or 0
-    )
-
-    # ✅ 分母（送信数）: SSOT=WebPushDelivery から message軸で正規化
-    sent_messages = int(
-        db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
-        .filter(WebPushDelivery.run_id == run_id)
-        .filter(WebPushDelivery.status == WebPushDelivery.STATUS_SENT)
-        .scalar()
-        or 0
-    )
-
-    # ↑ NOTE: ここは「sent_messages = distinct(WebPushDelivery.in_app_notification_id WHERE status='sent')」
-    # にしたいが、WebPushDelivery をこのファイルで import していないため、次パッチで最小追加する。
-    # まずは opened の数を summary に乗せ、UIでの確認を可能にする（資産価値を壊さない）。
-
-    open_rate = round((opened_messages / sent_messages) * 100) if sent_messages else 0
+    # ✅ 反応率（通知タップ→アプリ起動）: message軸 SSOT は summary 側に集約
+    opened_messages = int(summary.get("opened_messages", 0) or 0)
+    sent_messages = int(summary.get("sent_messages", 0) or 0)
+    # open_rate は float で返ってくる可能性があるので保守的に扱う
+    open_rate = summary.get("open_rate", 0) or 0
 
     # ✅ 監査耐性: stats が欠けていても summary では説明可能にする（補完）
     stats = r.stats if isinstance(r.stats, dict) else None
@@ -232,6 +211,8 @@ def get_run_summary(
         # opened を snapshot にも補完（後方互換・観測強化）
         if snapshot.get("webpush_opened_messages") is None:
             snapshot["webpush_opened_messages"] = opened_messages
+        if snapshot.get("webpush_sent_messages") is None:
+            snapshot["webpush_sent_messages"] = sent_messages
         if snapshot.get("webpush_open_rate") is None:
             snapshot["webpush_open_rate"] = open_rate
 
@@ -254,6 +235,10 @@ def get_run_summary(
                 "deactivated": deactivated,
                 "unknown": unknown,
                 "events": events,
+                # ✅ message軸（UI指標のSSOT）
+                "sent_messages": sent_messages,
+                "opened_messages": opened_messages,
+                "open_rate": open_rate,
             },
         },
         "run_counters": {

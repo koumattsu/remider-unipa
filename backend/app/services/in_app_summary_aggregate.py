@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case, cast, Integer
 from app.models.in_app_notification import InAppNotification
 from app.models.webpush_delivery import WebPushDelivery
+from typing import Optional
 
 def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
     """
@@ -14,6 +15,7 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
     - dismissed_count
     - delivered/failed/deactivated（subscription軸の合計）
     - unknown（webpushがdictでないレコード数）
+    - sent_messages/opened_messages/open_rate（message軸 / opened ÷ sent）
     """
     # ① DB集計（Postgres JSONB想定）
     try:
@@ -39,6 +41,33 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
 
         # ✅ OS Pushには「dismissed（アプリ内で消した）」が無いので 0 固定
         dismissed_count = 0
+
+        # ✅ message軸 SSOT: sent_messages（= push service 受理成功のメッセージ数）
+        # subscription軸ではなく、notification_id（=in_app_notification_id）を distinct で数える
+        sent_messages = int(
+            db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
+            .filter(WebPushDelivery.run_id == run_id)
+            .filter(WebPushDelivery.status == WebPushDelivery.STATUS_SENT)
+            .scalar()
+            or 0
+        )
+
+        # ✅ message軸 SSOT: opened_messages（= 通知を押してアプリを開いた数）
+        # ※ WebPushEvent が無い環境でも壊さない（optional）
+        opened_messages: int = 0
+        try:
+            from app.models.webpush_event import WebPushEvent  # ← ここはあなたの実体に合わせる
+            opened_messages = int(
+                db.query(func.count(func.distinct(WebPushEvent.notification_id)))
+                .filter(WebPushEvent.run_id == run_id)
+                .filter(WebPushEvent.event_type == "opened")
+                .scalar()
+                or 0
+            )
+        except Exception:
+            opened_messages = 0
+
+        open_rate = (opened_messages / sent_messages * 100.0) if sent_messages > 0 else 0.0
 
         # ✅ SSOT: WebPushDelivery（subscription軸の合計）
         # NOTE: ここでの delivered は「端末到達」ではなく
@@ -147,6 +176,10 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
             "failed": failed,
             "deactivated": deactivated,
             "unknown": unknown,
+            # ✅ message軸（開封率のSSOT）
+            "sent_messages": sent_messages,
+            "opened_messages": opened_messages,
+            "open_rate": open_rate,
         }
 
     except Exception:

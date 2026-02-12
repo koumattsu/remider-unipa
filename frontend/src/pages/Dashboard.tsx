@@ -985,6 +985,7 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div
+      className="df-shell"
       style={{
         width: '100%',
         maxWidth: 'clamp(420px, 92vw, 1100px)',
@@ -1048,6 +1049,7 @@ export const Dashboard: React.FC = () => {
         </button>
 
         <div
+          className="df-title"
           style={{
             fontWeight: 700,
             fontSize: '0.95rem',
@@ -1058,7 +1060,6 @@ export const Dashboard: React.FC = () => {
         >
           DueFlow
         </div>
-
         <div style={{ width: 36 }} />
       </header>
 
@@ -1068,6 +1069,7 @@ export const Dashboard: React.FC = () => {
       {(activeTab === 'today' || activeTab === 'all') && (
         <button
           onClick={handleFabClick}
+          className="df-fab"
           style={{
             position: 'fixed',
             right: '1.5rem',
@@ -1100,6 +1102,7 @@ export const Dashboard: React.FC = () => {
 
       {/* 下部ナビゲーション */}
       <nav
+        className="df-bottom-nav"
         style={{
           position: 'fixed',
           left: 0,
@@ -1119,7 +1122,6 @@ export const Dashboard: React.FC = () => {
           zIndex: 100,
         }}
       >
-
         <TabButton
           label="全部"
           icon="📋"

@@ -160,9 +160,16 @@ def get_run_summary(
 
     summary = calc_in_app_summary_for_run(db, run_id)
 
-    # ✅ イベント軸（通知レコード単位）は SSOT
-    events, webpush_source = calc_webpush_events_with_source_for_run(db, run_id)
-    events_sum = sum(int(v or 0) for v in (events or {}).values())
+    events_raw, webpush_source = calc_webpush_events_with_source_for_run(db, run_id)
+
+    # ✅ 契約固定: events はこのキー集合のみ返す（余計なキーが混ざっても落とす）
+    EXPECTED_EVENT_KEYS = ["sent", "failed", "deactivated", "skipped", "unknown"]
+    events = {
+        k: int((events_raw or {}).get(k, 0) or 0)
+        for k in EXPECTED_EVENT_KEYS
+    }
+
+    events_sum = sum(events.values())
 
     inapp_total = int(summary.get("inapp_total", 0) or 0)
     # ✅ FakeSession/集計不能時の fallback：契約（events_sum <= total）を守る
@@ -235,10 +242,6 @@ def get_run_summary(
                 "deactivated": deactivated,
                 "unknown": unknown,
                 "events": events,
-                # ✅ message軸（UI指標のSSOT）
-                "sent_messages": sent_messages,
-                "opened_messages": opened_messages,
-                "open_rate": open_rate,
             },
         },
         "run_counters": {

@@ -23,10 +23,122 @@ html, body, #root {
 }
 
 body {
+  /* ベース（今の雰囲気は維持） */
   background:
     radial-gradient(1200px 700px at 20% -10%, rgba(91,231,255,.22), transparent 60%),
     radial-gradient(900px 600px at 90% 10%, rgba(140,90,255,.20), transparent 55%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
+
+  position: relative;
+  overflow-x: hidden;
+  isolation: isolate; /* blendがあっても“body内”で閉じる（壊れにくい） */
+}
+
+/* ===== Near-future background layers (A) ===== */
+/* Aurora: 発光する面（超軽量: gradient + blurだけ） */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+
+  /* 2〜3枚の薄い発光面を重ねる */
+  background:
+    radial-gradient(900px 600px at 15% 15%, rgba(91,231,255,.14), transparent 62%),
+    radial-gradient(900px 600px at 85% 20%, rgba(140,90,255,.12), transparent 60%),
+    radial-gradient(1000px 700px at 55% 85%, rgba(91,231,255,.08), transparent 60%);
+  filter: blur(22px) saturate(115%);
+  transform: translateZ(0);
+  opacity: .95;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background:
+    /* ④周辺減光（中心に視線誘導・奥行き） */
+    radial-gradient(1200px 800px at 50% 35%, transparent 35%, rgba(0,0,0,.55) 100%),
+
+    /* ①薄いグリッド */
+    linear-gradient(to right, rgba(255,255,255,.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,.045) 1px, transparent 1px),
+
+    /* ②微細なスキャンライン（超薄） */
+    repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,.035) 0px,
+      rgba(255,255,255,.035) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
+
+    /* ③ノイズ */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+
+  background-size:
+    100% 100%,     /* vignette */
+    56px 56px,
+    56px 56px,
+    100% 100%,
+    180px 180px;
+
+  background-blend-mode: normal, overlay, overlay, overlay, overlay;
+  opacity: .24;
+}
+
+/* カード境界を“上辺だけ少し光らせる”（未来感・可読性は維持） */
+.glass {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  position: relative;
+}
+
+.glass::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(91,231,255,.28),
+    rgba(140,90,255,.18),
+    transparent
+  );
+  opacity: .55;
+  pointer-events: none;
+}
+
+/* 動き（超弱い）：Auroraを“ほぼ静止”でわずかに漂わせる */
+@media (prefers-reduced-motion: no-preference) {
+  body::before {
+    animation: auroraDrift 42s ease-in-out infinite alternate;
+  }
+  @keyframes auroraDrift {
+    from { transform: translate3d(-1.2%, -0.8%, 0) scale(1.02); }
+    to   { transform: translate3d( 1.4%,  1.0%, 0) scale(1.04); }
+  }
+}
+
+/* iOS Safari / 一部環境: backdrop-filterが弱い or 無効でも破綻しない */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: rgba(255,255,255,.10);
+    border-color: rgba(255,255,255,.16);
+  }
+  .glass-strong {
+    background: rgba(255,255,255,.14);
+    border-color: rgba(255,255,255,.18);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -188,4 +300,44 @@ input[type="date"].glass-field.date-right::-webkit-calendar-picker-indicator {
   left: auto;
   right: 0.75rem;
   transform: none;
+}
+
+/* ===== Near-future background layers (C) ===== */
+.app-shell {
+  min-height: 100%;
+  position: relative;
+}
+
+.bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.bg-spot {
+  position: absolute;
+  width: 62vmin;
+  height: 62vmin;
+  border-radius: 999px;
+  filter: blur(26px) saturate(120%);
+  opacity: .22;
+  transform: translateZ(0);
+  mix-blend-mode: screen;
+}
+
+/* 位置と色（“光源”） */
+.bg-spot.s1 { left: -12vmin; top: -10vmin; background: rgba(91,231,255,.75); }
+.bg-spot.s2 { right: -18vmin; top: -6vmin; background: rgba(140,90,255,.70); }
+.bg-spot.s3 { left: 30vmin; bottom: -22vmin; background: rgba(91,231,255,.55); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bg-spot.s1 { animation: spotFloat1 36s ease-in-out infinite alternate; }
+  .bg-spot.s2 { animation: spotFloat2 44s ease-in-out infinite alternate; }
+  .bg-spot.s3 { animation: spotFloat3 52s ease-in-out infinite alternate; }
+
+  @keyframes spotFloat1 { from { transform: translate3d(0,0,0) scale(1.00); } to { transform: translate3d(4vmin,2vmin,0) scale(1.05); } }
+  @keyframes spotFloat2 { from { transform: translate3d(0,0,0) scale(1.00); } to { transform: translate3d(-3vmin,3vmin,0) scale(1.06); } }
+  @keyframes spotFloat3 { from { transform: translate3d(0,0,0) scale(1.00); } to { transform: translate3d(2vmin,-2vmin,0) scale(1.04); } }
 }

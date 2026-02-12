@@ -22,7 +22,14 @@ const updateSW = registerSW({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <HashRouter>
-      <App />
+      <div className="app-shell">
+        <div className="bg-layer" aria-hidden="true">
+          <span className="bg-spot s1" />
+          <span className="bg-spot s2" />
+          <span className="bg-spot s3" />
+        </div>
+        <App />
+      </div>
     </HashRouter>
   </React.StrictMode>,
 )

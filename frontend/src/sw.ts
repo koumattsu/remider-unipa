@@ -83,7 +83,7 @@ self.addEventListener('notificationclick', (event) => {
         const rawApi =
           // injectManifestならここに埋め込まれる想定（未定義でも落ちないように）
           ((self as any).__VITE_API_BASE_URL as string | undefined) ||
-          'https://unipa-reminder-backend.onrender.com'
+          'https://api.dueflow.app'
 
         const apiBase = String(rawApi).replace(/\/+$/, '')
         const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`

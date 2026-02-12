@@ -92,7 +92,6 @@ function saveStatsViewCache(payload: StatsViewCachePayload) {
   }
 }
 
-
 export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   const [_logsWeek, setLogsWeek] = useState<OutcomeLog[]>([]);
   const [_logsMonth, setLogsMonth] = useState<OutcomeLog[]>([]);
@@ -605,7 +604,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, []);
 
-  // ✅ 今週（月〜日）の進捗（tasks由来 / 現在）
   const weekProgress = useMemo(() => {
     if (bucket !== 'week') return { total: 0, done: 0, rate: 0 };
 
@@ -628,21 +626,21 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
     const nowMs = Date.now();
 
-    // ✅ 期限未到来のみを「進捗の分母」にする（期限過ぎ完了を達成に入れない）
-    const upcoming = weekTasks.filter((t: any) => {
-      const d = t?.deadline ? new Date(t.deadline) : null;
+    const isOnTimeDone = (t: Task) => {
+      const d = t.deadline ? new Date(t.deadline) : null;
       if (!d || Number.isNaN(d.getTime())) return false;
-      return d.getTime() >= nowMs;
-    });
+      return t.is_done && d.getTime() >= nowMs;
+    };
 
-    const total = upcoming.length;
-    const done = upcoming.filter((t: any) => !!t?.is_done).length;
+    const total = weekTasks.length;
+
+    // ✅ 期限内完了のみを達成に数える
+    const done = weekTasks.filter(isOnTimeDone).length;
+
     const rate = total === 0 ? 0 : Math.round((done / total) * 100);
-
     return { total, done, rate };
   }, [bucket, _tasks]);
 
-  // ✅ 今月の進捗（tasks由来 / 現在）
   const monthProgress = useMemo(() => {
     if (bucket !== 'month') return { total: 0, done: 0, rate: 0 };
 
@@ -660,16 +658,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
     const nowMs = Date.now();
 
-    const upcoming = monthTasks.filter((t: any) => {
-      const d = t?.deadline ? new Date(t.deadline) : null;
+    const isOnTimeDone = (t: Task) => {
+      const d = t.deadline ? new Date(t.deadline) : null;
       if (!d || Number.isNaN(d.getTime())) return false;
-      return d.getTime() >= nowMs;
-    });
+      return t.is_done && d.getTime() >= nowMs;
+    };
 
-    const total = upcoming.length;
-    const done = upcoming.filter((t: any) => !!t?.is_done).length;
+    const total = monthTasks.length;
+    const done = monthTasks.filter(isOnTimeDone).length;
     const rate = total === 0 ? 0 : Math.round((done / total) * 100);
-
     return { total, done, rate };
   }, [bucket, _tasks]);
 

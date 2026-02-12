@@ -20,6 +20,7 @@ from app.services.moodle_client import parse_moodle_timeline_html
 
 router = APIRouter()
 
+@router.get("", response_model=List[TaskResponse])
 @router.get("/", response_model=List[TaskResponse])
 async def get_tasks(
     start_date: Optional[datetime] = Query(None, description="開始日時（フィルタ）"),

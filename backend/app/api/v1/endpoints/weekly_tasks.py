@@ -45,6 +45,7 @@ def normalize_weekly_time(
 
     return weekday, time_hour, time_minute
 
+@router.get("", response_model=List[WeeklyTaskResponse])
 @router.get("/", response_model=List[WeeklyTaskResponse])
 def list_weekly_tasks(
     db: Session = Depends(get_db),

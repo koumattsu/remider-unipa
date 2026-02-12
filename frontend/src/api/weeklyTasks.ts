@@ -23,7 +23,7 @@ export const weeklyTasksApi = {
   },
 
   materialize: async (): Promise<{ created: number; skipped: number }> => {
-    const res = await apiClient.post('/weekly-tasks/materialize/'); // ✅
+    const res = await apiClient.post('/weekly-tasks/materialize'); // ✅ 末尾 / を削除
     return res.data;
   },
 };

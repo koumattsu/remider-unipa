@@ -96,7 +96,6 @@ self.addEventListener('notificationclick', (event) => {
           credentials: 'omit',
           keepalive: true,
         })
-
       } catch {}
 
       const allClients = await self.clients.matchAll({

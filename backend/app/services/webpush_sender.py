@@ -275,7 +275,7 @@ class WebPushSender:
         db: Session,
         *,
         user_id: int,
-        title: str = "DueFlow",
+        title: str = "テスト通知",
         body: str = "Web Push テスト送信です",
         url: str = "/dashboard?tab=today",
     ) -> dict:

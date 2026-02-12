@@ -575,8 +575,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             courseXWeek: cxW ?? null,
             courseXMonth: cxM ?? null,
 
-            rateSeriesWeek: rateSeriesWeek ?? [],
-            rateSeriesMonth: rateSeriesMonth ?? [],
+            rateSeriesWeek:
+              (Array.isArray(rateSeriesWeek) && rateSeriesWeek.length > 0)
+                ? rateSeriesWeek
+                : (Array.isArray(cached?.data?.rateSeriesWeek) ? cached!.data.rateSeriesWeek : []),
+
+            rateSeriesMonth:
+              (Array.isArray(rateSeriesMonth) && rateSeriesMonth.length > 0)
+                ? rateSeriesMonth
+                : (Array.isArray(cached?.data?.rateSeriesMonth) ? cached!.data.rateSeriesMonth : []),
 
             currentNotifSetting: notifSetting ?? null,
 
@@ -642,7 +649,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return { total, done, rate };
   }, [bucket, _tasks]);
 
-  // ✅ 今月の進捗（tasks由来 / 現在） ← 追加
+  // ✅ 今月の進捗（tasks由来 / 現在）
   const monthProgress = useMemo(() => {
     if (bucket !== 'month') return { total: 0, done: 0, rate: 0 };
 
@@ -664,6 +671,32 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
     return { total, done, rate };
   }, [bucket, _tasks]);
+
+  // ✅ 表示用Progress（SWR中に tasks が一瞬0になるのを防ぐ）
+  const [displayWeekProgress, setDisplayWeekProgress] = useState<{ total: number; done: number; rate: number }>({
+    total: 0,
+    done: 0,
+    rate: 0,
+  });
+  const [displayMonthProgress, setDisplayMonthProgress] = useState<{ total: number; done: number; rate: number }>({
+    total: 0,
+    done: 0,
+    rate: 0,
+  });
+
+  useEffect(() => {
+    // refreshing 中に親が tasks を [] にしても、前回値を維持する
+    // - tasks が空でない（＝実データがある）時は更新
+    // - refreshing で tasks が空の時は更新しない（0に落とさない）
+    const tasksLen = Array.isArray(_tasks) ? _tasks.length : 0;
+
+    if (bucket === 'week') {
+      if (!refreshing || tasksLen > 0) setDisplayWeekProgress(weekProgress);
+    }
+    if (bucket === 'month') {
+      if (!refreshing || tasksLen > 0) setDisplayMonthProgress(monthProgress);
+    }
+  }, [bucket, refreshing, _tasks, weekProgress, monthProgress]);
 
   useEffect(() => {
     let mounted = true;
@@ -1143,9 +1176,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         <StatsCard
           title={bucket === 'week' ? '今週の進捗' : '今月の進捗'}
           subtitle="tasks（現在状態）"
-          rate={bucket === 'week' ? weekProgress.rate : monthProgress.rate}
-          total={bucket === 'week' ? weekProgress.total : monthProgress.total}
-          done={bucket === 'week' ? weekProgress.done : monthProgress.done}
+          rate={bucket === 'week' ? displayWeekProgress.rate : displayMonthProgress.rate}
+          total={bucket === 'week' ? displayWeekProgress.total : displayMonthProgress.total}
+          done={bucket === 'week' ? displayWeekProgress.done : displayMonthProgress.done}
         />
       </div>
 

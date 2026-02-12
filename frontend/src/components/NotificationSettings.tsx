@@ -480,7 +480,7 @@ export const NotificationSettings: React.FC = () => {
       >
         <div>
           <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
-            プッシュ通知
+            通知
           </div>
           <div style={{ fontSize: '0.9rem', color: '#666' }}>
             アプリを開いていなくても締切前に通知します
@@ -551,35 +551,17 @@ export const NotificationSettings: React.FC = () => {
         <>
           <hr style={{ margin: '1rem 0' }} />
 
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            <div style={{ fontWeight: 700 }}>Web Push（この端末）</div>
-
-            {!pushSupported && (
-              <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-                このブラウザは Web Push に対応していません（iPhone は「ホームに追加」したPWAで有効になることがあります）
-              </div>
-            )}
-
-            {pushError && <div style={{ fontSize: '0.9rem' }}>⚠️ {pushError}</div>}
-
+          <div style={{ display: 'grid', gap: '0.65rem' }}>
+            {/* ✅ 見出し：左 端末通知 / 右 トグル */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 12,
-                padding: '0.75rem 0.9rem',
-                border: '1px solid #e5e5e5',
-                borderRadius: 10,
-                background: '#fafafa',
               }}
             >
-              <div style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontWeight: 700 }}>この端末で通知を受け取る</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
-                  {pushEnabled ? '購読済み（ON）' : '未購読（OFF）'}
-                </div>
-              </div>
+              <div style={{ fontWeight: 800 }}>端末通知</div>
 
               <ToggleSwitch
                 checked={pushEnabled}
@@ -593,7 +575,21 @@ export const NotificationSettings: React.FC = () => {
                 }}
               />
             </div>
-            {/* ✅ 追加：即テスト */}
+
+            {/* ✅ サブ説明（白い長方形は作らない） */}
+            <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.75)' }}>
+              {pushEnabled ? 'この端末は購読済みです' : 'この端末は未購読です'}
+            </div>
+
+            {!pushSupported && (
+              <div style={{ fontSize: '0.9rem', opacity: 0.8 }}>
+                このブラウザは Web Push に対応していません（iPhone は「ホームに追加」したPWAで有効になることがあります）
+              </div>
+            )}
+
+            {pushError && <div style={{ fontSize: '0.9rem' }}>⚠️ {pushError}</div>}
+
+            {/* ✅ テスト送信（大ボタンのまま） */}
             <button
               onClick={testWebPush}
               disabled={!pushEnabled || permission !== 'granted'}
@@ -638,6 +634,7 @@ export const NotificationSettings: React.FC = () => {
             {/* 朝通知：時間セレクト + トグル */}
             <div
               style={{
+                marginTop: '1.2rem', 
                 marginBottom: '1.5rem',
                 display: 'flex',
                 alignItems: 'center',

@@ -15,7 +15,7 @@ def get_application() -> FastAPI:
     create_tables_if_needed()
 
     app = FastAPI(
-        title="UNIPA Reminder Backend",
+        title="DueFlow Backend",
         description="UNIPA / Moodle 課題リマインダー用バックエンド（FastAPI）",
         version="0.1.0",
     )

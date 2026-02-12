@@ -426,29 +426,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           setRateSeriesWeek(weekPoints);
           setRateSeriesMonth(monthPoints);
 
-          // ✅ 推移だけは「完成した瞬間」にキャッシュへ保存（次回即表示のため）
-          try {
-            const prev = loadStatsViewCache();
-            if (prev?.data) {
-              const savedAt = new Date();
-              const next: StatsViewCachePayload = {
-                ...prev,
-                saved_at: savedAt.toISOString(),
-                data: {
-                  ...prev.data,
-                  rateSeriesWeek: weekPoints,
-                  rateSeriesMonth: monthPoints,
-                },
-              };
-              saveStatsViewCache(next);
-              setCacheSavedAt(savedAt);
-            }
-          } catch {
-            // 表示キャッシュなので失敗しても致命にしない
-          }
-
-
-          // ✅ 重要：推移だけは “計算完了時点” でキャッシュへ追記（次回即表示）
+          // ✅ 推移だけは「計算完了時点」でキャッシュへ追記（次回即表示）
           try {
             const cur = loadStatsViewCache();
             if (cur?.data) {
@@ -465,7 +443,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               setCacheSavedAt(savedAt);
             }
           } catch {
-            // キャッシュ更新失敗は無視（SSOTではない）
+            // 表示キャッシュなので失敗しても致命にしない
           }
         };
 
@@ -511,18 +489,24 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
           settingsApi.getNotification().catch(() => null),
 
-          analyticsActionsApi.getEffectiveness({ window_days: 7, min_total: 5, limit_events: 500 }).then(x => x.items ?? []).catch(() => []),
+          analyticsActionsApi
+            .getEffectiveness({ window_days: windowDaysOf(bucket), min_total: 5, limit_events: 500 })
+            .then(x => x.items ?? [])
+            .catch(() => []),
 
-          analyticsActionsApi.getEffectivenessByFeature({
-            version: 'v1',
-            window_days: 7,
-            min_total: 5,
-            limit_events: 500,
-            limit_samples_per_event: 50,
-          }).then(x => x.items ?? []).catch(() => []),
+          analyticsActionsApi
+            .getEffectivenessByFeature({
+              version: 'v1',
+              window_days: windowDaysOf(bucket),
+              min_total: 5,
+              limit_events: 500,
+              limit_samples_per_event: 50,
+            })
+            .then(x => x.items ?? [])
+            .catch(() => []),
         ]);
 
-        setActionEffectiveness((prev) => ({ ...prev, week: effItems }));
+        setActionEffectiveness((prev) => ({ ...prev, [bucket]: effItems }));
         setActionEffectivenessMeta((prev) => ({
           ...prev,
           [bucket]: { windowDays: windowDaysOf(bucket), fetchedAt: new Date() },
@@ -1125,17 +1109,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // InAppNotification(summary.total/dismissed/dismiss_rate) は資産として保持するが UI分母に使わない
   const wp = chosenNotifSummary?.webpush_events;
   const wpSent = wp?.sent ?? 0;
-  const wpFailed = wp?.failed ?? 0;
-  const wpDeactivated = wp?.deactivated ?? 0;
-  const wpSkipped = wp?.skipped ?? 0;
-  const wpUnknown = wp?.unknown ?? 0;
-
-  const wpTotal = wpSent + wpFailed + wpDeactivated + wpSkipped + wpUnknown;
-
-  // created/dismissed/dismissRate という “見た目のAPI” は変えず、中身だけWebPush由来にする（最小diff）
-  const chosenNotifCreated = wpTotal;
-  const chosenNotifDismissed = wpSent;
-  const chosenNotifDismissRate = wpTotal > 0 ? (wpSent / wpTotal) * 100 : 0;
 
   // ✅ 表示用にソート（backendの並びに依存しない）
   const sortedByCourse = useMemo(() => {
@@ -1207,21 +1180,32 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             <NotifStatsCard
               title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
               subtitle={undefined}
-              // ✅ 開封率（run summaryが取れるならそれを優先）
-              // 分母: sent_messages（成功送信のみ）
-              created={
-                Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0) > 0
-                  ? Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0)
-                  : chosenNotifCreated
-              }
-              opened={Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0)}
-              // ✅ 互換（open系が無い環境では従来ロジックへ）
-              dismissed={chosenNotifDismissed}
-              dismissRate={
-                (latestRunSummary as any)?.inapp?.webpush?.open_rate != null
-                  ? Number((latestRunSummary as any)?.inapp?.webpush?.open_rate)
-                  : chosenNotifDismissRate
-              }
+              // ✅ 分母は「成功送信(sent)」のみ
+              created={(() => {
+                const sent = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0);
+                if (sent > 0) return sent;
+                return wpSent; // ✅ run summaryが無いときは sent だけを分母にする
+              })()}
+              // ✅ 分子は「開封(=タップでアプリを開いた)」
+              opened={(() => {
+                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
+                return opened > 0 ? opened : undefined; // ✅ 無いなら undefined（嘘の0を固定しない）
+              })()}
+              // ✅ 互換用 dismissed は opened に寄せる（wpSent は絶対入れない）
+              dismissed={(() => {
+                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
+                return opened > 0 ? opened : undefined;
+              })()}
+              // ✅ open_rate が取れるならそれ、取れないなら opened/sent（両方揃ってる時だけ）
+              dismissRate={(() => {
+                const or = (latestRunSummary as any)?.inapp?.webpush?.open_rate;
+                if (or != null) return Number(or);
+
+                const sent = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0) || wpSent;
+                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
+                if (sent > 0 && opened > 0) return opened / sent; // 0..1 で渡す（NotifStatsCard側が%化）
+                return undefined; // ✅ データ不足なら「—」
+              })()}
             />
           </div>
         </div>
@@ -2910,22 +2894,6 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   );
 };
 
-// ✅ NotifStatsCard 用の小コンポーネント（NotifStatsCard の直前に置く）
-const Stat: React.FC<{
-  label: string;
-  value: React.ReactNode;
-  subtle?: boolean;
-}> = ({ label, value, subtle }) => {
-  return (
-    <div>
-      <div style={{ opacity: subtle ? 0.55 : 0.7, fontSize: '0.78rem' }}>{label}</div>
-      <div style={{ fontWeight: subtle ? 800 : 900, opacity: subtle ? 0.7 : 1 }}>
-        {value}
-      </div>
-    </div>
-  );
-};
-
 interface NotifStatsCardProps {
   title: string;
   subtitle?: string;
@@ -2966,9 +2934,6 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
 
   // ✅ reacted は 0..created にクランプ（不整合でもUIは壊さない）
   const reactedN = createdN > 0 ? Math.min(createdN, reactedN0) : 0;
-
-  // ✅ 未反応数 = created - reacted
-  const unreactedN = createdN > 0 ? Math.max(0, createdN - reactedN) : 0;
 
   // ✅ 互換：dismissRate が来たらそれを優先（0-1/0-100 両対応）、無ければ reacted/created
   const normalizePct = (v: any): number | null => {
@@ -3048,21 +3013,23 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
         </div>
       </div>
 
-      {/* ✅ 数字は3つだけ：通知数 / 未反応数（構造維持） */}
+      {/* ✅ 反応/送信成功 */}
       <div
         style={{
           marginTop: '0.75rem',
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '0.65rem',
           padding: '0.75rem 0.85rem',
           borderRadius: 14,
           border: '1px solid rgba(255,255,255,.10)',
           background: 'rgba(255,255,255,.04)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'baseline',
+          gap: 10,
         }}
       >
-        <Stat label="通知数" value={createdN} />
-        <Stat label="未反応数" value={unreactedN} />
+        <div style={{ fontWeight: 950, fontSize: '1.05rem', letterSpacing: '0.02em' }}>
+          {reactedN} / {createdN}
+        </div>
       </div>
 
       {createdN <= 0 ? (

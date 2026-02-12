@@ -1,12 +1,15 @@
 # backend/app/api/v1/endpoints/weekly_tasks.py
 
 from datetime import date, datetime, timedelta, timezone
-from fastapi import Body
-from sqlalchemy import and_
-from app.models.task import Task
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from fastapi import Body
+
+from app.services.weekly_materialize import materialize_weekly_tasks_for_user
+
+from app.models.task import Task
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.user import User
@@ -93,8 +96,6 @@ def create_weekly_task(
     db.commit()
     db.refresh(task)
     return task
-
-from app.services.weekly_materialize import materialize_weekly_tasks_for_user
 
 @router.post("/materialize")
 def materialize_weekly_tasks_to_real_tasks(

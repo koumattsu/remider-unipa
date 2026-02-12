@@ -132,8 +132,11 @@ const saveTaskNotificationOptions = (
   const [editHour, setEditHour] = useState('24');    // '01'〜'24'
   const [editMinute, setEditMinute] = useState('00'); // '00' or '30'
 
-  // ギアメニューをどのタスクに対して開いているか
-  const [menuTaskId, setMenuTaskId] = useState<number | null>(null);
+  // ギアメニュー（fixed表示用：位置rectも保持）
+  const [menuState, setMenuState] = useState<{
+    taskId: number;
+    rect: DOMRect;
+  } | null>(null);
 
   // 🔔 通知設定モーダルの対象タスク
   const [notificationModalTask, setNotificationModalTask] = useState<Task | null>(null);
@@ -714,13 +717,15 @@ const saveTaskNotificationOptions = (
                     </div>
                   </div>
 
-                  {/* ★ ここは isVirtualTask に関係なく常にラッパーを描画 */}
                   <div style={{ position: 'relative' }}>
                     <button
                       type="button"
-                      onClick={() =>
-                        setMenuTaskId(menuTaskId === task.id ? null : task.id)
-                      }
+                      onClick={(e) => {
+                        const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                        setMenuState((prev) =>
+                          prev?.taskId === task.id ? null : { taskId: task.id, rect }
+                        );
+                      }}
                       aria-label="タスクのメニューを開く"
                       style={{
                         border: 'none',
@@ -734,74 +739,7 @@ const saveTaskNotificationOptions = (
                     >
                       ⚙️
                     </button>
-
-                    {menuTaskId === task.id && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '110%',
-                          right: 0,
-                          minWidth: 140,
-                          borderRadius: 12,
-                          /* ✅ ダークガラス（iOSでblur弱くても破綻しない） */
-                          background: 'rgba(10, 12, 18, .86)',
-                          border: '1px solid rgba(255,255,255,.12)',
-                          backdropFilter: 'blur(14px)',
-                          WebkitBackdropFilter: 'blur(14px)',
-
-                          boxShadow: '0 18px 60px rgba(0,0,0,.55)',
-                          zIndex: 40,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {/* 実タスク / 仮タスク 共通で「編集」 */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            openEditModal(task);
-                            setMenuTaskId(null);
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '0.55rem 0.85rem',
-                            fontSize: '0.85rem',
-                            textAlign: 'left',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'rgba(255,255,255,.92)',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          編集
-                        </button>
-
-                        {/* 「通知」はそのまま */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            openNotificationModal(task);
-                            setMenuTaskId(null);
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '0.55rem 0.85rem',
-                            fontSize: '0.85rem',
-                            textAlign: 'left',
-                            borderTop: '1px solid rgba(255,255,255,.10)',
-                            borderBottom: 'none',
-                            borderLeft: 'none',
-                            borderRight: 'none',
-                            background: 'transparent',
-                            color: 'rgba(255,255,255,.92)',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          通知
-                        </button>
-                      </div>
-                    )}
                   </div>
-
                 </div>
 
                 {/* 2行目: 期限 */}
@@ -1138,7 +1076,7 @@ const saveTaskNotificationOptions = (
         );
       })()}
 
-            {/* 🔔 タスク個別の通知設定モーダル（フロント限定ダミー） */}
+      {/* 🔔 タスク個別の通知設定モーダル（フロント限定ダミー） */}
       {notificationModalTask && notificationDraft && (
         <div
           style={{
@@ -1372,7 +1310,83 @@ const saveTaskNotificationOptions = (
         </div>
       )}
 
+      {/* ✅ fixedレイヤーのギアメニュー（スタッキング事故を根絶） */}
+      {menuState && (
+        <>
+          {/* 外側クリックで閉じるための透明オーバーレイ */}
+          <div
+            onClick={() => setMenuState(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 70,
+              background: 'transparent',
+            }}
+          />
 
+          {/* メニュー本体 */}
+          <div
+            style={{
+              position: 'fixed',
+              zIndex: 80,
+
+              // ⚙️ボタンの右下に出す（画面外なら内側に寄せる）
+              top: Math.min(menuState.rect.bottom + 8, window.innerHeight - 140),
+              left: Math.min(menuState.rect.right - 140, window.innerWidth - 16),
+              width: 140,
+
+              borderRadius: 10,
+              backgroundColor: '#ffffff',
+              boxShadow: '0 12px 30px rgba(15,23,42,0.28)',
+              border: '1px solid #e5e7eb',
+              overflow: 'hidden',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const task = tasks.find((t) => t.id === menuState.taskId);
+                if (task) openEditModal(task);
+                setMenuState(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.8rem',
+                fontSize: '0.85rem',
+                textAlign: 'left',
+                border: 'none',
+                background: 'white',
+                cursor: 'pointer',
+              }}
+            >
+              編集
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const task = tasks.find((t) => t.id === menuState.taskId);
+                if (task) openNotificationModal(task);
+                setMenuState(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.8rem',
+                fontSize: '0.85rem',
+                textAlign: 'left',
+                borderTop: '1px solid #e5e7eb',
+                borderBottom: 'none',
+                borderLeft: 'none',
+                borderRight: 'none',
+                background: 'white',
+                cursor: 'pointer',
+              }}
+            >
+              通知
+            </button>
+          </div>
+        </>
+      )}
 
       <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'rgba(255,255,255,.62)'}}>
         ※「毎週タスク」はテンプレートから自動生成されます。授業がない週など、この週だけ削除したい場合は左端で選択して「選択した課題を削除」を押してください。

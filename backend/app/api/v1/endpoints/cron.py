@@ -151,6 +151,17 @@ def _format_task_lines(tasks: list[Task]) -> str:
             lines.append(f"・{title}（{dl}）")
     return "\n".join(lines)
 
+def _format_deadline_hhmm_jst(t: Task) -> str:
+    if not t.deadline:
+        return "-"
+    return t.deadline.astimezone(JST).strftime("%H:%M")
+
+def _build_single_task_push_body(t: Task) -> str:
+    # ✅ 例: "統計学レポートの締切は18:00です"
+    hhmm = _format_deadline_hhmm_jst(t)
+    title = t.title or "(no title)"
+    return f"{title}の締切は{hhmm}です"
+
 def _upsert_in_app_notification(
     db: Session,
     *,
@@ -379,8 +390,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deadline_at_send_utc=deadline_at_send,
                         offset_hours=hours,
                         kind="task_reminder",
-                        title=f"締切まで残り約{hours}時間",
-                        body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                        title=f"提出{int(hours)}時間前",
+                        body=_build_single_task_push_body(task),
                         deep_link="/dashboard?tab=today",
                     )
                     if n:
@@ -511,8 +522,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deadline_at_send_utc=deadline_at_send,
                         offset_hours=0,
                         kind="morning_digest",
-                        title="今日締切の課題まとめ",
-                        body=f"締切: {dl_jst}\n{_format_task_lines([task])}",
+                        title="今日の締切",
+                        body=_build_single_task_push_body(task),
                         deep_link="/dashboard?tab=today",
                     )
                     if n:

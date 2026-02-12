@@ -10,7 +10,10 @@ MANUAL_COURSE_NAME = "__manual__"
 JST = timezone(timedelta(hours=9))
 
 def build_inapp_title(offset_hours: int) -> str:
-    return "朝通知" if offset_hours == 0 else f"{offset_hours}時間前"
+    # ✅ OS側にアプリ名（DueFlow）が出るので、title にブランド名は入れない
+    if offset_hours == 0:
+        return "今日の締切"
+    return f"提出{int(offset_hours)}時間前"
 
 def build_inapp_body(tasks: List[Task]) -> str:
     # “長すぎたらうざい”要件：箇条書きで短く

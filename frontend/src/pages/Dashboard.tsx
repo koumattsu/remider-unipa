@@ -1056,7 +1056,7 @@ export const Dashboard: React.FC = () => {
             userSelect: 'none',
           }}
         >
-          UNIPA REMINDER
+          DueFlow
         </div>
 
         <div style={{ width: 36 }} />

@@ -22,8 +22,8 @@ export default defineConfig(({ mode }) => {
 
         includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
         manifest: {
-          name: 'UNIPA Reminder',
-          short_name: 'UNIPA',
+          name: 'DueFlow',
+          short_name: 'DueFlow',
           start_url: '/#/dashboard',
           display: 'standalone',
           background_color: '#0b0f1a',

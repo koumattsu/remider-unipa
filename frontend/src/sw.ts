@@ -43,7 +43,7 @@ self.addEventListener('push', (event) => {
     return out
   }
 
-  const title = data.title || 'UNIPA Reminder'
+  const title = data.title || 'DueFlow'
   const body = sanitizeBody(data.body || '通知があります')
   const rawUrl = data.url || '/dashboard?tab=today'
   const url = new URL(rawUrl, self.registration.scope).toString()

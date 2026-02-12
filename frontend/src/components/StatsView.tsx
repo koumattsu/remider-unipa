@@ -626,8 +626,17 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       return d >= start && d < end;
     });
 
-    const total = weekTasks.length;
-    const done = weekTasks.filter((t: any) => !!t?.is_done).length;
+    const nowMs = Date.now();
+
+    // ✅ 期限未到来のみを「進捗の分母」にする（期限過ぎ完了を達成に入れない）
+    const upcoming = weekTasks.filter((t: any) => {
+      const d = t?.deadline ? new Date(t.deadline) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      return d.getTime() >= nowMs;
+    });
+
+    const total = upcoming.length;
+    const done = upcoming.filter((t: any) => !!t?.is_done).length;
     const rate = total === 0 ? 0 : Math.round((done / total) * 100);
 
     return { total, done, rate };
@@ -649,8 +658,16 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       return d >= start && d < end;
     });
 
-    const total = monthTasks.length;
-    const done = monthTasks.filter((t: any) => !!t?.is_done).length;
+    const nowMs = Date.now();
+
+    const upcoming = monthTasks.filter((t: any) => {
+      const d = t?.deadline ? new Date(t.deadline) : null;
+      if (!d || Number.isNaN(d.getTime())) return false;
+      return d.getTime() >= nowMs;
+    });
+
+    const total = upcoming.length;
+    const done = upcoming.filter((t: any) => !!t?.is_done).length;
     const rate = total === 0 ? 0 : Math.round((done / total) * 100);
 
     return { total, done, rate };

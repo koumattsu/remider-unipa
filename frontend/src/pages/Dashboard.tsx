@@ -892,7 +892,17 @@ export const Dashboard: React.FC = () => {
     const current = ALL_MODE_ITEMS.find((x) => x.key === value)!;
 
     return (
-      <div style={{ marginBottom: '0.75rem', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={{
+          marginBottom: '0.75rem',
+          position: 'relative',
+          // ✅ open時は親ごと前面へ（スタッキングコンテキスト対策）
+          zIndex: open ? 600 : 1,
+          // ✅ 子のz-indexを外部に巻き込まれにくくする（iOS/Safari保険）
+          isolation: 'isolate',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={() => setOpen((p) => !p)}
@@ -941,7 +951,8 @@ export const Dashboard: React.FC = () => {
               WebkitBackdropFilter: 'blur(18px)',
               boxShadow: '0 18px 60px rgba(0,0,0,.55)',
               overflow: 'hidden',
-              zIndex: 120,
+              // ✅ メニュー自体も十分上へ
+              zIndex: 610,
             }}
           >
             {ALL_MODE_ITEMS.map((item) => {

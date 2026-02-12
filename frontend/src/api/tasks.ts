@@ -14,7 +14,7 @@ export const tasksApi = {
   },
 
   create: async (task: TaskCreate): Promise<Task> => {
-    const response = await apiClient.post('/tasks', task);
+    const response = await apiClient.post('/tasks/', task);
     return response.data;
   },
 
@@ -27,4 +27,3 @@ export const tasksApi = {
     await apiClient.delete(`/tasks/${taskId}`);
   },
 };
-

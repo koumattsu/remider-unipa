@@ -9,12 +9,12 @@ export const tasksApi = {
     end_date?: string;
     is_done?: boolean;
   }): Promise<Task[]> => {
-    const response = await apiClient.get('/tasks/', { params });
+    const response = await apiClient.get('/tasks', { params });
     return response.data;
   },
 
   create: async (task: TaskCreate): Promise<Task> => {
-    const response = await apiClient.post('/tasks/', task);
+    const response = await apiClient.post('/tasks', task);
     return response.data;
   },
 

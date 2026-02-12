@@ -451,9 +451,16 @@ const saveTaskNotificationOptions = (
           100% { opacity: 0.88; transform: translateY(0px); filter: brightness(1) saturate(1); }
         }
 
+        /* ✅ 未定義だったので追加：超弱い“呼吸”だけ（重くしない） */
+        @keyframes doneAura {
+          0%, 100% { opacity: 0.18; transform: translate3d(0,0,0) scale(1); }
+          50%      { opacity: 0.28; transform: translate3d(0,0,0) scale(1.02); }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           .done-shimmer { animation: none !important; }
           .done-just { animation: none !important; }
+          .done-aura { animation: none !important; }
         }
       `}</style>
       {/* 上部：一括削除ボタン */}
@@ -734,11 +741,15 @@ const saveTaskNotificationOptions = (
                           position: 'absolute',
                           top: '110%',
                           right: 0,
-                          minWidth: 120,
-                          borderRadius: 10,
-                          backgroundColor: '#ffffff',
-                          boxShadow: '0 12px 30px rgba(15,23,42,0.28)',
-                          border: '1px solid #e5e7eb',
+                          minWidth: 140,
+                          borderRadius: 12,
+                          /* ✅ ダークガラス（iOSでblur弱くても破綻しない） */
+                          background: 'rgba(10, 12, 18, .86)',
+                          border: '1px solid rgba(255,255,255,.12)',
+                          backdropFilter: 'blur(14px)',
+                          WebkitBackdropFilter: 'blur(14px)',
+
+                          boxShadow: '0 18px 60px rgba(0,0,0,.55)',
                           zIndex: 40,
                           overflow: 'hidden',
                         }}
@@ -752,11 +763,12 @@ const saveTaskNotificationOptions = (
                           }}
                           style={{
                             width: '100%',
-                            padding: '0.5rem 0.8rem',
+                            padding: '0.55rem 0.85rem',
                             fontSize: '0.85rem',
                             textAlign: 'left',
                             border: 'none',
-                            background: 'white',
+                            background: 'transparent',
+                            color: 'rgba(255,255,255,.92)',
                             cursor: 'pointer',
                           }}
                         >
@@ -772,14 +784,15 @@ const saveTaskNotificationOptions = (
                           }}
                           style={{
                             width: '100%',
-                            padding: '0.5rem 0.8rem',
+                            padding: '0.55rem 0.85rem',
                             fontSize: '0.85rem',
                             textAlign: 'left',
-                            borderTop: '1px solid #e5e7eb',
+                            borderTop: '1px solid rgba(255,255,255,.10)',
                             borderBottom: 'none',
                             borderLeft: 'none',
                             borderRight: 'none',
-                            background: 'white',
+                            background: 'transparent',
+                            color: 'rgba(255,255,255,.92)',
                             cursor: 'pointer',
                           }}
                         >

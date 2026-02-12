@@ -514,6 +514,7 @@ const saveTaskNotificationOptions = (
 
           const isDone = Boolean(task.is_done);
           const isJustDone = isDone && justDoneTaskId === task.id;
+          const isOverdueNow = !isDone && new Date(task.deadline).getTime() < Date.now();
 
           const effectiveNotify = isVirtualTask(task)
             ? (notifyOverrides?.[task.id] ?? true)
@@ -741,22 +742,23 @@ const saveTaskNotificationOptions = (
                     </button>
                   </div>
                 </div>
-
                 {/* 2行目: 期限 */}
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     fontSize: '0.8rem',
-                    color: 'rgba(255,255,255,.62)',
+                    color: (isOverdueNow || isOverdueView)
+                      ? 'rgba(255,214,102,.92)'
+                      : 'rgba(255,255,255,.62)',
                     marginBottom: '0.4rem',
                   }}
                 >
                   <span style={{ marginRight: '0.35rem' }}>
-                    {isOverdueView ? '⚠️' : '🕒'}
+                    {(isOverdueNow || isOverdueView) ? '⚠️' : '🕒'}
                   </span>
 
-                  <span style={{ fontWeight: isOverdueView ? 700 : 400 }}>
+                  <span style={{ fontWeight: (isOverdueNow || isOverdueView) ? 700 : 400 }}>
                     {formatDeadline(task.deadline)}
                   </span>
                 </div>

@@ -1,6 +1,6 @@
 // frontend/src/components/TaskList.tsx
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Task, TaskUpdate} from '../types';
 import { tasksApi } from '../api/tasks';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
@@ -1443,10 +1443,31 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
   const handleClick = () => {
     setDraft(value);
     setIsEditing(true);
   };
+
+  // ✅ 編集開始時に caret を末尾へ
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const el = textareaRef.current;
+    if (!el) return;
+
+    // DOM反映後に selection を動かす
+    requestAnimationFrame(() => {
+      try {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      } catch {
+        // noop（Safari等で万一落ちても編集は継続）
+      }
+    });
+  }, [isEditing]);
 
   const finish = (commit: boolean) => {
     if (commit && draft !== value) {
@@ -1459,12 +1480,8 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
   const lineCount = Math.max(2, draft.split('\n').length);
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-      }}
-    >
+    <div style={{ position: 'relative', width: '100%' }}>
+      {/* ✅ 編集中は表示テキストを見せない（2重表示を根絶） */}
       <div
         onClick={!isEditing ? handleClick : undefined}
         style={{
@@ -1475,6 +1492,10 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
           cursor: isEditing ? 'default' : 'text',
           display: 'flex',
           alignItems: 'center',
+
+          // ここがポイント：レイアウトは維持して、文字だけ見えなくする
+          opacity: isEditing ? 0 : 1,
+          pointerEvents: isEditing ? 'none' : 'auto',
         }}
       >
         {displayText ? (
@@ -1505,6 +1526,7 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
           }}
         >
           <textarea
+            ref={textareaRef}
             autoFocus
             value={draft}
             placeholder={placeholder}
@@ -1531,7 +1553,8 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
               background: 'rgba(15,23,42,0.72)',
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
-              boxShadow: '0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08)',
+              boxShadow:
+                '0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08)',
               resize: 'vertical',
               whiteSpace: 'pre-wrap',
               lineHeight: 1.4,

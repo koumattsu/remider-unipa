@@ -1160,9 +1160,9 @@ const saveTaskNotificationOptions = (
                 lineHeight: 1.5,
               }}
             >
-              このタスクだけ、通知タイミングをカスタマイズできます。
+              変更はこのタスクのみ反映されます。
               <br />
-              （今はフロント側だけのダミー実装で、リロードするとリセットされます）
+              （全体の通知設定は画面左上の通知設定から変更できます。）
             </p>
 
             {/* 当日朝の通知 ON/OFF */}
@@ -1184,7 +1184,7 @@ const saveTaskNotificationOptions = (
                   )
                 }
               />
-              当日朝の通知（例: 8:00）
+              当日朝の通知
             </label>
 
             {/* 締切◯時間前通知（自由入力） */}
@@ -1195,8 +1195,7 @@ const saveTaskNotificationOptions = (
                   marginBottom: '0.4rem',
                 }}
               >
-                締切の◯時間前に通知（このタスク専用）
-              
+                事前通知（このタスク専用）
                 <p
                   style={{
                     marginTop: '0.4rem',
@@ -1207,8 +1206,7 @@ const saveTaskNotificationOptions = (
                 >
                   ※ 半角数字のみ入力可
                 </p>
-              </div>  
-
+              </div>
 
               {notificationDraft.offsetsHours.map((offset, index) => (
                 <div

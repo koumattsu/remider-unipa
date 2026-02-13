@@ -381,7 +381,7 @@ const saveTaskNotificationOptions = (
           今日の課題はゼロ
         </div>
         <div style={{ marginTop: 6, fontSize: '0.85rem', color: 'var(--muted)' }}>
-          追加するか、週次タスクを materialize してみよう
+          追加してみよう
         </div>
       </div>
     );

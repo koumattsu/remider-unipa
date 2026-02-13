@@ -4,9 +4,15 @@ import apiClient from './client';
 export type Bucket = 'week' | 'month';
 
 export type OutcomesRange = {
-  bucket: Bucket;
+  bucket?: Bucket; // ✅ backendが返さなくても壊れない
   from?: string | null;
   to?: string | null;
+
+  // ✅ backendが range に足してくるメタ情報にも耐性（将来拡張）
+  timezone?: string | null;
+  version?: string | null;
+  limit?: number | null;
+  course_hash?: string | null;
 };
 
 export type OutcomesSummaryItem = {

@@ -13,7 +13,7 @@ def build_inapp_title(offset_hours: int) -> str:
     # ✅ OS側にアプリ名（DueFlow）が出るので、title にブランド名は入れない
     if offset_hours == 0:
         return "今日の締切"
-    return f"提出{int(offset_hours)}時間前"
+    return f"提出約{int(offset_hours)}時間前"
 
 def build_inapp_body(tasks: List[Task]) -> str:
     # “長すぎたらうざい”要件：箇条書きで短く

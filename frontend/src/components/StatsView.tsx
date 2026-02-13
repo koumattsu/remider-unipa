@@ -1148,13 +1148,13 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       }}
     >
       <div style={{ fontWeight: 900, marginBottom: '0.4rem' }}>
-        要注意パターン（落としやすい傾向）
+        要注意パターン
       </div>
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         {/* 曜日 */}
         <div>
           <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
-            曜日 Top3
+            曜日  Top3
           </div>
 
           {hotspotDow.length === 0 ? (
@@ -1191,7 +1191,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         {/* 時間帯 */}
         <div>
           <div style={{ fontWeight: 850, marginBottom: '0.35rem' }}>
-            時間帯 Top3
+            時間帯  Top3
           </div>
 
           {hotspotHour.length === 0 ? (

@@ -98,7 +98,7 @@ export function buildSuggestedActions(
   if (actions.length === 0) {
     actions.push({
       id: 'generic',
-      title: 'まずは 1時間前通知（無料の基本）をONにする',
+      title: 'まずは 事前通知（無料）をONにする',
       description: '最小の介入で取りこぼしを減らします。',
       patch: {
         ...base,
@@ -106,6 +106,5 @@ export function buildSuggestedActions(
       },
     });
   }
-
   return actions;
 }

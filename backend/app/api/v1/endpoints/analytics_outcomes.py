@@ -41,6 +41,7 @@ def get_outcome_summary(
 
 @router.get("/outcomes/by-course", response_model=dict)
 def get_outcome_missed_by_course(
+    bucket: Optional[Literal["week", "month"]] = Query(None),
     from_: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = Query(None),
     db: Session = Depends(get_db),

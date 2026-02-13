@@ -22,6 +22,12 @@ interface TodayTaskListProps {
     taskId: number,
     value: TaskNotificationOptions
   ) => void;
+
+  // ✅ 追加：無料/有料UI分岐（表示制御のみ）
+  isPremium?: boolean;
+
+  // ✅ 追加：CTA押下時の遷移（親に委譲）
+  onRequestUpgrade?: () => void;
 }
 
 export const TodayTaskList: React.FC<TodayTaskListProps> = ({
@@ -33,7 +39,12 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
   onNotifyChange,
   taskNotificationOverrides,
   onTaskNotificationOptionsChange,
+
+  // ✅ 追加
+  isPremium = false,
+  onRequestUpgrade,
 }) => {
+
   // 今日タスクの達成率だけは Today 専用で計算しておく
   const { percent, doneCount, totalCount } = useMemo(() => {
     const total = tasks.length;
@@ -107,6 +118,8 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
             onNotifyChange={onNotifyChange}
             taskNotificationOverrides={taskNotificationOverrides}
             onTaskNotificationOptionsChange={onTaskNotificationOptionsChange}
+            isPremium={isPremium}
+            onRequestUpgrade={onRequestUpgrade}
           />
         </div>
       </div>

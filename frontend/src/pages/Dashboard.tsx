@@ -16,6 +16,7 @@ import { TodayTaskList } from '../components/TodayTaskList';
 import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
+import { authApi } from '../api/auth';
 import { isTodayTaskJst, getAllTasksByViewMode } from '../utils/taskTime';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
@@ -221,6 +222,7 @@ export const Dashboard: React.FC = () => {
   const [latestRunError, setLatestRunError] = useState<string | null>(null);
   const [showRunDetails, setShowRunDetails] = useState(false);
   const [showAllReasons, setShowAllReasons] = useState(false);
+  const [plan, setPlan] = useState<string>('free');
 
   // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -270,6 +272,15 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     (async () => {
+      // ✅ SSOT: plan を取得（失敗時はfree）
+      try {
+        const me = await authApi.getCurrentUser();
+        setPlan(String(me?.plan ?? 'free'));
+      } catch (e) {
+        console.warn('[boot] auth/me failed -> treat as free', e);
+        setPlan('free');
+      }
+
       try {
         await weeklyTasksApi.materialize();
       } catch (e) {
@@ -470,18 +481,18 @@ export const Dashboard: React.FC = () => {
   };
 
   // ✅ キャッシュが無い初回だけは全画面ローディング（真っ白防止）
-    const hasTasksCache = useMemo(() => {
-      const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
-      return !!(cached && Array.isArray(cached.data) && cached.data.length >= 0);
-    }, []);
+  const hasTasksCache = useMemo(() => {
+    const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
+    return !!(cached && Array.isArray(cached.data) && cached.data.length >= 0);
+  }, []);
 
-    if (isLoading && !hasTasksCache) {
-      return (
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          読み込み中...
-        </div>
-      );
-    }
+  if (isLoading && !hasTasksCache) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        読み込み中...
+      </div>
+    );
+  }
 
   // メインコンテンツの切り替え
   const renderContent = () => {
@@ -782,9 +793,12 @@ export const Dashboard: React.FC = () => {
               onTasksRemoved={removeTasksLocal}
               notifyOverrides={notifyOverrides}
               onNotifyChange={handleNotifyChange}
-              // ★ 追加
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
+              isPremium={plan !== 'free'}
+              onRequestUpgrade={() => {
+                window.location.hash = '/upgrade';
+              }}
             />
           </>
         );
@@ -803,6 +817,10 @@ export const Dashboard: React.FC = () => {
               onNotifyChange={handleNotifyChange}
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
+              isPremium={plan !== 'free'}
+              onRequestUpgrade={() => {
+                window.location.hash = '/upgrade';
+              }}
             />
           </>
         );

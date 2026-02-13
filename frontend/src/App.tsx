@@ -4,6 +4,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { AuthCallback } from './pages/AuthCallback';
 import { Dashboard } from './pages/Dashboard';
+import { Upgrade } from './pages/Upgrade';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/upgrade" element={<Upgrade />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

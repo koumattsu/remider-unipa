@@ -21,6 +21,12 @@ interface TaskListProps {
     value: TaskNotificationOptions
   ) => void;
   isOverdueView?: boolean;
+
+  // ✅ 追加：無料/有料のUI分岐用（表示制御のみ）
+  isPremium?: boolean;
+
+  // ✅ 追加：無料ユーザーがCTAを押したときの遷移（親に委譲）
+  onRequestUpgrade?: () => void;
 }
 
 interface TaskNotificationOptions {
@@ -89,6 +95,8 @@ export const TaskList: React.FC<TaskListProps> = ({
   taskNotificationOverrides,
   onTaskNotificationOptionsChange,
   isOverdueView = false,
+  isPremium = false,
+  onRequestUpgrade,
 }) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
@@ -1249,22 +1257,41 @@ const saveTaskNotificationOptions = (
                 </div>
               ))}
 
-              <button
-                type="button"
-                onClick={handleNotificationOffsetAdd}
-                style={{
-                  marginTop: '0.25rem',
-                  padding: '0.35rem 0.9rem',
-                  borderRadius: 9999,
-                  border: 'none',
-                  fontSize: '0.85rem',
-                  backgroundColor: '#3b82f6',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                時間を追加
-              </button>
+              {isPremium ? (
+                <button
+                  type="button"
+                  onClick={handleNotificationOffsetAdd}
+                  style={{
+                    marginTop: '0.25rem',
+                    padding: '0.35rem 0.9rem',
+                    borderRadius: 9999,
+                    border: 'none',
+                    fontSize: '0.85rem',
+                    backgroundColor: '#3b82f6',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  時間を追加
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onRequestUpgrade?.()}
+                  style={{
+                    marginTop: '0.25rem',
+                    padding: '0.35rem 0.9rem',
+                    borderRadius: 9999,
+                    border: 'none',
+                    fontSize: '0.85rem',
+                    backgroundColor: '#3b82f6',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  他の時間を追加（Pro）
+                </button>
+              )}
             </div>
 
             <div

@@ -122,10 +122,10 @@ const saveTaskNotificationOptions = (
   }
 };
 
-
   // ✏️ タイトル・締切編集用
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [editMemo, setEditMemo] = useState('');
   
   // 日付＋時刻（24時対応）
   const [editDate, setEditDate] = useState('');      // yyyy-MM-dd
@@ -433,6 +433,7 @@ const saveTaskNotificationOptions = (
 
     setEditingTaskId(task.id);
     setEditTitle(task.title || '');
+    setEditMemo(task.memo ?? '');
     setEditDate(`${yyyy}-${mm}-${dd}`);
     setEditHour(pad(hour));
     setEditMinute(pad(minute));
@@ -929,6 +930,34 @@ const saveTaskNotificationOptions = (
                   marginBottom: '0.9rem',
                 }}
               >
+                メモ（任意）
+                <textarea
+                  value={editMemo}
+                  onChange={(e) => setEditMemo(e.target.value)}
+                  rows={4}
+                  style={{
+                    padding: '0.65rem 0.9rem',
+                    borderRadius: 16,
+                    fontSize: '0.9rem',
+                    color: 'rgba(255,255,255,.92)',
+                    background: 'rgba(255,255,255,.06)',
+                    border: '1px solid rgba(255,255,255,.12)',
+                    resize: 'vertical',
+                    lineHeight: 1.4,
+                    whiteSpace: 'pre-wrap',
+                  }}
+                />
+              </label>
+
+              <label
+                style={{
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.35rem',
+                  marginBottom: '0.9rem',
+                }}
+              >
                 締切
                 <div
                   style={{
@@ -1041,13 +1070,16 @@ const saveTaskNotificationOptions = (
                     }
                     const prevTitle = t.title;
                     const prevDeadline = t.deadline;
+                    const prevMemo = t.memo ?? ''; 
                     try {
+                      const nextMemo = editMemo.trim();
                       const payload: TaskUpdate = {
                         title: editTitle.trim(),
                         deadline: deadlineStr,
+                        memo: nextMemo,
                       };
                       // 楽観反映（先に見た目更新）
-                      onTaskPatched?.(t.id, { title: payload.title, deadline: payload.deadline });
+                      onTaskPatched?.(t.id, { title: payload.title, deadline: payload.deadline, memo: payload.memo,});
                         if (isVirtualTask(t)) {
                           setEditingTaskId(null);
                           return;
@@ -1056,7 +1088,7 @@ const saveTaskNotificationOptions = (
                       setEditingTaskId(null);
                     } catch (e) {
                       console.error('タスクの更新に失敗しました:', e);
-                      onTaskPatched?.(t.id, { title: prevTitle, deadline: prevDeadline }); // rollback
+                      onTaskPatched?.(t.id, { title: prevTitle, deadline: prevDeadline, memo: prevMemo, }); // rollback
                       alert('タスクの更新に失敗しました');
                     }
                   }}

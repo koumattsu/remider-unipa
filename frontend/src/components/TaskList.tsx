@@ -172,7 +172,9 @@ const saveTaskNotificationOptions = (
       const offsets = prev.offsetsHours.filter((_, i) => i !== index);
       return {
         ...prev,
-        offsetsHours: offsets.length ? offsets : ['1'], // 最低1個は残す
+        offsetsHours: offsets.length
+          ? offsets
+          : (isPremium ? ['1'] : []), // ✅ free は空配列OK（= OFF表現）
       };
     });
   };
@@ -1187,7 +1189,7 @@ const saveTaskNotificationOptions = (
               当日朝の通知
             </label>
 
-            {/* 締切◯時間前通知（自由入力） */}
+            {/* 締切◯時間前通知 */}
             <div style={{ marginBottom: '0.9rem' }}>
               <div
                 style={{
@@ -1196,99 +1198,131 @@ const saveTaskNotificationOptions = (
                 }}
               >
                 事前通知（このタスク専用）
-                <p
-                  style={{
-                    marginTop: '0.4rem',
-                    marginBottom: '0.6rem',
-                    fontSize: '0.75rem',
-                    color: 'rgba(255,255,255,.62)',
-                  }}
-                >
-                  ※ 半角数字のみ入力可
-                </p>
+                {isPremium && (
+                  <p
+                    style={{
+                      marginTop: '0.4rem',
+                      marginBottom: '0.6rem',
+                      fontSize: '0.75rem',
+                      color: 'rgba(255,255,255,.62)',
+                    }}
+                  >
+                    ※ 半角数字のみ入力可
+                  </p>
+                )}
               </div>
 
-              {notificationDraft.offsetsHours.map((offset, index) => (
-                <div
-                  key={index}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginBottom: '0.4rem',
-                  }}
-                >
-                  <input
-                    type="text"
-                    inputMode="numeric"      // スマホで数字キーボード
-                    pattern="[0-9]*"
-                    value={offset}
-                    onChange={(e) =>
-                      handleNotificationOffsetChange(index, e.target.value)
-                    }
-                    style={{
-                      width: '80px',
-                      padding: '0.4rem 0.6rem',
-                      borderRadius: 9999,
-                      color: 'rgba(255,255,255,.92)',
-                      background: 'rgba(255,255,255,.06)',
-                      border: '1px solid rgba(255,255,255,.12)',
-                      fontSize: '0.9rem',
-                    }}
-                  />
-                  <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,.82)' }}>時間前</span>
+              {isPremium ? (
+                <>
+                  {notificationDraft.offsetsHours.map((offset, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        marginBottom: '0.4rem',
+                      }}
+                    >
+                      <input
+                        type="text"
+                        inputMode="numeric"      // スマホで数字キーボード
+                        pattern="[0-9]*"
+                        value={offset}
+                        onChange={(e) =>
+                          handleNotificationOffsetChange(index, e.target.value)
+                        }
+                        style={{
+                          width: '80px',
+                          padding: '0.4rem 0.6rem',
+                          borderRadius: 9999,
+                          color: 'rgba(255,255,255,.92)',
+                          background: 'rgba(255,255,255,.06)',
+                          border: '1px solid rgba(255,255,255,.12)',
+                          fontSize: '0.9rem',
+                        }}
+                      />
+                      <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,.82)' }}>時間前</span>
+                      <button
+                        type="button"
+                        onClick={() => handleNotificationOffsetRemove(index)}
+                        style={{
+                          padding: '0.25rem 0.7rem',
+                          borderRadius: 9999,
+                          border: 'none',
+                          fontSize: '0.8rem',
+                          backgroundColor: '#ef4444',
+                          color: '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+
                   <button
                     type="button"
-                    onClick={() => handleNotificationOffsetRemove(index)}
+                    onClick={handleNotificationOffsetAdd}
                     style={{
-                      padding: '0.25rem 0.7rem',
+                      marginTop: '0.25rem',
+                      padding: '0.35rem 0.9rem',
                       borderRadius: 9999,
                       border: 'none',
-                      fontSize: '0.8rem',
-                      backgroundColor: '#ef4444',
+                      fontSize: '0.85rem',
+                      backgroundColor: '#3b82f6',
                       color: '#fff',
                       cursor: 'pointer',
                     }}
                   >
-                    削除
+                    時間を追加
                   </button>
-                </div>
-              ))}
-
-              {isPremium ? (
-                <button
-                  type="button"
-                  onClick={handleNotificationOffsetAdd}
-                  style={{
-                    marginTop: '0.25rem',
-                    padding: '0.35rem 0.9rem',
-                    borderRadius: 9999,
-                    border: 'none',
-                    fontSize: '0.85rem',
-                    backgroundColor: '#3b82f6',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  時間を追加
-                </button>
+                </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => onRequestUpgrade?.()}
-                  style={{
-                    marginTop: '0.25rem',
-                    padding: '0.35rem 0.9rem',
-                    borderRadius: 9999,
-                    border: 'none',
-                    fontSize: '0.85rem',
-                    backgroundColor: '#3b82f6',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  他の時間を追加（Pro）
-                </button>
+                <>
+                  {/* ✅ free: 固定「約1時間前」チェックのみ（入力/削除なし） */}
+                  <label
+                    style={{
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      gap: 8,
+                      alignItems: 'center',
+                      marginBottom: '0.4rem',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={notificationDraft.offsetsHours.includes('1')}
+                      onChange={(e) =>
+                        setNotificationDraft((prev) => {
+                          if (!prev) return prev;
+                          return {
+                            ...prev,
+                            offsetsHours: e.target.checked ? ['1'] : [], // ✅ ON=[1], OFF=[]
+                          };
+                        })
+                      }
+                    />
+                    約1時間前
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => onRequestUpgrade?.()}
+                    style={{
+                      marginTop: '0.25rem',
+                      padding: '0.35rem 0.9rem',
+                      borderRadius: 9999,
+                      border: 'none',
+                      fontSize: '0.85rem',
+                      backgroundColor: '#3b82f6',
+                      color: '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    他の時間を追加（Pro）
+                  </button>
+                </>
               )}
             </div>
 
@@ -1328,9 +1362,14 @@ const saveTaskNotificationOptions = (
                     )
                   );
 
+                  // ✅ free は「約1時間前」固定: ON=[1], OFF=[]
+                  const normalizedOffsets = isPremium
+                    ? (cleanedOffsets.length > 0 ? cleanedOffsets : [1])
+                    : (notificationDraft.offsetsHours.includes('1') ? [1] : []);
+
                   const toSave: TaskNotificationOptions = {
                     morning: notificationDraft.morning,
-                    offsetsHours: cleanedOffsets.length > 0 ? cleanedOffsets : [1],
+                    offsetsHours: normalizedOffsets,
                   };
 
                   try {

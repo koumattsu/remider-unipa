@@ -604,98 +604,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     };
   }, []);
 
-  const weekProgress = useMemo(() => {
-    if (bucket !== 'week') return { total: 0, done: 0, rate: 0 };
-
-    const now = new Date();
-
-    const start = new Date(now);
-    const day = start.getDay(); // Sun=0, Mon=1...
-    const diffToMon = (day === 0 ? -6 : 1) - day;
-    start.setDate(start.getDate() + diffToMon);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-
-    const weekTasks = (_tasks ?? []).filter((t: any) => {
-      const d = t?.deadline ? new Date(t.deadline) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
-      return d >= start && d < end;
-    });
-
-    const nowMs = Date.now();
-
-    const isOnTimeDone = (t: Task) => {
-      const d = t.deadline ? new Date(t.deadline) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
-      return t.is_done && d.getTime() >= nowMs;
-    };
-
-    const total = weekTasks.length;
-
-    // ✅ 期限内完了のみを達成に数える
-    const done = weekTasks.filter(isOnTimeDone).length;
-
-    const rate = total === 0 ? 0 : Math.round((done / total) * 100);
-    return { total, done, rate };
-  }, [bucket, _tasks]);
-
-  const monthProgress = useMemo(() => {
-    if (bucket !== 'month') return { total: 0, done: 0, rate: 0 };
-
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1); // 次月1日 00:00
-
-    const monthTasks = (_tasks ?? []).filter((t: any) => {
-      const d = t?.deadline ? new Date(t.deadline) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
-      return d >= start && d < end;
-    });
-
-    const nowMs = Date.now();
-
-    const isOnTimeDone = (t: Task) => {
-      const d = t.deadline ? new Date(t.deadline) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
-      return t.is_done && d.getTime() >= nowMs;
-    };
-
-    const total = monthTasks.length;
-    const done = monthTasks.filter(isOnTimeDone).length;
-    const rate = total === 0 ? 0 : Math.round((done / total) * 100);
-    return { total, done, rate };
-  }, [bucket, _tasks]);
-
-  // ✅ 表示用Progress（SWR中に tasks が一瞬0になるのを防ぐ）
-  const [displayWeekProgress, setDisplayWeekProgress] = useState<{ total: number; done: number; rate: number }>({
-    total: 0,
-    done: 0,
-    rate: 0,
-  });
-  const [displayMonthProgress, setDisplayMonthProgress] = useState<{ total: number; done: number; rate: number }>({
-    total: 0,
-    done: 0,
-    rate: 0,
-  });
-
-  useEffect(() => {
-    // refreshing 中に親が tasks を [] にしても、前回値を維持する
-    // - tasks が空でない（＝実データがある）時は更新
-    // - refreshing で tasks が空の時は更新しない（0に落とさない）
-    const tasksLen = Array.isArray(_tasks) ? _tasks.length : 0;
-
-    if (bucket === 'week') {
-      if (!refreshing || tasksLen > 0) setDisplayWeekProgress(weekProgress);
-    }
-    if (bucket === 'month') {
-      if (!refreshing || tasksLen > 0) setDisplayMonthProgress(monthProgress);
-    }
-  }, [bucket, refreshing, _tasks, weekProgress, monthProgress]);
-
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -1161,11 +1069,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         }}
       >
         <StatsCard
-          title={bucket === 'week' ? '今週の進捗' : '今月の進捗'}
-          subtitle="tasks（現在状態）"
-          rate={bucket === 'week' ? displayWeekProgress.rate : displayMonthProgress.rate}
-          total={bucket === 'week' ? displayWeekProgress.total : displayMonthProgress.total}
-          done={bucket === 'week' ? displayWeekProgress.done : displayMonthProgress.done}
+          title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
+          subtitle="期限内完了率"
+          rate={bucket === 'week' ? toPercent(_summaryWeek?.done_rate) : toPercent(_summaryMonth?.done_rate)}
+          total={bucket === 'week' ? Number(_summaryWeek?.total ?? 0) : Number(_summaryMonth?.total ?? 0)}
+          done={bucket === 'week' ? Number(_summaryWeek?.done ?? 0) : Number(_summaryMonth?.done ?? 0)}
         />
       </div>
 

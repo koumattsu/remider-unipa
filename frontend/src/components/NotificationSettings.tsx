@@ -489,15 +489,49 @@ export const NotificationSettings: React.FC = () => {
 
         <ToggleSwitch
           checked={enableWebpush}
-          onChange={() => {
+          onChange={async () => {
             const next = !enableWebpush;
             setEnableWebpush(next);
 
+            // ON のときは許可状態を見るだけ（購読ボタン側で enableWebPush() が動く）
             if (next) {
-              // ON にした瞬間にブラウザ許可状態を確認
               if (typeof Notification !== 'undefined') {
                 setPermission(Notification.permission);
               }
+              return;
+            }
+
+            // ✅ OFF のときは「ボタンが消えても確実に保存」するため即保存
+            setIsSaving(true);
+            try {
+              const newOffsets = enableOneHour ? [1] : [];
+              const updateData: NotificationSettingUpdate = {
+                reminder_offsets_hours: newOffsets,
+                daily_digest_time: digestTime,
+                enable_morning_notification: enableMorning,
+                enable_webpush: false,
+              };
+
+              // localStorage も更新
+              try {
+                const stored: StoredNotificationSettings = {
+                  enableMorning,
+                  dailyDigestTime: digestTime,
+                  reminderOffsetsHours: newOffsets,
+                };
+                window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(stored));
+              } catch (e) {
+                console.warn('localStorage への保存に失敗しました:', e);
+              }
+
+              await settingsApi.updateNotification(updateData);
+            } catch (e) {
+              console.error('enable_webpush OFF の保存に失敗しました:', e);
+              alert('通知OFFの保存に失敗しました');
+              // 失敗したら見た目だけOFFになって事故るので戻す（安全側）
+              setEnableWebpush(true);
+            } finally {
+              setIsSaving(false);
             }
           }}
         />

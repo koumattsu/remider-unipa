@@ -111,18 +111,6 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
   }
 };
 
-const [globalNotificationsEnabled, setGlobalNotificationsEnabled] = useState<boolean>(() => {
-  try {
-    const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
-    if (!raw) return true; // ✅ 初期はON扱い（好みでfalseでも可）
-    const parsed = JSON.parse(raw) as StoredNotificationSettings;
-    // enableWebpush が無い旧データは true 扱い（事故りにくい）
-    return parsed?.enableWebpush !== undefined ? !!parsed.enableWebpush : true;
-  } catch {
-    return true;
-  }
-});
-
 const TASK_NOTIFY_OPTIONS_STORAGE_KEY = 'unipa_task_notify_options_v1';
 
 const loadTaskNotifyOptions = (): Record<number, TaskNotificationOptions> => {
@@ -187,6 +175,19 @@ export const Dashboard: React.FC = () => {
       .join('\n')
       .trim();
   };
+
+  const [globalNotificationsEnabled, setGlobalNotificationsEnabled] = useState<boolean>(() => {
+    try {
+      const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+      if (!raw) return true; // ✅ 初期はON扱い
+      const parsed = JSON.parse(raw) as StoredNotificationSettings;
+      // enableWebpush が無い旧データは true 扱い（事故りにくい）
+      return parsed?.enableWebpush !== undefined ? !!parsed.enableWebpush : true;
+    } catch {
+      return true;
+    }
+  });
+
   const [tasks, setTasks] = useState<Task[]>(() => {
     const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
     return cached?.data ?? [];

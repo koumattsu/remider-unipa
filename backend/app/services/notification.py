@@ -21,14 +21,12 @@ MORNING_OFFSET_HOURS = 0
 
 # ✅ 締切前通知 window（SSOT）
 WINDOW_MINUTES = 30
-WINDOW_MAXUTES = 70
+WINDOW_MAX_MINUTES = 70
 
 def is_in_deadline_window_by_offset(*, deadline_utc: datetime, now_utc: datetime, offset_hours: int) -> bool:
     """
     ✅ SSOT: 締切前通知window判定（deadline基準）
-    - offset_hours=1 のとき「締切まで残り40〜90分」で送る
-    - offset_hours=h のときは、1hの許容ブレ（早め20分 / 遅め30分）をそのままスケールして
-      (h*60 - 20) 〜 (h*60 + 30) 分の範囲で送る
+    - offset_hours=1 のとき「締切まで残り30〜70分」で送る
     """
     try:
         h = int(offset_hours)
@@ -41,8 +39,8 @@ def is_in_deadline_window_by_offset(*, deadline_utc: datetime, now_utc: datetime
     remaining_minutes = (deadline_utc - now_utc).total_seconds() / 60.0
 
     # 1h=60分に対する許容ブレをそのまま利用
-    early_slack = 60 - WINDOW_MINUTES   # 20
-    late_slack = WINDOW_MAXUTES - 60    # 30
+    early_slack = 60 - WINDOW_MINUTES   # 30
+    late_slack = WINDOW_MAX_MINUTES - 60    # 10
 
     min_m = h * 60 - early_slack
     max_m = h * 60 + late_slack

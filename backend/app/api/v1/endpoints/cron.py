@@ -493,6 +493,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             db.add(n)
                             touched = True
 
+                    # ✅ InAppNotification.extra の書き戻しを確実に永続化（監査SSOT）
+                    if touched:
+                        db.commit()
+
                 if user.plan != "free" and line_user_id:
                     try:
                         trace_id = await send_deadline_reminder(...)

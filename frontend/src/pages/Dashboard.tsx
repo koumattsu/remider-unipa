@@ -5,7 +5,7 @@ import { useLocation } from 'react-router-dom';
 import { Task, WeeklyTask } from '../types';
 import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
-import { fetchInAppNotifications, dismissInAppNotification } from '../api/notifications';
+import { fetchInAppNotifications, dismissInAppNotification, fetchInAppNotificationsSummary } from '../api/notifications';
 import type { InAppNotification } from '../api/notifications';
 import { fetchLatestNotificationRun as fetchLatestNotificationRunApi } from '../api/notificationRuns';
 import type { NotificationRun } from '../api/notificationRuns';
@@ -22,6 +22,25 @@ import { isTodayTaskJst, getAllTasksByViewMode } from '../utils/taskTime';
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
 const TASKS_CACHE_KEY = 'unipa_tasks_cache_v1';
 const WEEKLY_CACHE_KEY = 'unipa_weekly_templates_cache_v1';
+const NOTIF_LAST_SEEN_TOTAL_KEY = 'unipa_notif_last_seen_total_v1';
+
+const loadNotifLastSeenTotal = (): number => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = window.localStorage.getItem(NOTIF_LAST_SEEN_TOTAL_KEY);
+    const n = raw ? Number(raw) : 0;
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const saveNotifLastSeenTotal = (n: number) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(NOTIF_LAST_SEEN_TOTAL_KEY, String(n));
+  } catch {}
+};
 
 type CachedPayload<T> = { savedAt: number; data: T };
 
@@ -216,6 +235,8 @@ export const Dashboard: React.FC = () => {
   const [notifs, setNotifs] = useState<InAppNotification[]>([]);
   const [notifsLoading, setNotifsLoading] = useState(false);
   const [notifsError, setNotifsError] = useState<string | null>(null);
+  const [notifBadgeCount, setNotifBadgeCount] = useState<number>(0);
+  const [notifLastSeenTotal, setNotifLastSeenTotal] = useState<number>(() => loadNotifLastSeenTotal());
   // 🛠 最新 NotificationRun（admin用）
   const [latestRun, setLatestRun] = useState<NotificationRun | null>(null);
   const [latestRunLoading, setLatestRunLoading] = useState(false);
@@ -234,6 +255,19 @@ export const Dashboard: React.FC = () => {
     useState<Record<number, TaskNotificationOptions>>(() =>
       loadTaskNotifyOptions()
     );
+
+  const refreshNotifBadge = async () => {
+    try {
+      const s = await fetchInAppNotificationsSummary();
+      const inapp = (s as any)?.inapp;
+      const total = Number(inapp?.total ?? 0) || 0;
+      const lastSeen = notifLastSeenTotal || 0;
+      const newCount = Math.max(0, total - lastSeen);
+      setNotifBadgeCount(newCount);
+    } catch (e) {
+      // 失敗してもUIは壊さない
+    }
+  };
 
   // 🔔 タスクごとの通知設定が変わったときのハンドラ
   const handleTaskNotifyOptionsChange = async (
@@ -302,6 +336,8 @@ export const Dashboard: React.FC = () => {
       } catch (e) {
         console.error('[boot] ping notifications/in-app FAILED', e);
       }
+      // ✅ 下部タブのバッジ数（未dismiss件数）を取得
+      await refreshNotifBadge();
     })();
   }, []);
 
@@ -333,13 +369,23 @@ export const Dashboard: React.FC = () => {
       setLatestRunLoading(true);
       setLatestRunError(null);
       try {
-        const [items, run] = await Promise.all([
+        const [items, run, summary] = await Promise.all([
           fetchInAppNotifications(50),
           fetchLatestNotificationRunApi(),
+          fetchInAppNotificationsSummary(),
         ]);
+
         if (!cancelled) {
           setNotifs(items);
           setLatestRun(run);
+
+          // ✅ 通知タブを開いたら「既読」扱い（消さなくてもバッジ0）
+          const inapp = (summary as any)?.inapp;
+          const total = Number(inapp?.total ?? 0) || 0;
+
+          setNotifLastSeenTotal(total);
+          saveNotifLastSeenTotal(total);
+          setNotifBadgeCount(0);
         }
       } catch (e) {
         console.error('通知一覧の取得に失敗しました:', e);
@@ -462,6 +508,9 @@ export const Dashboard: React.FC = () => {
       console.error('通知のdismissに失敗:', e);
       setNotifs(prev);
       alert('通知の削除に失敗しました');
+    } finally {
+      // ✅ badgeはsummaryがSSOT
+      refreshNotifBadge();
     }
   };
 
@@ -517,10 +566,20 @@ export const Dashboard: React.FC = () => {
                   setLatestRunError(null);
 
                   try {
-                    const [items, run] = await Promise.all([
+                    const [items, run, summary] = await Promise.all([
                       fetchInAppNotifications(50),
                       fetchLatestNotificationRunApi(),
+                      fetchInAppNotificationsSummary(),
                     ]);
+                    setNotifs(items);
+                    setLatestRun(run);
+
+                    // ✅ 更新した時点でも「今見てる」ので既読化
+                    const inapp = (summary as any)?.inapp;
+                    const total = Number(inapp?.total ?? 0) || 0;
+                    setNotifLastSeenTotal(total);
+                    saveNotifLastSeenTotal(total);
+                    setNotifBadgeCount(0);
                     setNotifs(items);
                     setLatestRun(run);
                   } catch (e) {
@@ -1173,8 +1232,9 @@ export const Dashboard: React.FC = () => {
           label="通知"
           icon="🔔"
           active={activeTab === 'notifications'}
+          badgeCount={notifBadgeCount}
           onClick={() => {
-            // ✅ HashRouter前提：URLとstateを同期（リロード耐性）
+            setNotifBadgeCount(0); // ✅ 体感：押した瞬間に0（失敗時は次回refreshで復帰）
             window.location.hash = '/dashboard?tab=notifications';
             setActiveTab('notifications');
           }}
@@ -1262,6 +1322,7 @@ interface TabButtonProps {
   icon: string;
   active: boolean;
   onClick: () => void;
+  badgeCount?: number;
 }
 
 const TabButton: React.FC<TabButtonProps> = ({
@@ -1269,6 +1330,7 @@ const TabButton: React.FC<TabButtonProps> = ({
   icon,
   active,
   onClick,
+  badgeCount,
 }) => {
   return (
     <button
@@ -1288,7 +1350,32 @@ const TabButton: React.FC<TabButtonProps> = ({
         cursor: 'pointer',
       }}
     >
-      <span style={{ fontSize: '1.2rem' }}>{icon}</span>
+      <span style={{ position: 'relative', display: 'inline-block', fontSize: '1.2rem' }}>
+        {icon}
+        {!!badgeCount && badgeCount > 0 && (
+          <span
+            style={{
+              position: 'absolute',
+              top: -6,
+              right: -12,
+              minWidth: 18,
+              height: 18,
+              padding: '0 6px',
+              borderRadius: 999,
+              background: '#ff3b30',
+              color: '#fff',
+              fontSize: 12,
+              lineHeight: '18px',
+              textAlign: 'center',
+              fontWeight: 800,
+              boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
+              pointerEvents: 'none',
+            }}
+          >
+            {badgeCount >= 100 ? '99+' : badgeCount}
+          </span>
+        )}
+      </span>
       <span>{label}</span>
     </button>
   );

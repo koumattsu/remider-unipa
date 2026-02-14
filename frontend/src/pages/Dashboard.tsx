@@ -1233,6 +1233,7 @@ export const Dashboard: React.FC = () => {
           icon="🔔"
           active={activeTab === 'notifications'}
           badgeCount={notifBadgeCount}
+          badgeDotOnly={true}
           onClick={() => {
             setNotifBadgeCount(0); // ✅ 体感：押した瞬間に0（失敗時は次回refreshで復帰）
             window.location.hash = '/dashboard?tab=notifications';
@@ -1323,6 +1324,7 @@ interface TabButtonProps {
   active: boolean;
   onClick: () => void;
   badgeCount?: number;
+  badgeDotOnly?: boolean;
 }
 
 const TabButton: React.FC<TabButtonProps> = ({
@@ -1331,6 +1333,7 @@ const TabButton: React.FC<TabButtonProps> = ({
   active,
   onClick,
   badgeCount,
+  badgeDotOnly = false,
 }) => {
   return (
     <button
@@ -1356,23 +1359,23 @@ const TabButton: React.FC<TabButtonProps> = ({
           <span
             style={{
               position: 'absolute',
-              top: -6,
-              right: -12,
-              minWidth: 18,
-              height: 18,
-              padding: '0 6px',
+              top: -4,
+              right: -8,
+              width: badgeDotOnly ? 10 : 18,
+              height: badgeDotOnly ? 10 : 18,
+              padding: badgeDotOnly ? 0 : '0 6px',
               borderRadius: 999,
               background: '#ff3b30',
               color: '#fff',
               fontSize: 12,
-              lineHeight: '18px',
+              lineHeight: badgeDotOnly ? '10px' : '18px',
               textAlign: 'center',
               fontWeight: 800,
               boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
               pointerEvents: 'none',
             }}
           >
-            {badgeCount >= 100 ? '99+' : badgeCount}
+            {!badgeDotOnly && (badgeCount >= 100 ? '99+' : badgeCount)}
           </span>
         )}
       </span>

@@ -28,6 +28,8 @@ interface TodayTaskListProps {
 
   // ✅ 追加：CTA押下時の遷移（親に委譲）
   onRequestUpgrade?: () => void;
+  globalNotificationsEnabled?: boolean;
+  isGlobalNotificationEnabled?: boolean;
 }
 
 export const TodayTaskList: React.FC<TodayTaskListProps> = ({
@@ -43,8 +45,11 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
   // ✅ 追加
   isPremium = false,
   onRequestUpgrade,
+  globalNotificationsEnabled: globalNotificationsEnabledProp,
+  isGlobalNotificationEnabled,
 }) => {
-
+  const globalNotificationsEnabled =
+    globalNotificationsEnabledProp ?? isGlobalNotificationEnabled ?? true;
   // 今日タスクの達成率だけは Today 専用で計算しておく
   const { percent, doneCount, totalCount } = useMemo(() => {
     const total = tasks.length;
@@ -120,6 +125,7 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
             onTaskNotificationOptionsChange={onTaskNotificationOptionsChange}
             isPremium={isPremium}
             onRequestUpgrade={onRequestUpgrade}
+            globalNotificationsEnabled={globalNotificationsEnabled}
           />
         </div>
       </div>

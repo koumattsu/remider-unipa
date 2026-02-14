@@ -27,6 +27,8 @@ interface TaskListProps {
 
   // ✅ 追加：無料ユーザーがCTAを押したときの遷移（親に委譲）
   onRequestUpgrade?: () => void;
+  globalNotificationsEnabled?: boolean;
+  isGlobalNotificationEnabled?: boolean;
 }
 
 interface TaskNotificationOptions {
@@ -97,7 +99,11 @@ export const TaskList: React.FC<TaskListProps> = ({
   isOverdueView = false,
   isPremium = false,
   onRequestUpgrade,
+  globalNotificationsEnabled: globalNotificationsEnabledProp,
+  isGlobalNotificationEnabled,
 }) => {
+  const globalNotificationsEnabled =
+    globalNotificationsEnabledProp ?? isGlobalNotificationEnabled ?? true;
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [justDoneTaskId, setJustDoneTaskId] = useState<number | null>(null);
@@ -287,6 +293,11 @@ const saveTaskNotificationOptions = (
   };
 
   const handleToggleNotify = async (task: Task, newValue: boolean) => {
+    // ✅ 親OFFなら「ON方向」を禁止（表示もOFF固定だが念のため）
+    if (!globalNotificationsEnabled && newValue === true) {
+      alert('通知設定がOFFのため、このタスクの通知はONにできません。通知設定でONにしてください。');
+      return;
+    }
     // 仮想タスク(id<0) → 親に委譲（localStorage更新）
     if (isVirtualTask(task)) {
       onNotifyChange?.(task.id, newValue);
@@ -527,9 +538,11 @@ const saveTaskNotificationOptions = (
           const isJustDone = isDone && justDoneTaskId === task.id;
           const isOverdueNow = !isDone && new Date(task.deadline).getTime() < Date.now();
 
-          const effectiveNotify = isVirtualTask(task)
+          const rawNotify = isVirtualTask(task)
             ? (notifyOverrides?.[task.id] ?? true)
             : Boolean(task.should_notify);
+
+          const effectiveNotify = globalNotificationsEnabled ? rawNotify : false;
 
           const MANUAL_COURSE_NAME = '__manual__';
 
@@ -823,9 +836,8 @@ const saveTaskNotificationOptions = (
                     </span>
                     <NotificationPill
                       isOn={effectiveNotify}
-                      onToggle={() =>
-                        handleToggleNotify(task, !effectiveNotify)
-                      }
+                      disabled={!globalNotificationsEnabled}
+                      onToggle={() => handleToggleNotify(task, !rawNotify)}
                     />
                   </div>
                 </div>
@@ -1630,10 +1642,14 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
 
 const NotificationPill: React.FC<{
   isOn: boolean;
+  disabled?: boolean;
   onToggle?: () => void;
-}> = ({ isOn, onToggle }) => (
+}> = ({ isOn, disabled = false, onToggle }) => (
   <div
-    onClick={() => onToggle?.()}
+    onClick={() => {
+      if (disabled) return;
+      onToggle?.();
+    }}
     style={{
       width: 40,
       height: 20,
@@ -1644,8 +1660,11 @@ const NotificationPill: React.FC<{
       alignItems: 'center',
       justifyContent: isOn ? 'flex-end' : 'flex-start',
       cursor: 'pointer',
+      opacity: disabled ? 0.55 : 1,
       transition: 'background-color 0.15s, justify-content 0.15s',
     }}
+    aria-disabled={disabled}
+    title={disabled ? '通知設定がOFFです' : undefined}
   >
     <div
       style={{

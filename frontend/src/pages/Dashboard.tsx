@@ -17,6 +17,7 @@ import { StatsView } from '../components/StatsView';
 import { WeeklyTaskSettings } from '../components/WeeklyTaskSettings';
 import { taskNotificationOverrideApi } from '../api/taskNotificationOverride';
 import { authApi } from '../api/auth';
+import { settingsApi } from '../api/settings';
 import { isTodayTaskJst, getAllTasksByViewMode } from '../utils/taskTime';
 
 const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
@@ -82,6 +83,7 @@ type StoredNotificationSettings = {
   enableMorning: boolean;
   dailyDigestTime: string;
   reminderOffsetsHours: number[];
+  enableWebpush?: boolean;
 };
 
 const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
@@ -109,6 +111,17 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
   }
 };
 
+const [globalNotificationsEnabled, setGlobalNotificationsEnabled] = useState<boolean>(() => {
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+    if (!raw) return true; // ✅ 初期はON扱い（好みでfalseでも可）
+    const parsed = JSON.parse(raw) as StoredNotificationSettings;
+    // enableWebpush が無い旧データは true 扱い（事故りにくい）
+    return parsed?.enableWebpush !== undefined ? !!parsed.enableWebpush : true;
+  } catch {
+    return true;
+  }
+});
 
 const TASK_NOTIFY_OPTIONS_STORAGE_KEY = 'unipa_task_notify_options_v1';
 
@@ -313,6 +326,29 @@ export const Dashboard: React.FC = () => {
       } catch (e) {
         console.warn('[boot] auth/me failed -> treat as free', e);
         setPlan('free');
+      }
+
+      // ✅ SSOT: グローバル通知（親）を取得して確定（localStorageより強い）
+      try {
+        const s = await settingsApi.getNotification();
+        const enabled = !!(s as any)?.enable_webpush;
+        setGlobalNotificationsEnabled(enabled);
+
+        // localStorageも更新（NotificationSettings未訪問でもズレない）
+        try {
+          const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+          const prev = raw ? (JSON.parse(raw) as StoredNotificationSettings) : null;
+          const next: StoredNotificationSettings = {
+            enableMorning: prev?.enableMorning ?? true,
+            dailyDigestTime: prev?.dailyDigestTime ?? '08:00',
+            reminderOffsetsHours: prev?.reminderOffsetsHours ?? [1],
+            enableWebpush: enabled,
+          };
+          window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(next));
+        } catch {}
+      } catch (e) {
+        console.warn('[boot] settings/notification failed', e);
+        // 失敗してもlocalStorage初期値で動く
       }
 
       try {
@@ -855,6 +891,7 @@ export const Dashboard: React.FC = () => {
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
               isPremium={plan !== 'free'}
+              isGlobalNotificationEnabled={globalNotificationsEnabled} 
               onRequestUpgrade={() => {
                 window.location.hash = '/upgrade';
               }}
@@ -877,6 +914,7 @@ export const Dashboard: React.FC = () => {
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
               isPremium={plan !== 'free'}
+              isGlobalNotificationEnabled={globalNotificationsEnabled} 
               onRequestUpgrade={() => {
                 window.location.hash = '/upgrade';
               }}

@@ -24,6 +24,7 @@ type StoredNotificationSettings = {
   enableMorning: boolean;
   dailyDigestTime: string;
   reminderOffsetsHours: number[];
+  enableWebpush: boolean;
 };
 
 // 5:00〜10:00 を30分刻みで生成
@@ -189,6 +190,7 @@ export const NotificationSettings: React.FC = () => {
           enableMorning: enableMorningValue,
           dailyDigestTime: time,
           reminderOffsetsHours: hours,
+          enableWebpush: (data.enable_webpush ?? false),
         };
         window.localStorage.setItem(
           NOTIFICATION_STORAGE_KEY,
@@ -414,6 +416,7 @@ export const NotificationSettings: React.FC = () => {
           enableMorning,
           dailyDigestTime: digestTime,
           reminderOffsetsHours: newOffsets,
+          enableWebpush,
         };
         window.localStorage.setItem(
           NOTIFICATION_STORAGE_KEY,
@@ -518,6 +521,7 @@ export const NotificationSettings: React.FC = () => {
                   enableMorning,
                   dailyDigestTime: digestTime,
                   reminderOffsetsHours: newOffsets,
+                  enableWebpush: false, 
                 };
                 window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(stored));
               } catch (e) {

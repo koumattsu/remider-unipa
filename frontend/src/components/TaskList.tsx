@@ -861,9 +861,6 @@ const saveTaskNotificationOptions = (
                     />
                   </div>
                 )}
-
-                {/* ✏️ 編集フォーム */}
-                
               </div>
             );
           })}
@@ -1304,6 +1301,7 @@ const saveTaskNotificationOptions = (
                       }
                     />
                     約1時間前
+                    <br />
                   </label>
 
                   <button

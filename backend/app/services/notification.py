@@ -20,8 +20,8 @@ JST = timezone(timedelta(hours=9))
 MORNING_OFFSET_HOURS = 0
 
 # ✅ 締切前通知 window（SSOT）
-WINDOW_MINUTES = 40
-WINDOW_MAXUTES = 90
+WINDOW_MINUTES = 30
+WINDOW_MAXUTES = 70
 
 def is_in_deadline_window_by_offset(*, deadline_utc: datetime, now_utc: datetime, offset_hours: int) -> bool:
     """
@@ -482,13 +482,6 @@ def get_tasks_due_today_morning(
     ✅ 内部UTC、判定はJSTの「今日」
     """
     today_jst = now_utc.astimezone(JST).date()
-    now_jst = now_utc.astimezone(JST)
-    # ✅ 朝通知は「朝の時間帯」だけ候補化する（SSOT入口から呼ばれても漏れないように）
-    # cron.py の is_morning_window と同等の考え方
-    if not (time(5, 0) <= now_jst.time() <= time(10, 0)):
-        if debug is not None:
-            debug["decision.skipped:not_morning_window"] = debug.get("decision.skipped:not_morning_window", 0) + 1
-        return []
     candidates = (
         db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)

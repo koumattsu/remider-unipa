@@ -136,6 +136,31 @@ def get_or_create_notification_setting(db: Session, user_id: int) -> Notificatio
 
     return setting
 
+def _parse_hhmm(s: str | None) -> time:
+    # "08:00" 想定。壊れてたら 08:00 にフォールバック
+    try:
+        if not s:
+            raise ValueError("empty")
+        hh, mm = s.split(":")
+        return time(int(hh), int(mm))
+    except Exception:
+        return time(8, 0)
+
+def _is_in_digest_window(*, now_jst: datetime, digest_time_str: str | None) -> bool:
+    """
+    ✅ 朝通知は daily_digest_time を唯一の真実にする
+    - cron が 30分おき前提
+    - 設定時刻の「少し前〜少し後」を許容して取りこぼしを防ぐ
+      例: 08:00設定なら 07:55〜08:35
+    """
+    t = _parse_hhmm(digest_time_str)
+    anchor = datetime.combine(now_jst.date(), t, tzinfo=JST)
+
+    start = anchor - timedelta(minutes=5)
+    end = anchor + timedelta(minutes=35)
+    return start <= now_jst < end
+
+
 def _format_task_lines(tasks: list[Task]) -> str:
     # 要件：タイトル/締切/内容（箇条書き）
     # ここでは body に「箇条書き」を入れる
@@ -257,8 +282,9 @@ async def run_daily_job(db: Session = Depends(get_db)):
         now_utc = datetime.now(timezone.utc)
         now_jst = now_utc.astimezone(JST)
 
-        # ✅ 朝通知を送っていい時間帯（JST）
-        is_morning_window = time(5, 0) <= now_jst.time() <= time(10, 0)
+        # ✅ 朝通知：daily_digest_time の窓で判定（固定5-10は廃止）
+        # setting は user ごとに取るので、ここでは作らない（下の user ループ内で判定）
+        is_morning_window = None  # 互換の置き場所だけ確保（使わない）
 
         print("=== run_daily_job ===")
         print("[daily] build=2025-12-21-a")
@@ -284,6 +310,11 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
             # 通知設定取得
             setting = get_or_create_notification_setting(db, user_id=user_id)
+
+            digest_ok = _is_in_digest_window(
+                now_jst=now_jst,
+                digest_time_str=getattr(setting, "daily_digest_time", "08:00"),
+            )
 
             # ★ weekly_tasks -> tasks の生成入口を materialize に統一（向こう7日分）
             materialize_weekly_tasks_for_user(db, user_id=user_id, days=7)
@@ -390,7 +421,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deadline_at_send_utc=deadline_at_send,
                         offset_hours=hours,
                         kind="task_reminder",
-                        title=f"提出{int(hours)}時間前",
+                        title=f"締切まで約{int(hours)}時間",
                         body=_build_single_task_push_body(task),
                         deep_link="/dashboard?tab=today",
                     )
@@ -461,8 +492,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             }
                             db.add(n)
                             touched = True
-                    if touched:
-                        db.commit()
 
                 if user.plan != "free" and line_user_id:
                     try:
@@ -502,7 +531,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     results[key] = results.get(key, 0) + len(tasks_3h)
         
             # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
-            if setting.enable_morning_notification and is_morning_window:
+            if setting.enable_morning_notification and digest_ok:
                 tasks_today = cands.morning
                 morning_candidates_total += len(tasks_today)
 
@@ -536,63 +565,64 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 if created_morning:
                     db.commit()
 
-                # ✅ WebPush（無料/有料共通）
-                if setting.enable_webpush:
-                    touched = False
-                    for n in created_morning:
-                        try:
-                            res = WebPushSender.send_for_notification(
-                                db=db,
-                                user_id=user_id,
-                                notification=n,
-                            )
-                            webpush_sent += int(res.get("sent", 0))
-                            webpush_failed += int(res.get("failed", 0))
-                            webpush_deactivated += int(res.get("deactivated", 0))
+                # ✅ WebPush（朝は1本に集約：digest）
+                if setting.enable_webpush and tasks_today and created_morning:
+                    # タスク一覧を1つの本文にまとめる（最大8件 + ほかN件）
+                    show = tasks_today[:8]
+                    lines: list[str] = []
+                    for t in show:
+                        hhmm = _format_deadline_hhmm_jst(t)
+                        title = t.title or "(no title)"
+                        lines.append(f"・{title} {hhmm}")
+                    if len(tasks_today) > len(show):
+                        lines.append(f"ほか{len(tasks_today) - len(show)}件")
 
-                            sent_n = int(res.get("sent", 0))
-                            failed_n = int(res.get("failed", 0))
-                            deactivated_n = int(res.get("deactivated", 0))
+                    # ✅ 代表InApp（1件だけ）に紐づけて delivery を残す
+                    anchor = created_morning[0]
 
-                            if sent_n > 0:
-                                delivery_status = "sent"
-                            elif deactivated_n > 0 and failed_n == 0:
-                                delivery_status = "deactivated"
-                            elif failed_n > 0:
-                                delivery_status = "failed"
-                            else:
-                                delivery_status = "skipped"
+                    payload = {
+                        "title": "今日の締切",
+                        "body": "\n".join(lines),
+                        "url": "/dashboard?tab=today",
+                        "deep_link": "/dashboard?tab=today",
+                        "notification_id": anchor.id,   # ✅ ここが大事
+                        "run_id": run.id,
+                        # event_token は無くても動く（必要なら後で改善）
+                    }
 
-                            n.extra = {
-                                **(n.extra or {}),
-                                "webpush": {
-                                    "status": delivery_status,
-                                    "at": now_utc.isoformat(),
-                                    "sent": sent_n,
-                                    "failed": failed_n,
-                                    "deactivated": deactivated_n,
-                                },
-                            }
-                            db.add(n)
-                            touched = True
-                        except Exception as e:
-                            print("[CRON] webpush failed:", str(e))
-                            webpush_failed += 1
-                            n.extra = {
-                                **(n.extra or {}),
-                                "webpush": {
-                                    "status": "failed",
-                                    "at": now_utc.isoformat(),
-                                    "sent": 0,
-                                    "failed": 1,
-                                    "deactivated": 0,
-                                },
-                                "webpush_error": str(e)[:300],
-                            }
-                            db.add(n)
-                            touched = True
-                    if touched:
+                    try:
+                        # ✅ delivery を残すため in_app_notification_id を anchor.id にする
+                        res = WebPushSender._send_payload(
+                            db,
+                            user_id=user_id,
+                            payload=payload,
+                            in_app_notification_id=anchor.id,  # ✅ ここが大事
+                            run_id=run.id,
+                        )
+                        webpush_sent += int(res.get("sent", 0))
+                        webpush_failed += int(res.get("failed", 0))
+                        webpush_deactivated += int(res.get("deactivated", 0))
+
+                        # ✅ anchor の extra に「digestを送った」ログを残す（監査に効く）
+                        anchor.extra = {
+                            **(anchor.extra or {}),
+                            "webpush_digest": {
+                                "status": "sent" if int(res.get("sent", 0)) > 0 else "skipped",
+                                "sent": int(res.get("sent", 0)),
+                                "failed": int(res.get("failed", 0)),
+                                "deactivated": int(res.get("deactivated", 0)),
+                                "at": now_utc.isoformat(),
+                                "tasks_total": len(tasks_today),
+                                "shown": len(show),
+                            },
+                        }
+                        db.add(anchor)
                         db.commit()
+
+                    except Exception as e:
+                        print("[CRON] webpush digest failed:", str(e))
+                        webpush_failed += 1
+                        db.rollback()
                 if tasks_today:
                     if user.plan != "free" and line_user_id:
                         try:

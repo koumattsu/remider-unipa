@@ -1,12 +1,10 @@
 # backend/test/test_notification_decision_contract.py
 
 from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Tuple
 import pytest
 from sqlalchemy.exc import IntegrityError
-
 from app.models.task import Task
 from app.services import notification as notif
 
@@ -20,7 +18,6 @@ class _BeginNested:
     def __exit__(self, exc_type, exc, tb):
         # 例外は外に投げる（IntegrityError を notif.try_mark... が握る）
         return False
-
 
 class _Query:
     def __init__(self, session: "MiniSession", kind: str):
@@ -156,8 +153,9 @@ def _make_task(
 def test_notification_decision_contract__done_past_and_dedupe(fixed_now):
     now = fixed_now
 
-    # 1) 1時間前ウィンドウに入るタスク（diff_hours=1.2 → 1.0〜1.5内）
-    t_due = _make_task(task_id=10, deadline_utc=now + timedelta(hours=1, minutes=12))
+    # 1) 1時間前ウィンドウに入るタスク
+    # ✅ 新仕様: offset=1 は「締切まで残り30〜70分」
+    t_due = _make_task(task_id=10, deadline_utc=now + timedelta(minutes=55))
 
     # 2) 過去締切 → 絶対に候補に入らない
     t_past = _make_task(task_id=11, deadline_utc=now - timedelta(minutes=1))
@@ -184,10 +182,14 @@ def test_notification_decision_contract__done_past_and_dedupe(fixed_now):
     assert 11 not in flat1
     assert 12 not in flat1
 
-    # morning は「朝窓(05:00-10:00 JST)のときだけ」候補化される
-    # fixed_now=12:00 UTC (=21:00 JST) なのでここでは空が正しい
-    assert c1.morning == []
-    assert c1.debug.get("decision.skipped:not_morning_window", 0) >= 1
+    # ✅ 新仕様: morning 候補は「時間条件なし」で作る（送信窓判定は cron.py 側の digest_ok）
+    # fixed_now=12:00 UTC (=21:00 JST) でも候補は入ってよい（送るかどうかは別）
+    assert [t.id for t in c1.morning] == [10]
+
+    # 念のため：past/done は morning 側にも入らない
+    flat_morning = [t.id for t in c1.morning]
+    assert 11 not in flat_morning
+    assert 12 not in flat_morning
 
     # --- 2nd run: 同じ deadline + offset は dedupe され、t_due は出てこない ---
     c2 = notif.collect_notification_candidates(db, user_id=1, offsets_hours=[1], now_utc=now, run_id=2)

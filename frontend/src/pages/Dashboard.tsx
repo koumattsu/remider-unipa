@@ -891,7 +891,7 @@ export const Dashboard: React.FC = () => {
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
               isPremium={plan !== 'free'}
-              isGlobalNotificationEnabled={globalNotificationsEnabled} 
+              globalNotificationsEnabled={globalNotificationsEnabled}
               onRequestUpgrade={() => {
                 window.location.hash = '/upgrade';
               }}
@@ -914,7 +914,7 @@ export const Dashboard: React.FC = () => {
               taskNotificationOverrides={taskNotifyOptions}
               onTaskNotificationOptionsChange={handleTaskNotifyOptionsChange}
               isPremium={plan !== 'free'}
-              isGlobalNotificationEnabled={globalNotificationsEnabled} 
+              globalNotificationsEnabled={globalNotificationsEnabled}
               onRequestUpgrade={() => {
                 window.location.hash = '/upgrade';
               }}

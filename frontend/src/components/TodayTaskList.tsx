@@ -41,8 +41,6 @@ export const TodayTaskList: React.FC<TodayTaskListProps> = ({
   onNotifyChange,
   taskNotificationOverrides,
   onTaskNotificationOptionsChange,
-
-  // ✅ 追加
   isPremium = false,
   onRequestUpgrade,
   globalNotificationsEnabled: globalNotificationsEnabledProp,

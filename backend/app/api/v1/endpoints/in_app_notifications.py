@@ -1,6 +1,6 @@
 #backend/app/api/v1/endpoints/in_app_notifications.py
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import func
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -125,11 +125,23 @@ async def summarize_in_app_notifications(
 
     """
     分析用：InAppNotification の期間サマリ（read only）
-
     - created_at 基準で from/to を解釈
     - dismissed は dismissed_at != null
     - webpush_events は extra.webpush.status を集計（イベント軸）
     """
+    # ✅ 防波堤：from/to が未指定の呼び出しでも「今週（JST週始まり〜現在）」で返す
+    #   UIの「今週」カードが from/to を付け忘れても lifetime にならないようにする
+    if from_ is None and to is None:
+        JST = timezone(timedelta(hours=9))
+        now_utc = datetime.now(timezone.utc)
+        now_jst = now_utc.astimezone(JST)
+        # JSTで「月曜 00:00」を週の開始にする
+        week_start_jst = (now_jst - timedelta(days=now_jst.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        from_ = week_start_jst.astimezone(timezone.utc)
+        to = now_utc
+
     base = (
         db.query(InAppNotification)
         .filter(InAppNotification.user_id == current_user.id)

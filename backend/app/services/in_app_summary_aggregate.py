@@ -61,6 +61,7 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
                 db.query(func.count(func.distinct(WebPushEvent.notification_id)))
                 .filter(WebPushEvent.run_id == run_id)
                 .filter(WebPushEvent.event_type == "opened")
+                .filter(WebPushEvent.notification_id.isnot(None))  # ✅ None除外
                 .scalar()
                 or 0
             )

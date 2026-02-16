@@ -96,7 +96,16 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, disabled
   </div>
 );
 
-export const NotificationSettings: React.FC = () => {
+type NotificationSettingsProps = {
+  // Dashboard側の即時反映用（未指定でも動く）
+  globalNotificationsEnabled?: boolean;
+  onGlobalNotificationsEnabledChange?: (enabled: boolean) => void;
+};
+
+export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
+  globalNotificationsEnabled: _globalNotificationsEnabled,
+  onGlobalNotificationsEnabledChange,
+}) => {
   const [, setSetting] = useState<NotificationSetting | null>(null);
 
   // TODO: 将来 backend から plan を受け取って差し替える
@@ -297,6 +306,7 @@ export const NotificationSettings: React.FC = () => {
           enable_webpush: true,
         };
         await settingsApi.updateNotification(updateData);
+        onGlobalNotificationsEnabledChange?.(true);
       } catch (e) {
         // ここで失敗しても購読自体はできているので、pushEnabled は true にする
         console.warn('enable_webpush の保存に失敗しました:', e);
@@ -429,6 +439,9 @@ export const NotificationSettings: React.FC = () => {
       await settingsApi.updateNotification(updateData);
       await loadSettings();
 
+      // ✅ Dashboardへ即反映（リロード不要）
+      onGlobalNotificationsEnabledChange?.(enableWebpush);
+
       // 🔔 成功したらフロント側キャッシュも更新（loadSettings 内でもやっているけど念のため）
       if (typeof window !== 'undefined') {
         const stored = {
@@ -493,18 +506,19 @@ export const NotificationSettings: React.FC = () => {
         <ToggleSwitch
           checked={enableWebpush}
           onChange={async () => {
-            const next = !enableWebpush;
-            setEnableWebpush(next);
+            const prev = enableWebpush;
+            const next = !prev;
 
-            // ON のときは許可状態を見るだけ（購読ボタン側で enableWebPush() が動く）
-            if (next) {
-              if (typeof Notification !== 'undefined') {
-                setPermission(Notification.permission);
-              }
-              return;
+            // ✅ 体感：まず即反映（失敗時はrollback）
+            setEnableWebpush(next);
+            onGlobalNotificationsEnabledChange?.(next);
+
+            // ON のときは許可状態も更新（UIズレ防止）
+            if (next && typeof Notification !== 'undefined') {
+              setPermission(Notification.permission);
             }
 
-            // ✅ OFF のときは「ボタンが消えても確実に保存」するため即保存
+            // ✅ ON/OFF どちらでも即保存（リロード不要 & SSOT維持）
             setIsSaving(true);
             try {
               const newOffsets = enableOneHour ? [1] : [];
@@ -512,7 +526,7 @@ export const NotificationSettings: React.FC = () => {
                 reminder_offsets_hours: newOffsets,
                 daily_digest_time: digestTime,
                 enable_morning_notification: enableMorning,
-                enable_webpush: false,
+                enable_webpush: next,
               };
 
               // localStorage も更新
@@ -521,7 +535,7 @@ export const NotificationSettings: React.FC = () => {
                   enableMorning,
                   dailyDigestTime: digestTime,
                   reminderOffsetsHours: newOffsets,
-                  enableWebpush: false, 
+                  enableWebpush: next,
                 };
                 window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(stored));
               } catch (e) {
@@ -530,10 +544,12 @@ export const NotificationSettings: React.FC = () => {
 
               await settingsApi.updateNotification(updateData);
             } catch (e) {
-              console.error('enable_webpush OFF の保存に失敗しました:', e);
-              alert('通知OFFの保存に失敗しました');
-              // 失敗したら見た目だけOFFになって事故るので戻す（安全側）
-              setEnableWebpush(true);
+              console.error('enable_webpush toggle の保存に失敗しました:', e);
+              alert('通知設定の保存に失敗しました');
+
+              // ✅ rollback（安全側）
+              setEnableWebpush(prev);
+              onGlobalNotificationsEnabledChange?.(prev);
             } finally {
               setIsSaving(false);
             }

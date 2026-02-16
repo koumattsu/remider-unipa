@@ -979,7 +979,26 @@ export const Dashboard: React.FC = () => {
         return (
           <>
             <h1 style={{ marginBottom: '1rem' }}>通知設定</h1>
-            <NotificationSettings />
+            <NotificationSettings
+              globalNotificationsEnabled={globalNotificationsEnabled}
+              onGlobalNotificationsEnabledChange={(enabled) => {
+                // ✅ 即時反映（リロード不要）
+                setGlobalNotificationsEnabled(enabled);
+
+                // ✅ localStorageも同期（次回起動でズレない）
+                try {
+                  const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+                  const prev = raw ? (JSON.parse(raw) as StoredNotificationSettings) : null;
+                  const next: StoredNotificationSettings = {
+                    enableMorning: prev?.enableMorning ?? true,
+                    dailyDigestTime: prev?.dailyDigestTime ?? '08:00',
+                    reminderOffsetsHours: prev?.reminderOffsetsHours ?? [1],
+                    enableWebpush: enabled,
+                  };
+                  window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(next));
+                } catch {}
+              }}
+            />
           </>
         );
       default:

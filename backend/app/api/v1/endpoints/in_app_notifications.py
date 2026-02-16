@@ -174,12 +174,23 @@ async def summarize_in_app_notifications(
         key = st if st in events else "unknown"
         events[key] += int(cnt or 0)
 
-    opened_q = db.query(WebPushEvent).filter(WebPushEvent.user_id == current_user.id)
+    opened_q = (
+        db.query(WebPushEvent)
+        .filter(WebPushEvent.user_id == current_user.id)
+        .filter(WebPushEvent.event_type == "opened")
+        .filter(WebPushEvent.notification_id.isnot(None))  # ✅ debug等のNoneを除外
+    )
     if from_:
         opened_q = opened_q.filter(WebPushEvent.created_at >= from_)
     if to:
         opened_q = opened_q.filter(WebPushEvent.created_at <= to)
-    opened = int(opened_q.with_entities(func.count(WebPushEvent.id)).scalar() or 0)
+
+    # ✅ 同じ通知IDは端末が何個でも 1 カウント（ユーザ単位=通知単位）
+    opened = int(
+        opened_q.with_entities(func.count(func.distinct(WebPushEvent.notification_id)))
+        .scalar()
+        or 0
+    )
 
     sent = int(events.get("sent", 0))
     open_rate = round((opened / sent) * 100) if sent else 0

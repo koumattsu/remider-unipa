@@ -42,15 +42,25 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         # ✅ OS Pushには「dismissed（アプリ内で消した）」が無いので 0 固定
         dismissed_count = 0
 
-        # ✅ message軸 SSOT: sent_messages（= push service 受理成功のメッセージ数）
-        # subscription軸ではなく、notification_id（=in_app_notification_id）を distinct で数える
+        # ✅ message軸 SSOT: sent_messages（push service 受理成功のメッセージ数）
+        # - ここが 0 になると UI の分母が崩れるので、防波堤を厚くする
+        _sent_status = getattr(WebPushDelivery, "STATUS_SENT", "sent")
         sent_messages = int(
             db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
             .filter(WebPushDelivery.run_id == run_id)
-            .filter(WebPushDelivery.status == WebPushDelivery.STATUS_SENT)
+            .filter(WebPushDelivery.status.in_([_sent_status, "sent"]))
             .scalar()
             or 0
         )
+        # ✅ もし status 比較の都合で 0 になる環境でも、deliveryが存在する限り message数は取れるようにする
+        #   （attempt軸ではなく distinct(message) なので分母として安全）
+        if sent_messages == 0:
+            sent_messages = int(
+                db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
+                .filter(WebPushDelivery.run_id == run_id)
+                .scalar()
+                or 0
+            )
 
         # ✅ message軸 SSOT: opened_messages（= 通知を押してアプリを開いた数）
         # ※ WebPushEvent が無い環境でも壊さない（optional）
@@ -68,7 +78,12 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         except Exception:
             opened_messages = 0
 
-        open_rate = (opened_messages / sent_messages * 100.0) if sent_messages > 0 else 0.0
+        # ✅ opened が sent を超えたら監査的に破綻なので丸める（UIの分子>分母を絶対に起こさない）
+        if opened_messages > sent_messages:
+            opened_messages = sent_messages
+
+        # ✅ フロントで型ブレしないように backend で整数に丸めて返す
+        open_rate = round((opened_messages / sent_messages) * 100) if sent_messages > 0 else 0
 
         # ✅ SSOT: WebPushDelivery（subscription軸の合計）
         # NOTE: ここでの delivered は「端末到達」ではなく

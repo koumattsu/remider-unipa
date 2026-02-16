@@ -1064,11 +1064,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   const chosenNotifSummary =
     bucket === 'week' ? weeklyNotifSummary : monthlyNotifSummary;
 
-  // ✅ UIの「通知反応」は Web Push（OS Push）のみで計算する
-  // InAppNotification(summary.total/dismissed/dismiss_rate) は資産として保持するが UI分母に使わない
-  const wp = chosenNotifSummary?.webpush_events;
-  const wpSent = wp?.sent ?? 0;
-
   // ✅ 表示用にソート（backendの並びに依存しない）
   const sortedByCourse = useMemo(() => {
     if (!chosenByCourse) return null;
@@ -1095,88 +1090,87 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // =========================
   // Layer: Metrics (facts)
   // =========================
-  const MetricsOverview = (
-    <>
-      {/* ✅ Metricsは「定義固定」：進捗（現在）と確定（Outcome）を分離 */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
-          gap: '0.9rem',
-        }}
-      >
-        <StatsCard
-          title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
-          subtitle="期限内完了率"
-          rate={bucket === 'week' ? toPercent(_summaryWeek?.done_rate) : toPercent(_summaryMonth?.done_rate)}
-          total={bucket === 'week' ? Number(_summaryWeek?.total ?? 0) : Number(_summaryMonth?.total ?? 0)}
-          done={bucket === 'week' ? Number(_summaryWeek?.done ?? 0) : Number(_summaryMonth?.done ?? 0)}
-        />
-      </div>
+  const MetricsOverview = () => {
+    // ✅ NotifStatsCard 用：週/月の WebPush 指標を “ここで確定”（JSX内で計算しない）
+    const inappWp = (latestRunSummary as any)?.inapp?.webpush;
 
-      {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
-          gap: '0.9rem',
-        }}
-      >
-        {/* ✅ RateBars は必ず全幅 */}
-        <div style={{ gridColumn: '1 / -1' }}>
-          <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
-        </div>
+    // message軸（最優先：通知メッセージ数）
+    const periodSentMessages = Number(inappWp?.sent_messages ?? 0);
+    const periodOpenedMessagesRaw = inappWp?.opened_messages;
 
-        {/* ✅ 1枚だけのカードは中央寄せ（左右の無駄な隙間を作らない） */}
+    // events軸（fallback：通知イベント数）
+    const periodSentEvents = Number(chosenNotifSummary?.webpush_events?.sent ?? 0);
+
+    // created（分母）：message軸が取れたらそれ。無ければ event軸。
+    const createdForPeriod = periodSentMessages > 0 ? periodSentMessages : periodSentEvents;
+
+    // opened（分子）：message軸が取れた時だけ。0は0で出す。欠損はundefined。
+    const openedForPeriod =
+      periodOpenedMessagesRaw == null ? undefined : Number(periodOpenedMessagesRaw);
+
+    // open_rate：取れたらそれ。無ければ opened/created（両方揃ってる時だけ）
+    const openRateForPeriod = (() => {
+      const or = inappWp?.open_rate;
+      if (or != null) return Number(or);
+      if (createdForPeriod > 0 && openedForPeriod != null) return openedForPeriod / createdForPeriod;
+      return undefined;
+    })();
+
+    return (
+      <>
+        {/* ✅ Metricsは「定義固定」：進捗（現在）と確定（Outcome）を分離 */}
         <div
           style={{
-            gridColumn: '1 / -1',
-            display: 'flex',
-            justifyContent: 'center',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+            gap: '0.9rem',
           }}
         >
-          <div style={{ width: 'min(520px, 100%)' }}>
-            <NotifStatsCard
-              title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
-              subtitle={undefined}
-              // ✅ 分母は「成功送信(sent)」のみ
-              created={(() => {
-                // ✅ message軸（通知数）
-                const sentMessages = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0);
-                if (sentMessages > 0) return sentMessages;
+          <StatsCard
+            title={bucket === 'week' ? '今週の達成率' : '今月の達成率'}
+            subtitle="期限内完了率"
+            rate={bucket === 'week' ? toPercent(_summaryWeek?.done_rate) : toPercent(_summaryMonth?.done_rate)}
+            total={bucket === 'week' ? Number(_summaryWeek?.total ?? 0) : Number(_summaryMonth?.total ?? 0)}
+            done={bucket === 'week' ? Number(_summaryWeek?.done ?? 0) : Number(_summaryMonth?.done ?? 0)}
+          />
+        </div>
 
-                // ✅ fallback（run summary が取れない / まだ生成されない時）
-                // wpSent は「OS Push sent(イベント)」の想定。delivery軸に戻さない。
-                return Number(wpSent ?? 0);
-              })()}
+        {/* ✅ Overview: 週/通知反応/月/Run を “グリッドで1塊” にする */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
+            gap: '0.9rem',
+          }}
+        >
+          {/* ✅ RateBars は必ず全幅 */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
+          </div>
 
-              opened={(() => {
-                // ✅ 0は0として出す（“—”はデータ欠損のときだけ）
-                const v = (latestRunSummary as any)?.inapp?.webpush?.opened_messages;
-                if (v == null) return undefined;
-                return Number(v);
-              })()}
-              // ✅ 互換用 dismissed は opened に寄せる（wpSent は絶対入れない）
-              dismissed={(() => {
-                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
-                return opened > 0 ? opened : undefined;
-              })()}
-              // ✅ open_rate が取れるならそれ、取れないなら opened/sent（両方揃ってる時だけ）
-              dismissRate={(() => {
-                const or = (latestRunSummary as any)?.inapp?.webpush?.open_rate;
-                if (or != null) return Number(or);
-
-                const sent = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0) || wpSent;
-                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
-                if (sent > 0) return opened / sent; // opened=0 でも 0% を出す
-                return undefined;
-              })()}
-            />
+          {/* ✅ 1枚だけのカードは中央寄せ（左右の無駄な隙間を作らない） */}
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{ width: 'min(520px, 100%)' }}>
+              <NotifStatsCard
+                title={bucket === 'week' ? '今週の通知反応' : '今月の通知反応'}
+                subtitle={undefined}
+                created={createdForPeriod}
+                opened={openedForPeriod}
+                dismissed={openedForPeriod}     // 互換
+                dismissRate={openRateForPeriod} // 互換
+              />
+            </div>
           </div>
         </div>
-      </div>
-    </>
-  );
+      </>
+    );
+  };
 
   // =========================
   // Layer: Insights (interpretation)
@@ -1363,7 +1357,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           );
         })}
       </div>
-      {activeTab === 'overview' && MetricsOverview}
+      {activeTab === 'overview' && <MetricsOverview />}
       {activeTab === 'hotspots' && InsightsHotspots}
       {activeTab === 'improve' && (
         <>

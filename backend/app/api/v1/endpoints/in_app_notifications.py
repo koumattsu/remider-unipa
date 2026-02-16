@@ -169,10 +169,21 @@ async def summarize_in_app_notifications(
         .group_by(WebPushDelivery.status)
         .all()
     )
+    # ✅ attempt軸（監査用）は維持
     events = {"sent": 0, "failed": 0, "deactivated": 0, "skipped": 0, "unknown": 0}
     for st, cnt in rows or []:
         key = st if st in events else "unknown"
         events[key] += int(cnt or 0)
+
+    # ✅ message軸 SSOT: sent_messages（端末が何個でも通知1件=1）
+    _sent_status = getattr(WebPushDelivery, "STATUS_SENT", "sent")
+    sent_messages = int(
+        deliveries
+        .filter(WebPushDelivery.status.in_([_sent_status, "sent"]))
+        .with_entities(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
+        .scalar()
+        or 0
+    )
 
     opened_q = (
         db.query(WebPushEvent)
@@ -185,15 +196,18 @@ async def summarize_in_app_notifications(
     if to:
         opened_q = opened_q.filter(WebPushEvent.created_at <= to)
 
-    # ✅ 同じ通知IDは端末が何個でも 1 カウント（ユーザ単位=通知単位）
-    opened = int(
+    # ✅ message軸: 同じ通知IDは端末が何個でも 1
+    opened_messages = int(
         opened_q.with_entities(func.count(func.distinct(WebPushEvent.notification_id)))
         .scalar()
         or 0
     )
 
-    sent = int(events.get("sent", 0))
-    open_rate = round((opened / sent) * 100) if sent else 0
+    # ✅ 分子>分母の破綻を絶対起こさない（監査的安全弁）
+    if opened_messages > sent_messages:
+        opened_messages = sent_messages
+
+    open_rate = round((opened_messages / sent_messages) * 100) if sent_messages else 0
 
     return {
         "range": {
@@ -201,8 +215,8 @@ async def summarize_in_app_notifications(
             "to": to.isoformat() if to else None,
         },
         # ✅ UIの「通知反応」は WebPush に寄せる
-        "total": sent,
-        "dismissed": opened,
+        "total": sent_messages,
+        "dismissed": opened_messages,
         "dismiss_rate": int(open_rate),
         "inapp": {
             "total": inapp_total,

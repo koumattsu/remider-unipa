@@ -240,8 +240,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       setCourseXWeek(cached.data.courseXWeek ?? null);
       setCourseXMonth(cached.data.courseXMonth ?? null);
 
-      setRateSeriesWeek(Array.isArray(cached.data.rateSeriesWeek) ? cached.data.rateSeriesWeek : []);
-      setRateSeriesMonth(Array.isArray(cached.data.rateSeriesMonth) ? cached.data.rateSeriesMonth : []);
+      const cachedWeek = Array.isArray(cached.data.rateSeriesWeek) ? cached.data.rateSeriesWeek : [];
+      const cachedMonth = Array.isArray(cached.data.rateSeriesMonth) ? cached.data.rateSeriesMonth : [];
+
+      setRateSeriesWeek(cachedWeek);
+      setRateSeriesMonth(cachedMonth);
+
+      // ✅ “計算完了時点” ref と整合させる（表示が揺れない）
+      rateSeriesRef.current = { week: cachedWeek, month: cachedMonth };
 
       setCurrentNotifSetting(cached.data.currentNotifSetting ?? null);
 
@@ -576,6 +582,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
         // 3) 再取得結果をキャッシュに保存（UI用）
         const savedAt = new Date();
+        const refWeek = rateSeriesRef.current.week;
+        const refMonth = rateSeriesRef.current.month;
         const payload: StatsViewCachePayload = {
           version: STATS_VIEW_CACHE_VERSION,
           saved_at: savedAt.toISOString(),
@@ -598,9 +606,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
             courseXWeek: cxW ?? null,
             courseXMonth: cxM ?? null,
-
-            const refWeek = rateSeriesRef.current.week;
-            const refMonth = rateSeriesRef.current.month;
 
             rateSeriesWeek:
               (Array.isArray(refWeek) && refWeek.length > 0)

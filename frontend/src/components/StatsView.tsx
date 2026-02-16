@@ -99,6 +99,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks: _tasks }) => {
   type StatsTab = 'overview' | 'hotspots' | 'improve' | 'audit';
   const [rateSeriesWeek, setRateSeriesWeek] = useState<RatePoint[]>([]);
   const [rateSeriesMonth, setRateSeriesMonth] = useState<RatePoint[]>([]);
+  const rateSeriesRef = useRef<{ week: RatePoint[]; month: RatePoint[] }>({ week: [], month: [] });
   // ✅ audit は通常ユーザーに見せない（案A）
   // NOTE: 将来 user.role 等に差し替え可能。まずは ENV で最小diff。
   const isDeveloper = import.meta.env.VITE_ENABLE_AUDIT === 'true';
@@ -421,6 +422,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
           if (!mounted) return;
 
+          // ✅ “計算完了時点” を ref に保存（payload保存がstate順序に依存しないように）
+          rateSeriesRef.current = { week: weekPoints, month: monthPoints };
+
           // ✅ UI表示は即更新
           setRateSeriesWeek(weekPoints);
           setRateSeriesMonth(monthPoints);
@@ -595,15 +599,22 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             courseXWeek: cxW ?? null,
             courseXMonth: cxM ?? null,
 
+            const refWeek = rateSeriesRef.current.week;
+            const refMonth = rateSeriesRef.current.month;
+
             rateSeriesWeek:
-              (Array.isArray(rateSeriesWeek) && rateSeriesWeek.length > 0)
-                ? rateSeriesWeek
-                : (Array.isArray(cached?.data?.rateSeriesWeek) ? cached!.data.rateSeriesWeek : []),
+              (Array.isArray(refWeek) && refWeek.length > 0)
+                ? refWeek
+                : ((Array.isArray(rateSeriesWeek) && rateSeriesWeek.length > 0)
+                    ? rateSeriesWeek
+                    : (Array.isArray(cached?.data?.rateSeriesWeek) ? cached!.data.rateSeriesWeek : [])),
 
             rateSeriesMonth:
-              (Array.isArray(rateSeriesMonth) && rateSeriesMonth.length > 0)
-                ? rateSeriesMonth
-                : (Array.isArray(cached?.data?.rateSeriesMonth) ? cached!.data.rateSeriesMonth : []),
+              (Array.isArray(refMonth) && refMonth.length > 0)
+                ? refMonth
+                : ((Array.isArray(rateSeriesMonth) && rateSeriesMonth.length > 0)
+                    ? rateSeriesMonth
+                    : (Array.isArray(cached?.data?.rateSeriesMonth) ? cached!.data.rateSeriesMonth : [])),
 
             currentNotifSetting: notifSetting ?? null,
 
@@ -1659,7 +1670,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                             missed {r.missed}/{r.total}
                           </div>
                         </div>
-
                         <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
                           {toPercent(r.missed_rate)}%
                         </div>

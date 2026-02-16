@@ -89,7 +89,7 @@ type StoredNotificationSettings = {
 const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
   try {
     const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
-    if (!raw) return { morning: true, offsetsHours: [3] };
+    if (!raw) return { morning: true, offsetsHours: [1] };
 
     const parsed = JSON.parse(raw) as StoredNotificationSettings;
 
@@ -104,7 +104,7 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
     return {
       morning:
         parsed.enableMorning !== undefined ? parsed.enableMorning : true,
-      offsetsHours: uniqueOffsets.length > 0 ? uniqueOffsets : [3],
+      offsetsHours: uniqueOffsets.length > 0 ? uniqueOffsets : [1],
     };
   } catch {
     return { morning: true, offsetsHours: [3] };
@@ -452,7 +452,7 @@ export const Dashboard: React.FC = () => {
         const offsets = offsetsRaw
           .map((n: any) => Number(n))
           .filter((n) => Number.isFinite(n) && n > 0);
-        fromDb[r.task_id] = { morning, offsetsHours: offsets.length ? offsets : [3] };
+        fromDb[r.task_id] = { morning, offsetsHours: offsets.length ? offsets : [1] };
       }
 
       setTaskNotifyOptions((prev) => {

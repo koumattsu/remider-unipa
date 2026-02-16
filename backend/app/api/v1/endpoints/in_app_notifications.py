@@ -176,9 +176,11 @@ async def summarize_in_app_notifications(
         events[key] += int(cnt or 0)
 
     # ✅ message軸 SSOT: sent_messages（端末が何個でも通知1件=1）
+    # - in_app_notification_id が NULL の delivery は message として数えない（分母の水増し防止）
     _sent_status = getattr(WebPushDelivery, "STATUS_SENT", "sent")
     sent_messages = int(
         deliveries
+        .filter(WebPushDelivery.in_app_notification_id.isnot(None))
         .filter(WebPushDelivery.status.in_([_sent_status, "sent"]))
         .with_entities(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
         .scalar()

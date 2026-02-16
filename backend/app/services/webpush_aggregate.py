@@ -72,7 +72,6 @@ def calc_webpush_events_with_source_for_run(
             events[key] += 1
         return events, "inapp_extra"
 
-
 def calc_webpush_events_for_run(db: Session, run_id: int) -> Dict[str, int]:
     """
     互換API（既存呼び出し用）: events dict だけ返す

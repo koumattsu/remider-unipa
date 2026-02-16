@@ -23,7 +23,6 @@ export type InAppSummary = {
   dismiss_rate: number; // 0-100
 };
 
-
 export type InAppNotificationsSummary = {
   range: { from: string | null; to: string | null };
   // ✅ UIの「通知反応」はここ（Web Pushのみ）に寄せる

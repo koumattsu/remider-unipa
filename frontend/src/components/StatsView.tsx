@@ -1141,14 +1141,20 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
               subtitle={undefined}
               // ✅ 分母は「成功送信(sent)」のみ
               created={(() => {
-                const sent = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0);
-                if (sent > 0) return sent;
-                return wpSent; // ✅ run summaryが無いときは sent だけを分母にする
+                // ✅ message軸（通知数）
+                const sentMessages = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0);
+                if (sentMessages > 0) return sentMessages;
+
+                // ✅ fallback（run summary が取れない / まだ生成されない時）
+                // wpSent は「OS Push sent(イベント)」の想定。delivery軸に戻さない。
+                return Number(wpSent ?? 0);
               })()}
-              // ✅ 分子は「開封(=タップでアプリを開いた)」
+
               opened={(() => {
-                const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
-                return opened > 0 ? opened : undefined; // ✅ 無いなら undefined（嘘の0を固定しない）
+                // ✅ 0は0として出す（“—”はデータ欠損のときだけ）
+                const v = (latestRunSummary as any)?.inapp?.webpush?.opened_messages;
+                if (v == null) return undefined;
+                return Number(v);
               })()}
               // ✅ 互換用 dismissed は opened に寄せる（wpSent は絶対入れない）
               dismissed={(() => {
@@ -1162,8 +1168,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
                 const sent = Number((latestRunSummary as any)?.inapp?.webpush?.sent_messages ?? 0) || wpSent;
                 const opened = Number((latestRunSummary as any)?.inapp?.webpush?.opened_messages ?? 0);
-                if (sent > 0 && opened > 0) return opened / sent; // 0..1 で渡す（NotifStatsCard側が%化）
-                return undefined; // ✅ データ不足なら「—」
+                if (sent > 0) return opened / sent; // opened=0 でも 0% を出す
+                return undefined;
               })()}
             />
           </div>

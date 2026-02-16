@@ -237,10 +237,17 @@ def get_run_summary(
             "dismissed_count": dismissed_count,
             "dismiss_rate": dismiss_rate,
             "webpush": {
+                # ✅ delivery軸（attemptログ）: subscription / retry を含む
                 "delivered": delivered,
                 "failed": failed,
                 "deactivated": deactivated,
                 "unknown": unknown,
+
+                # ✅ message軸（通知そのもの）: UIの「送信数」「反応率」はこっちを見る
+                "sent_messages": sent_messages,
+                "opened_messages": opened_messages,
+                "open_rate": open_rate,
+
                 "events": events,
             },
         },

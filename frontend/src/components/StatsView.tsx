@@ -505,15 +505,52 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             .catch(() => []),
         ]);
 
+        // ✅ この取得結果を “ローカルSSOT” として確定させる（stateは非同期なので参照しない）
+        const effMetaNow = { windowDays: windowDaysOf(bucket), fetchedAt: new Date() };
+
+        // ✅ bucketに応じて、週/月のどちらへ入れるかを “payload側で確定”
+        const effWeek =
+          bucket === 'week'
+            ? (effItems ?? [])
+            : (actionEffectiveness.week ?? (cached?.data?.actionEffectivenessWeek ?? null));
+
+        const effMonth =
+          bucket === 'month'
+            ? (effItems ?? [])
+            : (actionEffectiveness.month ?? (cached?.data?.actionEffectivenessMonth ?? null));
+
+        const effByFeatWeek =
+          bucket === 'week'
+            ? (effByFeatureItems ?? [])
+            : (actionEffectivenessByFeature.week ?? (cached?.data?.actionEffectivenessByFeatureWeek ?? null));
+
+        const effByFeatMonth =
+          bucket === 'month'
+            ? (effByFeatureItems ?? [])
+            : (actionEffectivenessByFeature.month ?? (cached?.data?.actionEffectivenessByFeatureMonth ?? null));
+
+        const effMetaWeek =
+          bucket === 'week'
+            ? effMetaNow
+            : (actionEffectivenessMeta.week
+                ? { windowDays: actionEffectivenessMeta.week.windowDays, fetchedAt: actionEffectivenessMeta.week.fetchedAt }
+                : (cached?.data?.actionEffectivenessMetaWeek
+                    ? { windowDays: cached.data.actionEffectivenessMetaWeek.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaWeek.fetchedAt) }
+                    : null));
+
+        const effMetaMonth =
+          bucket === 'month'
+            ? effMetaNow
+            : (actionEffectivenessMeta.month
+                ? { windowDays: actionEffectivenessMeta.month.windowDays, fetchedAt: actionEffectivenessMeta.month.fetchedAt }
+                : (cached?.data?.actionEffectivenessMetaMonth
+                    ? { windowDays: cached.data.actionEffectivenessMetaMonth.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaMonth.fetchedAt) }
+                    : null));
+
+        // ✅ 画面stateも更新（UI用）
         setActionEffectiveness((prev) => ({ ...prev, [bucket]: effItems }));
-        setActionEffectivenessMeta((prev) => ({
-          ...prev,
-          [bucket]: { windowDays: windowDaysOf(bucket), fetchedAt: new Date() },
-        }));
-        setActionEffectivenessByFeature(prev => ({
-          ...prev,
-          [bucket]: effByFeatureItems ?? [],
-        }));
+        setActionEffectivenessMeta((prev) => ({ ...prev, [bucket]: effMetaNow }));
+        setActionEffectivenessByFeature((prev) => ({ ...prev, [bucket]: effByFeatureItems ?? [] }));
 
         if (!mounted) return;
 
@@ -570,17 +607,17 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
             currentNotifSetting: notifSetting ?? null,
 
-            actionEffectivenessWeek: effItems ?? null,
-            actionEffectivenessMonth: actionEffectiveness.month ?? null,
+            actionEffectivenessWeek: effWeek ?? null,
+            actionEffectivenessMonth: effMonth ?? null,
 
-            actionEffectivenessByFeatureWeek: effByFeatureItems ?? null,
-            actionEffectivenessByFeatureMonth: actionEffectivenessByFeature.month ?? null,
+            actionEffectivenessByFeatureWeek: effByFeatWeek ?? null,
+            actionEffectivenessByFeatureMonth: effByFeatMonth ?? null,
 
-            actionEffectivenessMetaWeek: actionEffectivenessMeta.week
-              ? { windowDays: actionEffectivenessMeta.week.windowDays, fetchedAt: actionEffectivenessMeta.week.fetchedAt.toISOString() }
+            actionEffectivenessMetaWeek: effMetaWeek
+              ? { windowDays: effMetaWeek.windowDays, fetchedAt: effMetaWeek.fetchedAt.toISOString() }
               : null,
-            actionEffectivenessMetaMonth: actionEffectivenessMeta.month
-              ? { windowDays: actionEffectivenessMeta.month.windowDays, fetchedAt: actionEffectivenessMeta.month.fetchedAt.toISOString() }
+            actionEffectivenessMetaMonth: effMetaMonth
+              ? { windowDays: effMetaMonth.windowDays, fetchedAt: effMetaMonth.fetchedAt.toISOString() }
               : null,
           },
         };

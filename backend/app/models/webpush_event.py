@@ -1,8 +1,8 @@
 # backend/app/models/webpush_event.py
 
-from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.db.base import Base
 
 class WebPushEvent(Base):
@@ -14,5 +14,5 @@ class WebPushEvent(Base):
     # SW payload から来る識別子（無い場合もあるので nullable）
     notification_id = Column(String(128), nullable=True, index=True)
     run_id = Column(Integer, nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     user = relationship("User", backref="webpush_events")

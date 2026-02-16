@@ -426,7 +426,6 @@ export const NotificationSettings: React.FC = () => {
         console.warn('localStorage への保存に失敗しました:', e);
       }
 
-
       await settingsApi.updateNotification(updateData);
       await loadSettings();
 
@@ -436,6 +435,7 @@ export const NotificationSettings: React.FC = () => {
           enableMorning,
           dailyDigestTime: digestTime,
           reminderOffsetsHours: newOffsets,
+          enableWebpush, 
         };
         window.localStorage.setItem(
           NOTIFICATION_STORAGE_KEY,

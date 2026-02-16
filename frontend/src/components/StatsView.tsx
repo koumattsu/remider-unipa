@@ -2041,8 +2041,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 </div>
                 <div>
                   状態: {String((latestRun as any).status ?? 'unknown')}
-                  {'  '} / 通知作成: {Number((latestRunSummary as any)?.inapp_total ?? 0)}件
-                  {'  '} / 既読(閉じた): {Number((latestRunSummary as any)?.dismissed ?? 0)}件
+                  {'  '} / 通知作成: {Number((latestRunSummary as any)?.inapp?.total ?? 0)}件
+                  {'  '} / 既読(閉じた): {Number((latestRunSummary as any)?.inapp?.dismissed_count ?? 0)}件
                 </div>
                 <div style={{ marginTop: '0.25rem', fontSize: '0.78rem', opacity: 0.68 }}>
                   ※ 詳細は下の「Developer / 監査情報」にあります

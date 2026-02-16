@@ -1,5 +1,6 @@
 # backend/app/api/v1/endpoints/settings.py
 
+from datetime import time
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -81,6 +82,34 @@ async def create_or_update_notification_setting(
             synchronize_session=False,
         )
 
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+@router.get("/notification", response_model=NotificationSettingResponse)
+async def get_notification_setting(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """通知設定を取得（無ければ作成して返す）"""
+    setting = (
+        db.query(NotificationSetting)
+        .filter(NotificationSetting.user_id == current_user.id)
+        .first()
+    )
+
+    if setting:
+        return setting
+
+    # ✅ 無ければ作成（安全側デフォルト）
+    setting = NotificationSetting(
+        user_id=current_user.id,
+        reminder_offsets_hours=[],
+        daily_digest_time="08:00",  # フロントのフォールバックと整合
+        enable_morning_notification=False,
+        enable_webpush=False,
+    )
+    db.add(setting)
     db.commit()
     db.refresh(setting)
     return setting

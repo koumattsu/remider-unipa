@@ -16,6 +16,7 @@ from app.models.weekly_task import WeeklyTask
 from app.models.notification_setting import NotificationSetting 
 from app.models.notification_run import NotificationRun 
 from app.models.webpush_delivery import WebPushDelivery
+from app.models.webpush_event import WebPushEvent
 from app.core.config import settings
 from app.core.time import JST
 from app.services.outcome_analytics import (
@@ -707,6 +708,31 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 .scalar()
                 or 0
             )
+            # ✅ SSOT: message軸の WebPush（通知メッセージ数 / opened数）
+            # - sent_messages: run内で生成された InAppNotification（= message）
+            # - opened_messages: webpush_events.notification_id の DISTINCT（= message）
+            # NOTE: delivery軸(webpush_events)とは別に保持する（互換/監査のため）
+            opened_messages = 0
+            try:
+                opened_messages = int(
+                    db.query(func.count(func.distinct(WebPushEvent.notification_id)))
+                    .filter(WebPushEvent.run_id == run.id)
+                    .filter(WebPushEvent.event_type.in_(["opened", "open", "click"]))
+                    .scalar()
+                    or 0
+                )
+            except Exception:
+                pass
+
+            sent_messages = int(inapp_total or 0)
+            open_rate = (float(opened_messages) / float(sent_messages)) if sent_messages > 0 else None
+
+            webpush_messages = {
+                "sent_messages": sent_messages,
+                "opened_messages": opened_messages,
+                "open_rate": open_rate,
+            }
+
 
             # ✅ SSOT: WebPushDelivery から集計（subscription軸=attempt数）
             # NOTE:
@@ -747,11 +773,19 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 "inapp_total": inapp_total,
                 "webpush_events": events,
                 "webpush_source": webpush_source,
+                "webpush_messages": webpush_messages,
             }
         except Exception as e:
             snapshot = {
                 "generated_at": now_utc.isoformat(),
                 "error": (f"{type(e).__name__}: {str(e)}")[:300],
+                "webpush_source": webpush_source,
+                "webpush_events": events,
+                "webpush_messages": {
+                    "sent_messages": 0,
+                    "opened_messages": 0,
+                    "open_rate": None,
+                },
             }
 
         # ✅ SSOT集計結果を直カラムへ同期（監査一貫性）

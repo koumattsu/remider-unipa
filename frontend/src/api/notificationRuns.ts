@@ -66,7 +66,9 @@ export async function fetchLatestNotificationRun(): Promise<NotificationRun | nu
   // 1) まずは admin ルート（存在するならそれを使う）
   try {
     const res = await apiClient.get('/admin/notification-runs/latest');
-    return res.data;
+    const data = res.data;
+    // ✅ 後方互換: { run: {...} } と {...} の両対応
+    return (data?.run ?? data) as NotificationRun;
   } catch (e: any) {
     // admin が無い/権限が無い → optional扱いで次の候補へ
     if (!isOptionalNotFound(e)) throw e;
@@ -75,7 +77,8 @@ export async function fetchLatestNotificationRun(): Promise<NotificationRun | nu
   // 2) fallback（もし public ルートがある構成でも壊れない）
   try {
     const res = await apiClient.get('/notification-runs/latest');
-    return res.data;
+    const data = res.data;
+    return (data?.run ?? data) as NotificationRun;
   } catch (e: any) {
     // ここも optional（監査はなくてもStatsは動く）
     if (isOptionalNotFound(e)) return null;

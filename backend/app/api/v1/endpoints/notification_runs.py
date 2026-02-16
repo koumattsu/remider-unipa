@@ -188,11 +188,50 @@ def get_run_summary(
     deactivated = int(summary.get("deactivated", 0) or 0)
     unknown = int(summary.get("unknown", 0) or 0)
 
-    # ✅ 反応率（通知タップ→アプリ起動）: message軸 SSOT は summary 側に集約
+    # ✅ 反応率（通知タップ→アプリ起動）: message軸 SSOT
+    # 優先順位:
+    # 1) run.stats.payload.snapshot.webpush_messages（cronで確定保存したSSOT）
+    # 2) summary（後方互換）
     opened_messages = int(summary.get("opened_messages", 0) or 0)
     sent_messages = int(summary.get("sent_messages", 0) or 0)
-    # open_rate は float で返ってくる可能性があるので保守的に扱う
     open_rate = summary.get("open_rate", 0) or 0
+
+    stats = r.stats if isinstance(r.stats, dict) else None
+    if isinstance(stats, dict):
+        payload = stats.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+            stats["payload"] = payload
+
+        snapshot = payload.get("snapshot")
+        if not isinstance(snapshot, dict):
+            snapshot = {}
+            payload["snapshot"] = snapshot
+
+        wm = snapshot.get("webpush_messages")
+        if isinstance(wm, dict):
+            # message軸SSOTを優先
+            sent_messages = int(wm.get("sent_messages", sent_messages) or sent_messages or 0)
+            opened_messages = int(wm.get("opened_messages", opened_messages) or opened_messages or 0)
+            # open_rate は None/float の可能性があるので、そのまま採用（UI側が両対応）
+            if wm.get("open_rate") is not None:
+                open_rate = wm.get("open_rate")
+
+        # webpush_events が欠けていれば補完（キー集合は契約で固定済み）
+        if not isinstance(snapshot.get("webpush_events"), dict):
+            snapshot["webpush_events"] = events
+
+        # webpush_source が欠けていれば補完（最小diff: 保守的に fallback 扱い）
+        if snapshot.get("webpush_source") is None:
+            snapshot["webpush_source"] = webpush_source
+
+        # opened/sent/open_rate を snapshot にも補完（後方互換・観測強化）
+        if snapshot.get("webpush_opened_messages") is None:
+            snapshot["webpush_opened_messages"] = opened_messages
+        if snapshot.get("webpush_sent_messages") is None:
+            snapshot["webpush_sent_messages"] = sent_messages
+        if snapshot.get("webpush_open_rate") is None:
+            snapshot["webpush_open_rate"] = open_rate
 
     # ✅ 監査耐性: stats が欠けていても summary では説明可能にする（補完）
     stats = r.stats if isinstance(r.stats, dict) else None

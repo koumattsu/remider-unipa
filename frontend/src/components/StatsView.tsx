@@ -949,11 +949,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // ✅ feature_key を日本語に（未知キーはそのまま表示）
   const labelFeatureKey = (k: string) => {
     const m: Record<string, string> = {
-      deadline_is_weekend: '週末締切',
-      deadline_dow_jst: '締切の曜日（JST）',
-      deadline_hour_jst: '締切の時刻（JST）',
-      title_len_bucket: 'タイトル長',
-      has_memo: 'メモあり',
+      deadline_is_weekend: '締切が週末かどうか',
+      deadline_dow_jst: '締切の曜日',
+      deadline_hour_jst: '締切の時刻',
+      title_len_bucket: 'タイトルの長さ',
+      has_memo: 'メモ',
       is_weekly_task: '週次タスク由来',
     };
     return m[k] ?? k;
@@ -1017,7 +1017,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
       // "22:30" 形式
       if (typeof v === 'string' && v.includes(':')) {
-        return v;
+        const [hh, mm] = v.split(':');
+        const h = Number(hh);
+        const m = Number(mm);
+        if (Number.isFinite(h) && Number.isFinite(m)) {
+          if (m === 0) return `${h}時`;
+          if (m === 30) return `${h}時30分`;
+        }
+        return v; // 想定外は壊さない
       }
 
       const n = Number(v);
@@ -1026,11 +1033,10 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       const hour = Math.floor(n);
       const minutes = Math.round((n - hour) * 60);
 
-      if (minutes === 0) return `${hour}:00`;
-      if (minutes === 30) return `${hour}:30`;
+      if (minutes === 0) return `${hour}時`;
+      if (minutes === 30) return `${hour}時30分`;
 
-      // 想定外でも壊れないようにフォールバック
-      return `${hour}:${String(minutes).padStart(2, '0')}`;
+      return `${hour}時${String(minutes).padStart(2, '0')}分`;
     }
 
     // ✅ boolean はユーザー向けに日本語（true/falseをUIに出さない）
@@ -1806,6 +1812,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                           {reasons.map((r, idx) => {
+                            // ✅ ユーザー向け：技術語(JST/true/false)を出さない
                             const kLabel = labelFeatureKey(r.feature_key);
                             const vLabel = labelFeatureValue(r.feature_value, r.feature_key);
 
@@ -1921,10 +1928,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                             適用履歴（直近）
                           </div>
 
-                          <div style={{ fontSize: '0.75rem', opacity: 0.65, marginBottom: '0.4rem' }}>
-                            analytics/actions/applied（確定資産 / 読み取り専用）
-                          </div>
-
                           {appliedEventsLoading && <div style={{ opacity: 0.7 }}>読み込み中…</div>}
 
                           {!appliedEventsLoading && appliedEventsError && (
@@ -1960,9 +1963,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                     >
                                       {/* ✅ ユーザー向けの名前を表示（必要なら raw id は薄く） */}
                                       <div style={{ fontWeight: 900 }}>{actionLabel}</div>
-                                      <div style={{ fontSize: '0.72rem', opacity: 0.55, marginTop: '0.1rem' }}>
-                                        （id: {e.action_id}）
-                                      </div>
 
                                       <div style={{ opacity: 0.75, marginTop: '0.25rem' }}>
                                         適用: {new Date(e.applied_at).toLocaleString()}
@@ -2018,9 +2018,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                             }}
                                           >
                                             <div style={{ fontWeight: 900 }}>{actionLabel}</div>
-                                            <div style={{ fontSize: '0.72rem', opacity: 0.55, marginTop: '0.1rem' }}>
-                                              （id: {e.action_id}）
-                                            </div>
 
                                             <div style={{ opacity: 0.75, marginTop: '0.25rem' }}>
                                               適用: {new Date(e.applied_at).toLocaleString()}
@@ -2028,13 +2025,13 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
                                             {patchSummary && (
                                               <div style={{ opacity: 0.78, marginTop: '0.2rem' }}>
-                                                変更: {patchSummary}
+                                                変更内容: {patchSummary}
                                               </div>
                                             )}
 
                                             {reasonLabel && (
                                               <div style={{ opacity: 0.75, marginTop: '0.2rem' }}>
-                                                理由: {reasonLabel}
+                                                根拠: {reasonLabel}
                                               </div>
                                             )}
                                           </div>

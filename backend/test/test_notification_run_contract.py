@@ -151,7 +151,31 @@ def test_notification_run_summary_contract(client):
     assert 0 <= inapp["dismiss_rate"] <= 100
 
     wp = inapp["webpush"]
-    assert set(wp.keys()) == {"delivered", "failed", "deactivated", "unknown", "events"}
+
+    # ✅ 契約：必須キーは固定（後方互換）
+    required = {"delivered", "failed", "deactivated", "unknown", "events"}
+
+    # ✅ 進化：追加キーは許容（ただし whitelist で監査価値を守る）
+    optional = {"sent_messages", "opened_messages", "open_rate"}
+
+    assert required.issubset(set(wp.keys()))
+    assert set(wp.keys()).issubset(required | optional)
+
+    # required types
+    assert isinstance(wp["delivered"], int) and wp["delivered"] >= 0
+    assert isinstance(wp["failed"], int) and wp["failed"] >= 0
+    assert isinstance(wp["deactivated"], int) and wp["deactivated"] >= 0
+    assert isinstance(wp["unknown"], int) and wp["unknown"] >= 0
+    assert isinstance(wp["events"], dict)
+
+    # optional types（存在する場合のみチェック）
+    if "sent_messages" in wp:
+        assert isinstance(wp["sent_messages"], int) and wp["sent_messages"] >= 0
+    if "opened_messages" in wp:
+        assert isinstance(wp["opened_messages"], int) and wp["opened_messages"] >= 0
+    if "open_rate" in wp:
+        assert isinstance(wp["open_rate"], (int, float))
+
     for k in ["delivered", "failed", "deactivated", "unknown"]:
         assert isinstance(wp[k], int)
         assert wp[k] >= 0

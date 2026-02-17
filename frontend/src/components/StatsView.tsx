@@ -1153,7 +1153,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         >
           {/* ✅ RateBars は必ず全幅 */}
           <div style={{ gridColumn: '1 / -1' }}>
-            <RateBars points={Array.isArray(ratePoints) ? ratePoints : []} bucket={bucket} />
+            <RateBars
+              points={Array.isArray(ratePoints) ? ratePoints : []}
+              bucket={bucket}
+              loading={refreshing}
+            />
           </div>
 
           {/* ✅ 1枚だけのカードは中央寄せ（左右の無駄な隙間を作らない） */}
@@ -2529,9 +2533,10 @@ type RatePoint = {
   total: number;
 };
 
-const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
+const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month'; loading?: boolean }> = ({
   points,
   bucket,
+  loading,
 }) => {
   // ✅ points を必ず配列として扱う（undefined を潰す）
   const safePoints: RatePoint[] = Array.isArray(points) ? points : [];
@@ -2558,6 +2563,21 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
 
   // ✅ スマホは4本、PCは6本
   const visibleCount = isNarrow ? 4 : 6;
+
+  // ✅ ここがポイント：データ0件でも “loading中” はプレースホルダを出す
+  const placeholderPoints: RatePoint[] = useMemo(() => {
+    return Array.from({ length: visibleCount }).map((_, i) => ({
+      label: `__loading_${bucket}_${visibleCount}_${i}`,
+      rangeLabel: undefined,
+      rate: 0,
+      done: 0,
+      total: 0,
+    }));
+  }, [bucket, visibleCount]);
+
+  const pointsForUi = (safePoints.length > 0) ? safePoints : (loading ? placeholderPoints : []);
+  if (pointsForUi.length === 0) return null;
+
   const [page, setPage] = useState(0);
   const [pageAnimOn, setPageAnimOn] = useState(true);
   const touchStartXRef = useRef<number | null>(null);
@@ -2565,12 +2585,11 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
   const touchLastXRef = useRef<number | null>(null);
   const touchMovedRef = useRef<boolean>(false);
 
-  // ✅ ページ数（最低1）
-  const totalPages = Math.max(1, Math.ceil(safePoints.length / visibleCount));
+  const totalPages = Math.max(1, Math.ceil(pointsForUi.length / visibleCount));
 
   useEffect(() => {
     setPage(0);
-  }, [bucket, safePoints.length, visibleCount]);
+  }, [bucket, pointsForUi.length, visibleCount]);
 
   useEffect(() => {
     setPageAnimOn(false);
@@ -2578,29 +2597,22 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
     return () => window.clearTimeout(t);
   }, [page]);
 
-  // 以降 points は safePoints を使う
-  const end = Math.max(0, safePoints.length - visibleCount * page);
+  const end = Math.max(0, pointsForUi.length - visibleCount * page);
   const start = Math.max(0, end - visibleCount);
-  const rawShown = safePoints.slice(start, end);
+  const rawShown = pointsForUi.slice(start, end);
 
-  // ✅ pad は「一番古いページ（最後のページ）」だけに限定する
-  //    最新ページ(page=0)で pad が混ざるのを禁止（今回のバグの根本）
   const isOldestPage = page === totalPages - 1;
-
-  const shouldPad =
-    safePoints.length < visibleCount || (isOldestPage && rawShown.length < visibleCount);
-
+  const shouldPad = pointsForUi.length < visibleCount || (isOldestPage && rawShown.length < visibleCount);
   const padCount = shouldPad ? Math.max(0, visibleCount - rawShown.length) : 0;
 
   const padPoints: RatePoint[] = Array.from({ length: padCount }).map((_, i) => ({
-    label: `__pad_${bucket}_${page}_${i}`, // key衝突防止
+    label: `__pad_${bucket}_${page}_${i}`,
     rangeLabel: undefined,
     rate: 0,
     done: 0,
     total: 0,
   }));
 
-  // ✅ 右端＝最新の意味を保つため、左側にpad
   const shownPoints = padCount > 0 ? [...padPoints, ...rawShown] : rawShown;
 
   const tips = useMemo(() => {
@@ -2609,18 +2621,17 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month' }> = ({
       const pct = isEmpty ? 0 : clampPct(p.rate);
       return [
         p.rangeLabel ?? p.label,
-        isEmpty ? 'データなし' : `${pct}%（${p.done}/${p.total}）`,
+        isEmpty ? (loading ? '集計中…' : 'データなし') : `${pct}%（${p.done}/${p.total}）`,
       ].join('\n');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shownPoints]);
+  }, [shownPoints, loading]);
+
+  const canPrev = page < totalPages - 1;
+  const canNext = page > 0;
 
   // ✅ “空なら表示しない” は Hooks の後で（Reactのルールを守る）
   if (safePoints.length === 0) return null;
-
-  // ✅ 前=過去(older) / 次=新しい(newer)
-  const canPrev = page < totalPages - 1; // まだ過去がある
-  const canNext = page > 0;              // まだ新しい方へ戻れる
 
   // "2025/12/30-2026/01/05" / "12/30-1/5" / "12/30〜1/5" みたいなのを雑に拾う
   const parseRange = (s?: string | null) => {

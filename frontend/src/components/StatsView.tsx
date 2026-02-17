@@ -1033,7 +1033,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       return `${hour}:${String(minutes).padStart(2, '0')}`;
     }
 
-    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+    // ✅ boolean はユーザー向けに日本語（true/falseをUIに出さない）
+    if (typeof v === 'boolean') {
+      // feature_key によって意味が逆転するのを防ぐ（最低限の翻訳）
+      if (key === 'deadline_is_weekend') return v ? '週末' : '平日';
+      if (key === 'has_memo') return v ? 'あり' : 'なし';
+      if (key === 'is_weekly_task') return v ? '毎週タスク' : '通常タスク';
+      return v ? 'あり' : 'なし';
+    }
     return String(v);
   };
 
@@ -1274,6 +1281,60 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       </div>
     </div>
   );
+
+  const labelActionId = (id: string) => {
+    const m: Record<string, string> = {
+      generic: '基本（おすすめの初期アクション）',
+      weekend_enable_morning: '週末締切なら「朝通知ON」',
+      latenight_enable_webpush_and_1h: '深夜締切なら「WebPush+1時間前」',
+      add_memo: 'メモを足して明確化',
+    };
+    return m[id] ?? id;
+  };
+
+  const formatPatchSummary = (patch: any) => {
+    if (!patch || typeof patch !== 'object') return null;
+
+    const parts: string[] = [];
+
+    const pickBool = (label: string, keys: string[]) => {
+      for (const k of keys) {
+        if (k in patch) {
+          const v = patch[k];
+          if (typeof v === 'boolean') parts.push(`${label}: ${v ? 'ON' : 'OFF'}`);
+          return;
+        }
+      }
+    };
+
+    pickBool('朝通知', ['morning_enabled', 'morningEnabled']);
+    pickBool('1時間前', ['before_deadline_enabled', 'beforeDeadlineEnabled', 'one_hour_before_enabled', 'oneHourBeforeEnabled']);
+    pickBool('WebPush', ['webpush_enabled', 'webpushEnabled']);
+
+    return parts.length > 0 ? parts.join(' / ') : null;
+  };
+
+  // reason_keys を “人間向け” に整形（＝が入ってる形式にも対応）
+  const formatReasonKeysForUi = (keys: any) => {
+    const arr = Array.isArray(keys) ? keys : [];
+    if (arr.length === 0) return null;
+
+    const one = (raw: string) => {
+      const s = String(raw ?? '');
+      const [k, ...rest] = s.split('=');
+      const v = rest.length > 0 ? rest.join('=') : null;
+
+      const kLabel = labelFeatureKey(k); // 既存の labelFeatureKey を使う前提
+      if (!v) return kLabel;
+
+      // value も labelFeatureValue を通す（feature_keyが分かるので）
+      const vLabel = labelFeatureValue(v, k);
+      return `${kLabel}=${vLabel}`;
+    };
+
+    return arr.map(one).join(' / ');
+  };
+
 
   // =========================
   // Layer: Actions (next steps)
@@ -1744,31 +1805,51 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                         <div style={{ opacity: 0.7 }}>（この授業の理由データがありません）</div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                          {reasons.map((r, idx) => (
-                            <div
-                              key={`${r.course_hash}-${r.feature_key}-${r.feature_value}-${idx}`}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                gap: '0.75rem',
-                                padding: '0.5rem 0',
-                                borderTop: '1px solid rgba(255,255,255,.08)',
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 800 }}>
-                                  #{idx + 1} {labelFeatureKey(r.feature_key)} ={' '}
-                                  {labelFeatureValue(r.feature_value, r.feature_key)}
+                          {reasons.map((r, idx) => {
+                            const kLabel = labelFeatureKey(r.feature_key);
+                            const vLabel = labelFeatureValue(r.feature_value, r.feature_key);
+
+                            // ✅ 文章化（ユーザーが一瞬で理解できる形）
+                            const sentence = `${kLabel}が「${vLabel}」のタスクは落としやすい`;
+
+                            const pct = toPercent(r.missed_rate);
+                            const total = Number(r.total ?? 0);
+                            const missed = Number(r.missed ?? 0);
+
+                            return (
+                              <div
+                                key={`${r.course_hash}-${r.feature_key}-${r.feature_value}-${idx}`}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  gap: '0.75rem',
+                                  padding: '0.6rem 0',
+                                  borderTop: '1px solid rgba(255,255,255,.08)',
+                                }}
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 900 }}>
+                                    #{idx + 1} {sentence}
+                                  </div>
+
+                                  {/* ✅ “1/1” を説明付きに（意味固定） */}
+                                  <div style={{ fontSize: '0.82rem', opacity: 0.78, marginTop: '0.15rem' }}>
+                                    この条件のタスク：{total}件中 {missed}件落とした
+                                  </div>
                                 </div>
-                                <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                                  missed {r.missed}/{r.total}
+
+                                {/* ✅ 右側の%の意味を明示 */}
+                                <div style={{ textAlign: 'right', minWidth: 90 }}>
+                                  <div style={{ fontWeight: 950, fontSize: '1.1rem' }}>
+                                    {pct}%
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                    落とし率
+                                  </div>
                                 </div>
                               </div>
-                              <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-                                {toPercent(r.missed_rate)}%
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       <div style={{ marginTop: '0.85rem' }}>
@@ -1861,28 +1942,48 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                             appliedEvents &&
                             appliedEvents.length > 0 && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                {appliedEvents.slice(0, 1).map((e) => (
-                                  <div
-                                    key={e.id}
-                                    style={{
-                                      padding: '0.45rem 0.6rem',
-                                      borderRadius: 12,
-                                      border: '1px solid rgba(255,255,255,.08)',
-                                      background: 'rgba(255,255,255,.03)',
-                                      fontSize: '0.8rem',
-                                    }}
-                                  >
-                                    <div style={{ fontWeight: 800 }}>{e.action_id}</div>
-                                    <div style={{ opacity: 0.75 }}>
-                                      applied_at: {new Date(e.applied_at).toLocaleString()}
-                                    </div>
-                                    {e.payload?.reason_keys?.length > 0 && (
-                                      <div style={{ opacity: 0.75 }}>
-                                        reason: {e.payload.reason_keys.join(', ')}
+                                {appliedEvents.slice(0, 1).map((e) => {
+                                  const actionLabel = labelActionId(e.action_id);
+                                  const patchSummary = formatPatchSummary(e.payload?.patch);
+                                  const reasonLabel = formatReasonKeysForUi(e.payload?.reason_keys);
+
+                                  return (
+                                    <div
+                                      key={e.id}
+                                      style={{
+                                        padding: '0.45rem 0.6rem',
+                                        borderRadius: 12,
+                                        border: '1px solid rgba(255,255,255,.08)',
+                                        background: 'rgba(255,255,255,.03)',
+                                        fontSize: '0.8rem',
+                                      }}
+                                    >
+                                      {/* ✅ ユーザー向けの名前を表示（必要なら raw id は薄く） */}
+                                      <div style={{ fontWeight: 900 }}>{actionLabel}</div>
+                                      <div style={{ fontSize: '0.72rem', opacity: 0.55, marginTop: '0.1rem' }}>
+                                        （id: {e.action_id}）
                                       </div>
-                                    )}
-                                  </div>
-                                ))}
+
+                                      <div style={{ opacity: 0.75, marginTop: '0.25rem' }}>
+                                        適用: {new Date(e.applied_at).toLocaleString()}
+                                      </div>
+
+                                      {/* ✅ 変更内容（patch）があれば短く表示 */}
+                                      {patchSummary && (
+                                        <div style={{ opacity: 0.78, marginTop: '0.2rem' }}>
+                                          変更: {patchSummary}
+                                        </div>
+                                      )}
+
+                                      {/* ✅ 理由（reason_keys）があれば “人間向け” に表示 */}
+                                      {reasonLabel && (
+                                        <div style={{ opacity: 0.75, marginTop: '0.2rem' }}>
+                                          理由: {reasonLabel}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
 
                                 {/* ✅ 履歴（2件目以降）は map の外に出す */}
                                 {appliedEvents.length > 1 && (
@@ -1899,29 +2000,46 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                         gap: '0.35rem',
                                       }}
                                     >
-                                      {appliedEvents.slice(1).map((e) => (
-                                        <div
-                                          key={`hist-${e.id}`}
-                                          style={{
-                                            padding: '0.45rem 0.6rem',
-                                            borderRadius: 12,
-                                            border: '1px solid rgba(255,255,255,.08)',
-                                            background: 'rgba(255,255,255,.03)',
-                                            fontSize: '0.8rem',
-                                            opacity: 0.9,
-                                          }}
-                                        >
-                                          <div style={{ fontWeight: 800 }}>{e.action_id}</div>
-                                          <div style={{ opacity: 0.75 }}>
-                                            applied_at: {new Date(e.applied_at).toLocaleString()}
-                                          </div>
-                                          {e.payload?.reason_keys?.length > 0 && (
-                                            <div style={{ opacity: 0.75 }}>
-                                              reason: {e.payload.reason_keys.join(', ')}
+                                      {appliedEvents.slice(1).map((e) => {
+                                        const actionLabel = labelActionId(e.action_id);
+                                        const patchSummary = formatPatchSummary(e.payload?.patch);
+                                        const reasonLabel = formatReasonKeysForUi(e.payload?.reason_keys);
+
+                                        return (
+                                          <div
+                                            key={`hist-${e.id}`}
+                                            style={{
+                                              padding: '0.45rem 0.6rem',
+                                              borderRadius: 12,
+                                              border: '1px solid rgba(255,255,255,.08)',
+                                              background: 'rgba(255,255,255,.03)',
+                                              fontSize: '0.8rem',
+                                              opacity: 0.9,
+                                            }}
+                                          >
+                                            <div style={{ fontWeight: 900 }}>{actionLabel}</div>
+                                            <div style={{ fontSize: '0.72rem', opacity: 0.55, marginTop: '0.1rem' }}>
+                                              （id: {e.action_id}）
                                             </div>
-                                          )}
-                                        </div>
-                                      ))}
+
+                                            <div style={{ opacity: 0.75, marginTop: '0.25rem' }}>
+                                              適用: {new Date(e.applied_at).toLocaleString()}
+                                            </div>
+
+                                            {patchSummary && (
+                                              <div style={{ opacity: 0.78, marginTop: '0.2rem' }}>
+                                                変更: {patchSummary}
+                                              </div>
+                                            )}
+
+                                            {reasonLabel && (
+                                              <div style={{ opacity: 0.75, marginTop: '0.2rem' }}>
+                                                理由: {reasonLabel}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   </details>
                                 )}

@@ -174,7 +174,6 @@ class WebPushSender:
                             )
                         )
                         dirty = True
-
                     logger.info(
                         "[webpush] deactivated user_id=%s sub_id=%s status=%s",
                         user_id,

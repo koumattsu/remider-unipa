@@ -1107,30 +1107,22 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
   // Layer: Metrics (facts)
   // =========================
   const MetricsOverview = () => {
-    // ✅ NotifStatsCard 用：週/月の WebPush 指標を “ここで確定”（JSX内で計算しない）
-    const inappWp = (latestRunSummary as any)?.inapp?.webpush;
+  // ✅ NotifStatsCard 用：週/月の通知反応（UI SSOT）
+  // - 分母: summary.total（= sent_messages のSSOT）
+  // - 分子: summary.dismissed（= opened_messages のSSOT）
+  // - rate: summary.dismiss_rate
+  // ※ webpush_events.sent（attempt/端末単位）は監査用なのでUI計算に使わない
+  const createdForPeriod = Number(chosenNotifSummary?.total ?? 0);
 
-    // message軸（最優先：通知メッセージ数）
-    const periodSentMessages = Number(inappWp?.sent_messages ?? 0);
-    const periodOpenedMessagesRaw = inappWp?.opened_messages;
+  const openedForPeriod =
+    chosenNotifSummary?.dismissed == null ? undefined : Number(chosenNotifSummary.dismissed);
 
-    // events軸（fallback：通知イベント数）
-    const periodSentEvents = Number(chosenNotifSummary?.webpush_events?.sent ?? 0);
-
-    // created（分母）：message軸が取れたらそれ。無ければ event軸。
-    const createdForPeriod = periodSentMessages > 0 ? periodSentMessages : periodSentEvents;
-
-    // opened（分子）：message軸が取れた時だけ。0は0で出す。欠損はundefined。
-    const openedForPeriod =
-      periodOpenedMessagesRaw == null ? undefined : Number(periodOpenedMessagesRaw);
-
-    // open_rate：取れたらそれ。無ければ opened/created（両方揃ってる時だけ）
-    const openRateForPeriod = (() => {
-      const or = inappWp?.open_rate;
-      if (or != null) return Number(or);
-      if (createdForPeriod > 0 && openedForPeriod != null) return openedForPeriod / createdForPeriod;
-      return undefined;
-    })();
+  const openRateForPeriod = (() => {
+    const r = chosenNotifSummary?.dismiss_rate;
+    if (r != null) return Number(r);
+    if (createdForPeriod > 0 && openedForPeriod != null) return openedForPeriod / createdForPeriod;
+    return undefined;
+  })();
 
     return (
       <>

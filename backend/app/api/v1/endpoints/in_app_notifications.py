@@ -122,7 +122,6 @@ async def summarize_in_app_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
     """
     分析用：InAppNotification の期間サマリ（read only）
     - created_at 基準で from/to を解釈

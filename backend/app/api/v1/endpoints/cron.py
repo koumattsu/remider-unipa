@@ -364,7 +364,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ns = db.query(NotificationSetting).filter(...).first()
             raw_offsets = list(getattr(setting, "reminder_offsets_hours", []) or [])
 
-            # ✅ 判定も送信も「正規化後 offset」で統一
             cands = collect_notification_candidates(
                 db,
                 user_id=user_id,
@@ -373,7 +372,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 now_utc=now_utc,
                 run_id=run.id,
             )
-            # ✅ reason 集計（notification.py 側の logger と同一コード体系）
+
+            # ✅ 監査: decision reason 集計（従来通り）
             for k, v in (cands.debug or {}).items():
                 if not (isinstance(k, str) and isinstance(v, int)):
                     continue
@@ -381,6 +381,31 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     continue
                 reason = k[len("decision."):]
                 decision_counts[reason] = decision_counts.get(reason, 0) + v
+
+            # ✅ 監査: 朝通知の「なぜ0か」を stats に残すための集計（SSOT維持・DB変更なし）
+            # - decision.* 以外も含めて payload に載せられるように、ここで user 別の要点だけ取り出す
+            # - 集計は "counts" として run.stats に入れる（finally で）
+            if "cron_debug_counts" not in locals():
+                cron_debug_counts = {"digest_ok_true": 0, "digest_ok_false": 0}
+            if digest_ok:
+                cron_debug_counts["digest_ok_true"] = int(cron_debug_counts.get("digest_ok_true", 0)) + 1
+            else:
+                cron_debug_counts["digest_ok_false"] = int(cron_debug_counts.get("digest_ok_false", 0)) + 1
+
+            # notification.py 側の morning 監査カウンタ（存在するものだけ合算）
+            for kk in [
+                "morning.candidates_raw",
+                "morning.skipped",
+                "morning.skipped:label_date_mismatch",
+                "morning.skipped:already_locked",
+                "decision.sent:morning_hit",
+                "due_total",
+                "morning_total",
+            ]:
+                vv = (cands.debug or {}).get(kk)
+                if isinstance(vv, int):
+                    cron_debug_counts[kk] = int(cron_debug_counts.get(kk, 0)) + int(vv)
+            
             had_any_candidate = False
             for h, ts in cands.due_in_hours.items():
                 due_candidates_total += len(ts)
@@ -806,6 +831,12 @@ async def run_daily_job(db: Session = Depends(get_db)):
                 "users_with_candidates": users_with_candidates,
                 "snapshot": snapshot,
                 "decision_counts": decision_counts,
+                # ✅ 監査: 朝通知が0の時に「窓/候補/ロック」どこで落ちたかを説明可能にする
+                "cron_debug_counts": (locals().get("cron_debug_counts") or {}),
+                # ✅ 明示: morning_candidates_total は "morning_total(=ロック成功数)" と一致する設計
+                "notes": {
+                    "morning_candidates_total_semantics": "count of tasks that passed morning label_date and acquired offset=0 lock (try_mark_notification_as_sent)",
+                },
             },
         }
         run.line_sent = line_sent

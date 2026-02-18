@@ -164,6 +164,10 @@ def decide_notification(
     SSOT（Phase 1）：
     - 通知「候補」かどうかだけを判定する
     - DBロック・diff_hours 判定は含めない（最小diff）
+
+    ✅ NOTE（監査/保守の誤解防止）:
+    - "candidate:*" は should_send=False で返す（= 候補/前提条件OK）
+    - "send:*" は should_send=True で返す（= 今まさに送るべき）
     """
 
     # ⓪ ソフトデリート
@@ -205,7 +209,8 @@ def decide_notification(
     # ✅ 朝通知（offset_hours=0）は Phase2（窓判定）に入れない
     # - “今日の朝に出す候補か” は get_tasks_due_today_morning() 側で label_date==today_jst で確定する
     if offset_hours == 0:
-        return NotificationDecision(True, "candidate:morning", effective_offsets)
+        # ✅ "候補" は should_send=False に統一（誤解防止）
+        return NotificationDecision(False, "candidate:morning", effective_offsets)
 
     # Phase 2（SSOT拡張）：
     if offset_hours is not None:
@@ -232,7 +237,7 @@ def decide_notification(
         return NotificationDecision(True, "send:offset_hit", effective_offsets)
 
     # offset_hours 未指定の場合は「候補」だけ返す（Phase1のまま）
-    return NotificationDecision(True, "candidate:offset_window", effective_offsets)
+    return NotificationDecision(False, "candidate:offset_window", effective_offsets)
 
 def decide_notification_and_lock(
     *,
@@ -341,11 +346,20 @@ def get_tasks_due_in_offsets(
     if not normalized:
         return dict(due_map)
 
-    # candidates を一括取得（weekly active だけ join）
     candidates = (
         db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
-        .filter(Task.user_id == user_id, Task.deleted_at.is_(None),)
+        .filter(
+            Task.user_id == user_id,
+            Task.deleted_at.is_(None),
+            Task.is_done == False,  # noqa: E712
+            or_(
+                Task.should_notify == True,
+                Task.should_notify.is_(None),
+            ),
+            Task.deadline.isnot(None),
+            Task.deadline >= now_utc,  # ✅ DB側で過去締切を落としてノイズ/処理を削減
+        )
         .all()
     )
 
@@ -478,13 +492,16 @@ def get_tasks_due_today_morning(
 ) -> List[Task]:
     """
     ✅ 内部UTC、判定はJSTの「今日」
+    - morning_candidates_total が 0 のときでも「なぜ0か」を stats/debug に残せるようにする（監査性）
     """
     today_jst = now_utc.astimezone(JST).date()
+
     candidates = (
         db.query(Task, WeeklyTask.is_active)
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
+            Task.deleted_at.is_(None),          # ✅ 監査的にも自然（ソフトデリート除外）
             Task.is_done == False,  # noqa: E712
             or_(
                 Task.should_notify == True,
@@ -493,6 +510,10 @@ def get_tasks_due_today_morning(
         )
         .all()
     )
+
+    if debug is not None:
+        debug["morning.candidates_raw"] = debug.get("morning.candidates_raw", 0) + len(candidates)
+
     result: List[Task] = []
 
     for task, weekly_is_active in candidates:
@@ -504,6 +525,7 @@ def get_tasks_due_today_morning(
             )
             .first()
         )
+
         # ✅ 朝通知も Phase1 SSOT を必ず通す
         decision = decide_notification(
             task=task,
@@ -513,10 +535,13 @@ def get_tasks_due_today_morning(
             base_offsets=[],
             offset_hours=0,       # ✅ 朝通知 = 0
         )
-        if not decision.should_send:
+
+        # ✅ ここは "candidate:morning" だけ通す（should_send の誤解余地を排除）
+        if decision.reason != "candidate:morning":
             if debug is not None:
                 k = f"decision.{decision.reason}"
                 debug[k] = debug.get(k, 0) + 1
+                debug["morning.skipped"] = debug.get("morning.skipped", 0) + 1
             logger.info(
                 "[morning-skip] user_id=%s task_id=%s reason=%s",
                 user_id, task.id, decision.reason
@@ -524,24 +549,43 @@ def get_tasks_due_today_morning(
             continue
 
         label_date = deadline_label_date_jst(task.deadline)
+        if label_date != today_jst:
+            if debug is not None:
+                debug["morning.skipped:label_date_mismatch"] = debug.get("morning.skipped:label_date_mismatch", 0) + 1
+            logger.info(
+                "[morning-skip] user_id=%s task_id=%s reason=label_date_mismatch label_date=%s today_jst=%s",
+                user_id, task.id, label_date, today_jst
+            )
+            continue
+
         deadline_utc = to_utc(task.deadline)
 
-        if label_date == today_jst:
-            if try_mark_notification_as_sent(
-                db, user_id, task.id, deadline_utc, MORNING_OFFSET_HOURS,
-                sent_at_utc=now_utc,
-                run_id=run_id
-            ):
-                if debug is not None:
-                    debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
-                    rk = f"task_reason:{task.id}:{decision.reason}"
-                    debug[rk] = debug.get(rk, 0) + 1
+        ok = try_mark_notification_as_sent(
+            db, user_id, task.id, deadline_utc, MORNING_OFFSET_HOURS,
+            sent_at_utc=now_utc,
+            run_id=run_id
+        )
+        if not ok:
+            if debug is not None:
+                debug["morning.skipped:already_locked"] = debug.get("morning.skipped:already_locked", 0) + 1
+            logger.info(
+                "[morning-skip] user_id=%s task_id=%s reason=already_locked deadline_utc=%s",
+                user_id, task.id, deadline_utc.isoformat()
+            )
+            continue
 
-                    # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
-                    k1 = f"task_reason:{task.id}"
-                    if k1 not in debug:
-                        debug[k1] = decision.reason
-                result.append(task)
+        if debug is not None:
+            debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
+            rk = f"task_reason:{task.id}:{decision.reason}"
+            debug[rk] = debug.get(rk, 0) + 1
+
+            # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
+            k1 = f"task_reason:{task.id}"
+            if k1 not in debug:
+                debug[k1] = decision.reason
+
+        result.append(task)
+
     return result
 
 from dataclasses import dataclass

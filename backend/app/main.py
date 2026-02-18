@@ -23,8 +23,6 @@ def get_application() -> FastAPI:
     # ✅ config.py の validator で list[str] になってる前提
     origins = settings.CORS_ORIGINS
 
-    # 念のため FRONTEND_URL も許可に入れておく（入ってなければ追加）
-    # ✅ ただし production で未設定デフォルト(localhost)が混ざる事故を防ぐ
     frontend_origin = (settings.FRONTEND_URL or "").strip().rstrip("/")
     # ✅ production でも FRONTEND_URL が "https://" のときだけ許可（安全）
     if frontend_origin.startswith("https://") and frontend_origin not in origins:

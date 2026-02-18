@@ -199,11 +199,13 @@ def record_webpush_event(
     data = _parse_event_token(payload.event_token)
 
     # 監査上、client payload は改ざん可能なので token 内の値を優先
+    # ✅ created_at の DB default が無い/効かない環境でも落ちないように、サーバ側で確定時刻を入れる
     row = WebPushEvent(
         user_id=int(data["user_id"]),
         event_type=payload.type,
         notification_id=data.get("notification_id"),
         run_id=data.get("run_id"),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(row)
     db.commit()

@@ -1320,6 +1320,68 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return parts.length > 0 ? parts.join(' / ') : null;
   };
 
+  // =========================
+  // UI helpers（表示専用 / SSOT不変）
+  // =========================
+  const stripJst = (s: string) => (s ?? '').replace(/\s*（JST）\s*/g, '');
+
+  // ✅ labelFeatureKey のUI版：JSTは絶対に出さない
+  const labelFeatureKeyUi = (featureKey: string) => stripJst(labelFeatureKey(featureKey));
+
+  // ✅ true/false をUIから完全排除（boolean or "true"/"false" 対応）
+  const labelFeatureValueUi = (value: any, featureKey: string) => {
+    // まず boolean と "true"/"false" を正規化
+    const b =
+      typeof value === 'boolean'
+        ? value
+        : String(value ?? '').toLowerCase() === 'true'
+          ? true
+          : String(value ?? '').toLowerCase() === 'false'
+            ? false
+            : null;
+
+    if (b == null) {
+      // boolean以外は既存の labelFeatureValue を使う（最小diff）
+      return labelFeatureValue(value, featureKey);
+    }
+
+    // ✅ boolean は labelFeatureKey の「意味」に合わせて人間語にする
+    const kLabel = labelFeatureKeyUi(featureKey);
+
+    // 週末判定（例：締切が週末かどうか）
+    if (kLabel.includes('週末')) return b ? '週末' : '平日';
+
+    // メモの有無
+    if (kLabel.includes('メモ')) return b ? 'メモあり' : 'メモなし';
+
+    // 週次タスク由来
+    if (kLabel.includes('週次')) return b ? '週次タスク' : '通常タスク';
+
+    // fallback（これでも true/false は出ない）
+    return b ? 'あり' : 'なし';
+  };
+
+  // ✅ 「理由」の文章を、ユーザーが一瞬で理解できる形に整形（表示専用）
+  const buildReasonSentenceUi = (kLabel: string, vLabel: string) => {
+    // 例：「締切が週末かどうか」×「平日/週末」
+    if (kLabel.includes('週末') && kLabel.includes('どうか') && (vLabel === '週末' || vLabel === '平日')) {
+      return `締切が${vLabel}のタスクは落としやすい`;
+    }
+
+    // 例：「メモ」×「メモあり/メモなし」
+    if (kLabel.includes('メモ') && (vLabel === 'メモあり' || vLabel === 'メモなし')) {
+      return `メモが${vLabel === 'メモあり' ? 'ある' : 'ない'}タスクは落としやすい`;
+    }
+
+    // 例：「週次タスク由来」×「週次タスク/通常タスク」
+    if (kLabel.includes('週次') && (vLabel === '週次タスク' || vLabel === '通常タスク')) {
+      return `${vLabel}のタスクは落としやすい`;
+    }
+
+    // 既存テンプレを維持（最小diff）
+    return `${kLabel}が「${vLabel}」のタスクは落としやすい`;
+  };
+
   // reason_keys を “人間向け” に整形（＝が入ってる形式にも対応）
   const formatReasonKeysForUi = (keys: any) => {
     const arr = Array.isArray(keys) ? keys : [];
@@ -1330,17 +1392,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
       const [k, ...rest] = s.split('=');
       const v = rest.length > 0 ? rest.join('=') : null;
 
-      const kLabel = labelFeatureKey(k); // 既存の labelFeatureKey を使う前提
+      const kLabel = labelFeatureKeyUi(k);
       if (!v) return kLabel;
 
-      // value も labelFeatureValue を通す（feature_keyが分かるので）
-      const vLabel = labelFeatureValue(v, k);
-      return `${kLabel}=${vLabel}`;
+      const vLabel = labelFeatureValueUi(v, k);
+      return `${kLabel}：${vLabel}`;
     };
 
     return arr.map(one).join(' / ');
   };
-
 
   // =========================
   // Layer: Actions (next steps)
@@ -1812,12 +1872,9 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                           {reasons.map((r, idx) => {
-                            // ✅ ユーザー向け：技術語(JST/true/false)を出さない
-                            const kLabel = labelFeatureKey(r.feature_key);
-                            const vLabel = labelFeatureValue(r.feature_value, r.feature_key);
-
-                            // ✅ 文章化（ユーザーが一瞬で理解できる形）
-                            const sentence = `${kLabel}が「${vLabel}」のタスクは落としやすい`;
+                            const kLabel = labelFeatureKeyUi(r.feature_key);
+                            const vLabel = labelFeatureValueUi(r.feature_value, r.feature_key);
+                            const sentence = buildReasonSentenceUi(kLabel, vLabel);
 
                             const pct = toPercent(r.missed_rate);
                             const total = Number(r.total ?? 0);
@@ -2109,7 +2166,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                                                 key={`${a.id}-ev-${r.feature_key}-${String(r.feature_value)}-${idx}`}
                                                 style={{ opacity: 0.85 }}
                                               >
-                                                ・{labelFeatureKey(r.feature_key)} = {labelFeatureValue(r.feature_value, r.feature_key)}（missed {r.missed}/{r.total} = {toPercent(r.missed_rate)}%）
+                                                ・{labelFeatureKeyUi(r.feature_key)}：{labelFeatureValueUi(r.feature_value, r.feature_key)}
                                               </div>
                                             ))}
                                           </div>
@@ -2691,8 +2748,8 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month'; loadin
   }, [bucket, visibleCount]);
 
   const pointsForUi = (safePoints.length > 0) ? safePoints : (loading ? placeholderPoints : []);
-  if (pointsForUi.length === 0) return null;
 
+  // ✅ Hooks（ページャ系）は return より前に必ず宣言する（Rules of Hooks対策）
   const [page, setPage] = useState(0);
   const [pageAnimOn, setPageAnimOn] = useState(true);
   const touchStartXRef = useRef<number | null>(null);
@@ -2711,6 +2768,13 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month'; loadin
     const t = window.setTimeout(() => setPageAnimOn(true), 0);
     return () => window.clearTimeout(t);
   }, [page]);
+
+  // ✅ “空なら表示しない” は Hooks の後で（Reactのルールを守る）
+  //    ただし loading 中は placeholder を出したいので、loading=false のときだけ非表示
+  if (!loading && safePoints.length === 0) return null;
+
+  // ✅ placeholder も無い（= loadingでもなく pointsも無い）なら非表示
+  if (pointsForUi.length === 0) return null;
 
   const end = Math.max(0, pointsForUi.length - visibleCount * page);
   const start = Math.max(0, end - visibleCount);
@@ -2774,8 +2838,9 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month'; loadin
   };
 
   const formatBottom = (p: RatePoint) => {
-    // ✅ pad のラベルは絶対に見せない
+    // ✅ pad / loading のラベルは絶対に見せない
     if ((p.label ?? '').startsWith('__pad_')) return '';
+    if ((p.label ?? '').startsWith('__loading_')) return '';
 
     // 月: "2026/01" -> "1月"
     if (bucket === 'month') {

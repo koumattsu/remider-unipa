@@ -143,13 +143,37 @@ export const TaskForm: React.FC<TaskFormProps> = ({
             {/* 日付 */}
             <div style={{ position: 'relative', flex: 1 }}>
               <input
+                id="deadline-date"
                 type="date"
                 value={deadlineDate}
                 onChange={(e) => setDeadlineDate(e.target.value)}
                 required
                 className={`glass-field ${defaultDeadlineDate ? 'date-right' : ''}`}
               />
+
+              {/* ✅ 枠内どこ押しても開く用の透明クリックレイヤー */}
+              <button
+                type="button"
+                aria-label="締切日を選択"
+                onClick={() => {
+                  const el = document.getElementById('deadline-date') as HTMLInputElement | null;
+                  if (!el) return;
+                  // @ts-ignore
+                  if (typeof el.showPicker === 'function') el.showPicker();
+                  else el.focus();
+                }}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  margin: 0,
+                  cursor: 'pointer',
+                }}
+              />
             </div>
+
             {/* 時 */}
             <select
               value={deadlineHour}

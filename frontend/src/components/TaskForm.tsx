@@ -147,7 +147,7 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                 value={deadlineDate}
                 onChange={(e) => setDeadlineDate(e.target.value)}
                 required
-                className={`glass-field ${defaultDeadlineDate ? 'date-right' : ''}`}
+                className="glass-field date-right"
               />
             </div>
             {/* 時 */}

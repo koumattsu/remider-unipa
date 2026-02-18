@@ -273,33 +273,23 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   cursor: not-allowed;
 }
 
-/* date input をアイコン前提のレイアウトに */
+/* ✅ date input: アイコンは常に右、文字と被らない */
 input[type="date"].glass-field {
   position: relative;
-  text-align: center;              /* 日付文字も中央寄せ */
-  padding-left: 2.5rem;            /* 左右に余白を作る */
-  padding-right: 2.5rem;
+  text-align: left;         /* 文字は左寄せ */
+  padding-left: 0.75rem;
+  padding-right: 2.75rem;   /* 右のアイコン分を確保 */
 }
 
-/* 本物のカレンダーアイコンを中央寄りに */
+/* ✅ Chrome/Safari: カレンダーアイコンを右端に固定 */
 input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  filter: invert(1);
-  opacity: 0.75;
-  cursor: pointer;
-}
-/* ===== date: right mode (今日タスクなどデフォルト日付ありの時) ===== */
-input[type="date"].glass-field.date-right {
-  text-align: left;
-  padding-left: 0.75rem;
-  padding-right: 2.5rem; /* 右側アイコン分 */
-}
-input[type="date"].glass-field.date-right::-webkit-calendar-picker-indicator {
   left: auto;
   right: 0.75rem;
   transform: none;
+  filter: invert(1);
+  opacity: 0.75;
+  cursor: pointer;
 }
 
 /* ===== Near-future background layers (C) ===== */

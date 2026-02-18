@@ -2810,7 +2810,8 @@ const RateBars: React.FC<{ points: RatePoint[]; bucket: 'week' | 'month'; loadin
   const canNext = page > 0;
 
   // ✅ “空なら表示しない” は Hooks の後で（Reactのルールを守る）
-  if (safePoints.length === 0) return null;
+  // loading中は placeholder を出したいので消さない
+  if (!loading && safePoints.length === 0) return null;
 
   // "2025/12/30-2026/01/05" / "12/30-1/5" / "12/30〜1/5" みたいなのを雑に拾う
   const parseRange = (s?: string | null) => {
@@ -3105,7 +3106,7 @@ const NotifStatsCard: React.FC<NotifStatsCardProps> = (props) => {
   const reactPct: number | null =
     pctFromProp != null
       ? pctFromProp
-      : (createdN > 0 ? Math.max(0, Math.min(100, (reactedN / createdN) * 100)) : null);
+      : (createdN > 0 ? (reactedN / createdN) * 100 : null);
 
   return (
     <div

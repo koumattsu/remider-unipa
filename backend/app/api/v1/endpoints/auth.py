@@ -36,10 +36,10 @@ def _make_cookie_opts():
         "samesite": settings.SESSION_COOKIE_SAMESITE,
         "path": settings.SESSION_COOKIE_PATH,
     }
-    if settings.SESSION_COOKIE_DOMAIN:
-        opts["domain"] = settings.SESSION_COOKIE_DOMAIN
+    # ✅ 事故防止：Domain は付けない（host-only cookie に固定）
+    # Render / Cloudflare / onrender サブドメインで Domain mis-match が起きると
+    # 「保存されてるのに送られない」事故になるため
     return opts
-
 
 def _make_oauth_state_cookie_opts():
     # LINE -> backend の「トップレベル遷移」で確実に返ってくる設定

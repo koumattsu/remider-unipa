@@ -10,26 +10,26 @@ export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // ダミー認証なので自動的にログイン済みとして扱う
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const checkAuth = async () => {
     try {
       await authApi.getCurrentUser();
-      // 認証済みならダッシュボードへ
       navigate('/dashboard');
-    } catch (error) {
-      // ✅ 未ログイン(401)なら、まずゲストセッションを発行して続行
-      try {
-        await authApi.ensureGuestSession();
-        // セッションが入った前提でダッシュボードへ
-        navigate('/dashboard');
-        return;
-      } catch (e) {
-        // ゲスト発行に失敗した場合だけログイン画面を表示（フォールバック）
-        setIsLoading(false);
+    } catch {
+      // ✅ 1回だけ guest 発行（連打防止）
+      const key = 'df_guest_issued_v1';
+      if (!localStorage.getItem(key)) {
+        localStorage.setItem(key, '1');
+        try {
+          await authApi.ensureGuestSession();
+          navigate('/dashboard');
+          return;
+        } catch {}
       }
+      setIsLoading(false);
     }
   };
 

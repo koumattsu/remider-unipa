@@ -3,15 +3,14 @@
 import apiClient from './client';
 
 export const authApi = {
-  getCurrentUser: async () => {
-    const response = await apiClient.get('/auth/me');
-    return response.data;
-  },
+  getCurrentUser: async () => (await apiClient.get('/auth/me')).data,
 
-  // ✅ 追加：ゲストセッション発行（LINE不要）
   ensureGuestSession: async () => {
-    // サーバ側で cookie を set するだけでOK（戻り値は任意）
-    const response = await apiClient.post('/auth/guest');
-    return response.data;
+    const key = 'df_guest_attempted_v1';
+    if (typeof window !== 'undefined' && sessionStorage.getItem(key) === '1') {
+      throw new Error('guest already attempted');
+    }
+    if (typeof window !== 'undefined') sessionStorage.setItem(key, '1');
+    return (await apiClient.post('/auth/guest')).data;
   },
 };

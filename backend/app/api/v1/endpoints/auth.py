@@ -13,6 +13,8 @@ from app.models.user import User
 from app.models.notification_setting import NotificationSetting  # ✅ 追加（パスは実ファイルに合わせて）
 from app.schemas.user import UserResponse
 from app.core.config import settings
+from uuid import uuid4
+from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["auth"])
 
@@ -53,15 +55,10 @@ def _make_oauth_state_cookie_opts():
 
 @router.post("/guest")
 async def guest_login(db: Session = Depends(get_db)):
-    """
-    ✅ LINE不要のゲストセッション発行
-    - users を作る（line_user_id は NULL）
-    - NotificationSetting を必ず1行持たせる
-    - session cookie をセットして返す
-    """
-    # ゲストユーザー作成（最小：display_nameだけ埋める）
+    guest_line_user_id = f"guest:{uuid4().hex}"
+
     user = User(
-        line_user_id=None,
+        line_user_id=guest_line_user_id,  # ✅ NULLやめる
         display_name="Guest",
         university="",
         plan="free",
@@ -70,12 +67,8 @@ async def guest_login(db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    # NotificationSetting を必ず1行（欠損自動修復）
-    ns = (
-        db.query(NotificationSetting)
-        .filter(NotificationSetting.user_id == user.id)
-        .first()
-    )
+    # NotificationSetting upsert（ここはそのままでOK）
+    ns = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
     if not ns:
         ns = NotificationSetting(
             user_id=user.id,
@@ -88,18 +81,17 @@ async def guest_login(db: Session = Depends(get_db)):
         db.commit()
 
     session_token = _serializer().dumps({
-        "user_id": user.id,          # ✅ 唯一の真実
-        "line_user_id": None,        # ✅ 互換（将来のリンクでもOK）
+        "user_id": user.id,
+        "line_user_id": guest_line_user_id,  # ✅ 互換も保つ
     })
 
-    resp = {"user_id": user.id, "plan": user.plan, "is_guest": True}
-
-    # FastAPIのJSONResponseでcookieを付けたいので Response を使う
-    from fastapi.responses import JSONResponse
-    r = JSONResponse(content=resp)
-
-    cookie_opts = _make_cookie_opts()
-    r.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **cookie_opts)
+    r = JSONResponse(content={"user_id": user.id, "plan": user.plan, "is_guest": True})
+    r.set_cookie(
+        settings.SESSION_COOKIE_NAME,
+        session_token,
+        max_age=60 * 60 * 24 * 30,
+        **_make_cookie_opts(),  # ← ここが SameSite=None/Secure=true になってるのが条件
+    )
     return r
 
 @router.get("/me", response_model=UserResponse)

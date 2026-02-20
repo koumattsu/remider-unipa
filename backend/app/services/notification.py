@@ -386,27 +386,36 @@ def get_tasks_due_in_offsets(
             .first()
         )
 
-        decision = decide_notification(
-            task=task,
-            weekly_is_active=weekly_is_active,
-            now_utc=now_utc,
-            override=override,
-            base_offsets=normalized,
-        )
-        if not decision.should_send:
+        # ✅ Phase1（共通候補）だけ判定：ここで should_send は見ない
+        if not is_notification_candidate(task, weekly_is_active, now_utc):
             if debug is not None:
-                k = f"decision.{decision.reason}"
-                debug[k] = debug.get(k, 0) + 1
+                debug["notify.skipped:not_candidate"] = debug.get("notify.skipped:not_candidate", 0) + 1
             logger.info(
-                "[notify-skip] user_id=%s task_id=%s reason=%s",
-                user_id, task.id, decision.reason
+                "[notify-skip] user_id=%s task_id=%s reason=not_candidate",
+                user_id, task.id
             )
             continue
 
+        # ✅ override を反映した effective_offsets を作る（朝通知(0)はここに入れない）
+        effective_offsets: List[int] = list(normalized or [])
+        if override:
+            ro = override.reminder_offsets_hours
+            if ro is None:
+                effective_offsets = list(normalized or [])
+            elif isinstance(ro, list) and len(ro) == 0:
+                if debug is not None:
+                    debug["notify.skipped:override_disabled"] = debug.get("notify.skipped:override_disabled", 0) + 1
+                logger.info(
+                    "[notify-skip] user_id=%s task_id=%s reason=override_disabled",
+                    user_id, task.id
+                )
+                continue
+            else:
+                effective_offsets = list(ro or [])
+
         deadline_utc = to_utc(task.deadline)
         diff_hours = (deadline_utc - now_utc).total_seconds() / 3600.0
-        # ✅ SSOT: effective_offsets は decide_notification() の結果のみを信頼する
-        effective_offsets = decision.effective_offsets
+
         for offset in effective_offsets or []:
             try:
                 h = int(offset)
@@ -443,12 +452,10 @@ def get_tasks_due_in_offsets(
             )
             if debug is not None:
                 debug["decision.sent:offset_hit"] = debug.get("decision.sent:offset_hit", 0) + 1
-                rk = f"task_reason:{task.id}:{decision.reason}"
+                rk = f"task_reason:{task.id}:{offset_decision.reason}"
                 debug[rk] = debug.get(rk, 0) + 1
+                debug[f"task_reason:{task.id}"] = offset_decision.reason
 
-                # ✅ UI/通知extra用：送信ヒット理由を確定
-                k1 = f"task_reason:{task.id}"
-                debug[k1] = offset_decision.reason
             due_map[h].append(task)
 
     return dict(due_map)

@@ -8,6 +8,7 @@ export const Login: React.FC = () => {
   console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
+  const [guestLoading, setGuestLoading] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -18,23 +19,23 @@ export const Login: React.FC = () => {
     try {
       await authApi.getCurrentUser();
       navigate('/dashboard');
+      return;
     } catch {
-      const key = 'df_guest_issued_v1';
-      if (!sessionStorage.getItem(key)) {
-        sessionStorage.setItem(key, '1');
-        try {
-          await authApi.ensureGuestSession();
-          // ✅ cookie が入ったかを 1 回だけ確定させる（入ってないのに dashboard へ行かない）
-          await authApi.getCurrentUser() ;
-          navigate('/dashboard');
-          return;
-        } catch {
-          // ✅ 失敗時はロック解除（永久に guest を試さない事故を防ぐ）
-          sessionStorage.removeItem(key);
-        }
-      }
-
+      // ✅ 未ログインなら「ログイン画面」を出す（勝手にguest発行しない）
       setIsLoading(false);
+    }
+  };
+
+  const startGuest = async () => {
+    setGuestLoading(true);
+    try {
+      await authApi.ensureGuestSession();
+      await authApi.getCurrentUser();
+      navigate('/dashboard');
+    } catch (e) {
+      // 失敗したらログイン画面に戻す
+      setGuestLoading(false);
+      alert('ゲスト開始に失敗しました。もう一度お試しください。');
     }
   };
 
@@ -61,11 +62,33 @@ export const Login: React.FC = () => {
   return (
     <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
       <h1 style={{ textAlign: 'center' }}>UniPA Reminder App</h1>
+
       <div style={{ marginTop: '2rem', padding: '2rem', border: '1px solid #ddd', borderRadius: '8px' }}>
         <h2>ログイン</h2>
-        <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-          LINEアカウントでログインしてください。
+
+        <button
+          onClick={startGuest}
+          disabled={guestLoading}
+          style={{
+            width: '100%',
+            padding: '1rem',
+            fontSize: '1.1rem',
+            backgroundColor: '#111',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: guestLoading ? 'not-allowed' : 'pointer',
+            opacity: guestLoading ? 0.7 : 1,
+            marginBottom: '1rem',
+          }}
+        >
+          {guestLoading ? 'ゲスト開始中...' : 'ゲストで開始（無料）'}
+        </button>
+
+        <p style={{ color: '#666', marginBottom: '1.0rem' }}>
+          LINEログインは後からでもOK（将来の有料機能向け）
         </p>
+
         <button
           onClick={startLineLogin}
           style={{
@@ -85,4 +108,3 @@ export const Login: React.FC = () => {
     </div>
   );
 };
-

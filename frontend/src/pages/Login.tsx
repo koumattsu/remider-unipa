@@ -19,16 +19,21 @@ export const Login: React.FC = () => {
       await authApi.getCurrentUser();
       navigate('/dashboard');
     } catch {
-      // ✅ 1回だけ guest 発行（連打防止）
       const key = 'df_guest_issued_v1';
-      if (!localStorage.getItem(key)) {
-        localStorage.setItem(key, '1');
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
         try {
           await authApi.ensureGuestSession();
+          // ✅ cookie が入ったかを 1 回だけ確定させる（入ってないのに dashboard へ行かない）
+          await authApi.getCurrentUser() ;
           navigate('/dashboard');
           return;
-        } catch {}
+        } catch {
+          // ✅ 失敗時はロック解除（永久に guest を試さない事故を防ぐ）
+          sessionStorage.removeItem(key);
+        }
       }
+
       setIsLoading(false);
     }
   };

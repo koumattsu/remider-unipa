@@ -6,11 +6,8 @@ export const authApi = {
   getCurrentUser: async () => (await apiClient.get('/auth/me')).data,
 
   ensureGuestSession: async () => {
-    const key = 'df_guest_attempted_v1';
-    if (typeof window !== 'undefined' && sessionStorage.getItem(key) === '1') {
-      throw new Error('guest already attempted');
-    }
-    if (typeof window !== 'undefined') sessionStorage.setItem(key, '1');
+    // ✅ guest試行のSSOTは Login.tsx（df_guest_issued_v1）に寄せる。
+    //    ここで二重ロックすると「失敗後に永久に guest を試さない」事故が起きる。
     return (await apiClient.post('/auth/guest')).data;
   },
 };

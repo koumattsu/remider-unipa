@@ -51,6 +51,57 @@ def _make_oauth_state_cookie_opts():
         "path": "/",        # 念のため明示
     }
 
+@router.post("/guest")
+async def guest_login(db: Session = Depends(get_db)):
+    """
+    ✅ LINE不要のゲストセッション発行
+    - users を作る（line_user_id は NULL）
+    - NotificationSetting を必ず1行持たせる
+    - session cookie をセットして返す
+    """
+    # ゲストユーザー作成（最小：display_nameだけ埋める）
+    user = User(
+        line_user_id=None,
+        display_name="Guest",
+        university="",
+        plan="free",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # NotificationSetting を必ず1行（欠損自動修復）
+    ns = (
+        db.query(NotificationSetting)
+        .filter(NotificationSetting.user_id == user.id)
+        .first()
+    )
+    if not ns:
+        ns = NotificationSetting(
+            user_id=user.id,
+            reminder_offsets_hours=[3],
+            daily_digest_time="08:00",
+            enable_morning_notification=True,
+            enable_webpush=False,
+        )
+        db.add(ns)
+        db.commit()
+
+    session_token = _serializer().dumps({
+        "user_id": user.id,          # ✅ 唯一の真実
+        "line_user_id": None,        # ✅ 互換（将来のリンクでもOK）
+    })
+
+    resp = {"user_id": user.id, "plan": user.plan, "is_guest": True}
+
+    # FastAPIのJSONResponseでcookieを付けたいので Response を使う
+    from fastapi.responses import JSONResponse
+    r = JSONResponse(content=resp)
+
+    cookie_opts = _make_cookie_opts()
+    r.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **cookie_opts)
+    return r
+
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.model_validate(current_user)

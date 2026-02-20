@@ -320,14 +320,26 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      // ✅ SSOT: plan を取得（失敗時はfree）
+      // ✅ まずは認証確立（guest含む）
+      let me: any = null;
+
       try {
-        const me = await authApi.getCurrentUser();
-        setPlan(String(me?.plan ?? 'free'));
+        me = await authApi.getCurrentUser();
       } catch (e) {
-        console.warn('[boot] auth/me failed -> treat as free', e);
-        setPlan('free');
+        console.warn('[boot] auth/me failed -> try guest session', e);
+        try {
+          await authApi.ensureGuestSession();
+          me = await authApi.getCurrentUser();
+        } catch (e2) {
+          console.error('[boot] guest session failed', e2);
+          // ここで進むと以降APIが全部401になるので止める（最小の安全策）
+          window.location.hash = '/login';
+          return;
+        }
       }
+
+      // ✅ ここまで来たら認証OK
+      setPlan(String(me?.plan ?? 'free'));
 
       // ✅ SSOT: グローバル通知（親）を取得して確定（localStorageより強い）
       try {
@@ -349,7 +361,6 @@ export const Dashboard: React.FC = () => {
         } catch {}
       } catch (e) {
         console.warn('[boot] settings/notification failed', e);
-        // 失敗してもlocalStorage初期値で動く
       }
 
       try {
@@ -358,14 +369,13 @@ export const Dashboard: React.FC = () => {
         console.error('weekly materialize 失敗:', e);
       }
 
-      // ✅ キャッシュが無い初回だけは silent にしない（永久ローディング防止）
       const hasCache = !!loadCache<Task[]>(TASKS_CACHE_KEY);
 
       await loadTasks({ silent: hasCache });
       await loadWeeklyTemplates();
       await loadTaskNotificationOverrides();
 
-      // ✅ 観測用：通知APIが生きているかをNetworkで必ず確認できるように1回だけ叩く（UIは更新しない）
+      // 観測用 ping
       try {
         console.log('[boot] ping notifications/in-app ...');
         await fetchInAppNotifications(1);
@@ -373,7 +383,7 @@ export const Dashboard: React.FC = () => {
       } catch (e) {
         console.error('[boot] ping notifications/in-app FAILED', e);
       }
-      // ✅ 下部タブのバッジ数（未dismiss件数）を取得
+
       await refreshNotifBadge();
     })();
   }, []);

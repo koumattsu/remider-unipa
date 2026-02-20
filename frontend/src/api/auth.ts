@@ -1,13 +1,17 @@
 // frontend/src/api/auth.ts
 
 import apiClient from './client';
-// import { User } from '../types';
 
 export const authApi = {
-  // 型指定を外す（あとでUser型をちゃんと定義したくなったら戻せばOK）
-  // getCurrentUser: async (): Promise<User> => {
   getCurrentUser: async () => {
     const response = await apiClient.get('/auth/me');
+    return response.data;
+  },
+
+  // ✅ 追加：ゲストセッション発行（LINE不要）
+  ensureGuestSession: async () => {
+    // サーバ側で cookie を set するだけでOK（戻り値は任意）
+    const response = await apiClient.post('/auth/guest');
     return response.data;
   },
 };

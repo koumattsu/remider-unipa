@@ -20,8 +20,16 @@ export const Login: React.FC = () => {
       // 認証済みならダッシュボードへ
       navigate('/dashboard');
     } catch (error) {
-      // 未ログイン(401)は想定内。ログイン画面を表示するだけ
-      setIsLoading(false);
+      // ✅ 未ログイン(401)なら、まずゲストセッションを発行して続行
+      try {
+        await authApi.ensureGuestSession();
+        // セッションが入った前提でダッシュボードへ
+        navigate('/dashboard');
+        return;
+      } catch (e) {
+        // ゲスト発行に失敗した場合だけログイン画面を表示（フォールバック）
+        setIsLoading(false);
+      }
     }
   };
 

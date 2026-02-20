@@ -107,8 +107,13 @@ class Settings(BaseSettings):
     @property
     def SESSION_COOKIE_SAMESITE(self) -> str:
         if self.SESSION_COOKIE_SAMESITE_OVERRIDE:
-            return self.SESSION_COOKIE_SAMESITE_OVERRIDE
-        # ✅ onrenderサブドメイン運用（同一site）では Lax の方がiOS/PWA含め安定
+            # ✅ 大文字/空白の事故を防ぐ（Renderの入力揺れ対策）
+            return str(self.SESSION_COOKIE_SAMESITE_OVERRIDE).strip().lower()
+
+        # ✅ 本番はフロント/バックが別オリジンのため、XHRでcookieを確実に成立させる
+        if self.ENV == "production":
+            return "none"
+
         return "lax"
 
     class Config:

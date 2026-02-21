@@ -50,12 +50,6 @@ async def get_current_user(
     # ✅ 0) Authorization を優先（cookieが送れない環境でも成立）
     session_token = _get_bearer_token(request)
 
-    # ✅ 追加：cookieが無い/死ぬ環境向け Bearer fallback
-    if not session_cookie:
-        auth = request.headers.get("Authorization") or request.headers.get("authorization")
-        if auth and auth.lower().startswith("bearer "):
-            session_cookie = auth.split(" ", 1)[1].strip()  # ← “cookie値”と同じトークンを入れる想定
-
     # 1) Cookie セッション（互換）
     if not session_token:
         session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)

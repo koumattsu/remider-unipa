@@ -115,6 +115,10 @@ class Settings(BaseSettings):
 
     @property
     def SESSION_COOKIE_SECURE(self) -> bool:
+        # ✅ SameSite=None は Secure 必須（Chromeが非Secureを拒否する）
+        # override で none を入れたときに「保存されずcookieが無い」事故を防ぐ
+        if str(self.SESSION_COOKIE_SAMESITE_OVERRIDE or "").strip().lower() == "none":
+            return True
         return self.ENV == "production"
 
     # ✅ 将来のドメイン分離にも耐えるため、envで上書き可能にする

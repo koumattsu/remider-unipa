@@ -5,20 +5,37 @@ import { useNavigate } from 'react-router-dom';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 
+const getTokenFromUrl = (): string | null => {
+  // 1) 通常の ?token=...
+  const p1 = new URLSearchParams(window.location.search);
+  const t1 = p1.get('token');
+  if (t1) return t1;
+
+  // 2) HashRouter: /#/auth-callback?token=... は hash 側に入る
+  const hash = window.location.hash || '';
+  const qIndex = hash.indexOf('?');
+  if (qIndex >= 0) {
+    const query = hash.slice(qIndex + 1);
+    const p2 = new URLSearchParams(query);
+    const t2 = p2.get('token');
+    if (t2) return t2;
+  }
+
+  return null;
+};
+
 export const AuthCallback = () => {
   const [message, setMessage] = useState('Processing...');
   const navigate = useNavigate();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
+    const token = getTokenFromUrl();
 
     if (!token) {
       setMessage('Missing token');
       return;
     }
 
-    // ✅ cookieが死んでも成立するための本線：Bearer token を保存
     localStorage.setItem(AUTH_TOKEN_KEY, token);
 
     setMessage('OK! token saved. Redirecting...');

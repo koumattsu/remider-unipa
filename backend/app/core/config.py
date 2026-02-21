@@ -41,6 +41,23 @@ class Settings(BaseSettings):
     LINE_LOGIN_CHANNEL_SECRET: str = ""
     LINE_LOGIN_REDIRECT_URI: str = ""
 
+    # ✅ Google OAuth
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_OAUTH_REDIRECT_URI: str = ""
+
+    @field_validator("GOOGLE_OAUTH_REDIRECT_URI", mode="before")
+    @classmethod
+    def normalize_google_redirect_uri(cls, v: str) -> str:
+        if v is None:
+            return ""
+        if not isinstance(v, str):
+            v = str(v)
+        uri = v.strip().replace("\r", "").replace("\n", "")
+        if len(uri) >= 2 and ((uri[0] == '"' and uri[-1] == '"') or (uri[0] == "'" and uri[-1] == "'")):
+            uri = uri[1:-1].strip()
+        return uri
+
     @field_validator("LINE_LOGIN_REDIRECT_URI", mode="before")
     @classmethod
     def normalize_line_redirect_uri(cls, v: str) -> str:

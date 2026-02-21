@@ -58,6 +58,14 @@ async def get_current_user(
                 if not user:
                     raise HTTPException(status_code=401, detail="ユーザーが存在しません")
                 return user
+            
+            # 互換：google_user_id が入ってるなら拾う（移行/事故復旧用）
+            google_user_id = data.get("google_user_id")
+            if google_user_id:
+                user = db.query(User).filter(User.google_user_id == google_user_id).first()
+                if not user:
+                    raise HTTPException(status_code=401, detail="ユーザーが存在しません")
+                return user
 
             raise HTTPException(status_code=401, detail="無効なセッションです")
 

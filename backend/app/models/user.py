@@ -8,6 +8,10 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     line_user_id = Column(String, unique=True, index=True, nullable=True)
+
+    # ✅ Google OAuth: sub を保存（SSOT）
+    google_user_id = Column(String, unique=True, index=True, nullable=True)
+
     display_name = Column(String, nullable=False)
     university = Column(String, nullable=True)
     plan = Column(String, default="free")  # "free", "basic", "pro"

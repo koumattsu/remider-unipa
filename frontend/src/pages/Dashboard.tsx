@@ -326,16 +326,10 @@ export const Dashboard: React.FC = () => {
       try {
         me = await authApi.getCurrentUser();
       } catch (e) {
-        console.warn('[boot] auth/me failed -> try guest session', e);
-        try {
-          await authApi.ensureGuestSession();
-          me = await authApi.getCurrentUser();
-        } catch (e2) {
-          console.error('[boot] guest session failed', e2);
-          // ここで進むと以降APIが全部401になるので止める（最小の安全策）
-          window.location.hash = '/login';
-          return;
-        }
+        console.warn('[boot] auth/me failed -> redirect to /login', e);
+        // ✅ guest廃止：未ログインは必ず/loginへ
+        window.location.hash = '/login';
+        return;
       }
 
       // ✅ ここまで来たら認証OK

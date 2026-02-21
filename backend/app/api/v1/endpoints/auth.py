@@ -54,45 +54,14 @@ def _make_oauth_state_cookie_opts():
     }
 
 @router.post("/guest")
-async def guest_login(db: Session = Depends(get_db)):
-    guest_line_user_id = f"guest:{uuid4().hex}"
-
-    user = User(
-        line_user_id=guest_line_user_id,  # ✅ NULLやめる
-        display_name="Guest",
-        university="",
-        plan="free",
+async def guest_login():
+    # ✅ ゲストログイン廃止（最終方針）
+    # - 旧フロント/古いSW/手動リクエストが残っていても事故らないように
+    # - DBにGuestが増殖して資産価値を汚さないように
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Guest login has been discontinued. Please login with LINE or Google.",
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    # NotificationSetting upsert（ここはそのままでOK）
-    ns = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
-    if not ns:
-        ns = NotificationSetting(
-            user_id=user.id,
-            reminder_offsets_hours=[3],
-            daily_digest_time="08:00",
-            enable_morning_notification=True,
-            enable_webpush=False,
-        )
-        db.add(ns)
-        db.commit()
-
-    session_token = _serializer().dumps({
-        "user_id": user.id,
-        "line_user_id": guest_line_user_id,  # ✅ 互換も保つ
-    })
-
-    r = JSONResponse(content={"user_id": user.id, "plan": user.plan, "is_guest": True})
-    r.set_cookie(
-        settings.SESSION_COOKIE_NAME,
-        session_token,
-        max_age=60 * 60 * 24 * 30,
-        **_make_cookie_opts(),  # ← ここが SameSite=None/Secure=true になってるのが条件
-    )
-    return r
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
@@ -120,6 +89,128 @@ async def line_authorize():
 
     # state をcookieに保存（CSRF対策）
     resp.set_cookie("line_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
+    return resp
+
+@router.get("/google/authorize")
+async def google_authorize():
+    if not settings.GOOGLE_OAUTH_CLIENT_ID or not settings.GOOGLE_OAUTH_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="Google OAuth settings are missing")
+
+    state = secrets.token_urlsafe(24)
+
+    params = {
+        "response_type": "code",
+        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "online",
+        "prompt": "select_account",
+    }
+    url = "https://accounts.google.com/o/oauth2/v2/auth"
+    redirect_url = f"{url}?{urlencode(params)}"
+
+    resp = RedirectResponse(url=redirect_url, status_code=302)
+    resp.set_cookie("google_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
+    return resp
+
+@router.get("/google/callback")
+async def google_callback(request: Request, db: Session = Depends(get_db)):
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+    saved_state = request.cookies.get("google_login_state")
+
+    if not code or not state or not saved_state or state != saved_state:
+        resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
+        resp.delete_cookie("google_login_state", path="/")
+        return resp
+
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+        "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+        "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        token_res = await client.post(
+            token_url,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if token_res.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"Token exchange failed: {token_res.text}")
+
+        token_json = token_res.json()
+        id_token = token_json.get("id_token")
+        if not id_token:
+            raise HTTPException(status_code=400, detail=f"id_token missing: {token_res.text}")
+
+        # ✅ 最小diffの検証：tokeninfo で id_token を検証して sub を取得
+        info_res = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token},
+        )
+        if info_res.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"tokeninfo failed: {info_res.text}")
+
+        info = info_res.json()
+        aud = info.get("aud")
+        sub = info.get("sub")
+        name = info.get("name") or info.get("email") or "Google User"
+
+        if aud != settings.GOOGLE_OAUTH_CLIENT_ID:
+            raise HTTPException(status_code=400, detail="Invalid token audience")
+        if not sub:
+            raise HTTPException(status_code=400, detail="Google sub missing")
+
+    # user upsert（google_user_id）
+    user = db.query(User).filter(User.google_user_id == sub).first()
+    if not user:
+        user = User(
+            google_user_id=sub,
+            display_name=name,
+            university="",
+            plan="free",
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user.display_name = name
+        db.commit()
+
+    # NotificationSetting 自動修復（LINEと同じ）
+    ns = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
+    if not ns:
+        ns = NotificationSetting(
+            user_id=user.id,
+            reminder_offsets_hours=[3],
+            daily_digest_time="08:00",
+            enable_morning_notification=True,
+            enable_webpush=False,
+        )
+        db.add(ns)
+        db.commit()
+
+    session_token = _serializer().dumps({
+        "user_id": user.id,
+        "google_user_id": sub,  # ✅ 監査/互換用（security.pyはuser_id優先なので影響なし）
+    })
+
+    redirect_to = _frontend_base_url() + "/#/dashboard"
+    resp = RedirectResponse(url=redirect_to, status_code=302)
+
+    resp.set_cookie(
+        settings.SESSION_COOKIE_NAME,
+        session_token,
+        max_age=60 * 60 * 24 * 30,
+        **_make_cookie_opts(),
+    )
+
+    resp.delete_cookie("google_login_state", path="/")
     return resp
 
 @router.get("/line/callback")

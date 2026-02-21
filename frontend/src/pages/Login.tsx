@@ -8,7 +8,6 @@ export const Login: React.FC = () => {
   console.log('VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
-  const [guestLoading, setGuestLoading] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -26,17 +25,20 @@ export const Login: React.FC = () => {
     }
   };
 
-  const startGuest = async () => {
-    setGuestLoading(true);
-    try {
-      await authApi.ensureGuestSession();
-      await authApi.getCurrentUser();
-      navigate('/dashboard');
-    } catch (e) {
-      // 失敗したらログイン画面に戻す
-      setGuestLoading(false);
-      alert('ゲスト開始に失敗しました。もう一度お試しください。');
-    }
+  const startGoogleLogin = () => {
+    const rawBase =
+      import.meta.env.VITE_API_BASE_URL ||
+      (import.meta.env.DEV
+        ? 'http://127.0.0.1:8000'
+        : 'https://unipa-reminder-backend.onrender.com');
+
+    const base = String(rawBase).replace(/\/+$/, '');
+
+    const url = base.endsWith('/api/v1')
+      ? `${base}/auth/google/authorize`
+      : `${base}/api/v1/auth/google/authorize`;
+
+    window.location.href = url;
   };
 
   const startLineLogin = () => {
@@ -61,32 +63,12 @@ export const Login: React.FC = () => {
 
   return (
     <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center' }}>UniPA Reminder App</h1>
-
+      <h1 style={{ textAlign: 'center' }}>DueFlow</h1>
       <div style={{ marginTop: '2rem', padding: '2rem', border: '1px solid #ddd', borderRadius: '8px' }}>
         <h2>ログイン</h2>
 
-        <button
-          onClick={startGuest}
-          disabled={guestLoading}
-          style={{
-            width: '100%',
-            padding: '1rem',
-            fontSize: '1.1rem',
-            backgroundColor: '#111',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: guestLoading ? 'not-allowed' : 'pointer',
-            opacity: guestLoading ? 0.7 : 1,
-            marginBottom: '1rem',
-          }}
-        >
-          {guestLoading ? 'ゲスト開始中...' : 'ゲストで開始（無料）'}
-        </button>
-
         <p style={{ color: '#666', marginBottom: '1.0rem' }}>
-          LINEログインは後からでもOK（将来の有料機能向け）
+          ログイン方法を選択してください
         </p>
 
         <button
@@ -103,6 +85,22 @@ export const Login: React.FC = () => {
           }}
         >
           LINEでログイン
+        </button>
+        <button
+          onClick={startGoogleLogin}
+          style={{
+            width: '100%',
+            padding: '1rem',
+            fontSize: '1.1rem',
+            backgroundColor: '#111',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            marginTop: '0.75rem',
+          }}
+        >
+          Googleでログイン
         </button>
       </div>
     </div>

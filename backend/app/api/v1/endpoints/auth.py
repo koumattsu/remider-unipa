@@ -92,16 +92,19 @@ async def line_authorize():
     return resp
 
 @router.get("/google/authorize")
-async def google_authorize():
-    if not settings.GOOGLE_OAUTH_CLIENT_ID or not settings.GOOGLE_OAUTH_REDIRECT_URI:
+async def google_authorize(request: Request):
+    if not settings.GOOGLE_OAUTH_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google OAuth settings are missing")
 
     state = secrets.token_urlsafe(24)
 
+    # ✅ SSOT: 実際の公開URLから callback を生成（envミスで壊れない）
+    redirect_uri = str(request.url_for("google_callback"))
+
     params = {
         "response_type": "code",
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
-        "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "scope": "openid email profile",
         "state": state,
         "access_type": "online",
@@ -114,7 +117,7 @@ async def google_authorize():
     resp.set_cookie("google_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
     return resp
 
-@router.get("/google/callback")
+@router.get("/google/callback", name="google_callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -126,11 +129,14 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         return resp
 
     token_url = "https://oauth2.googleapis.com/token"
+    # ✅ authorize と同一の redirect_uri を使う（OAuth契約）
+    redirect_uri = str(request.url_for("google_callback"))
+
     data = {
         "code": code,
         "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
         "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
-        "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     }
 

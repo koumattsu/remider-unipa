@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import secrets
 import httpx
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 from itsdangerous import URLSafeSerializer
 from app.db.session import get_db
 from app.core.security import get_current_user
@@ -206,7 +206,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         "google_user_id": sub,  # ✅ 監査/互換用（security.pyはuser_id優先なので影響なし）
     })
 
-    redirect_to = _frontend_base_url() + "/#/dashboard"
+    # ✅ cookie が送れない環境でも成立するよう、token をフロントへ渡す（hash内なのでサーバへは送られない）
+    redirect_to = _frontend_base_url() + "/#/auth-callback?token=" + quote(session_token, safe="")
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     resp.set_cookie(
@@ -306,7 +307,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         "line_user_id": line_user_id # ✅ 互換/監査用（なくてもOK）
     })
 
-    redirect_to = _frontend_base_url() + "/#/dashboard"
+    redirect_to = _frontend_base_url() + "/#/auth-callback?token=" + quote(session_token, safe="")
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     cookie_opts = _make_cookie_opts()

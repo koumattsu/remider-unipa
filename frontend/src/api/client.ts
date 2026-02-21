@@ -25,6 +25,12 @@ apiClient.interceptors.request.use(
     const headers = (config.headers ?? {}) as any;
     config.headers = headers;
 
+    // ✅ cookieが死ぬ環境向け：token があれば Bearer を付ける
+    const token = localStorage.getItem('auth_token');
+    if (token && !headers.Authorization) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     if (API_DEBUG) {
       const method = String(config.method ?? 'GET').toUpperCase();
       const url = `${config.baseURL ?? ''}${config.url ?? ''}`;

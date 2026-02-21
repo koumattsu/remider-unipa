@@ -11,7 +11,9 @@ function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<Login />} />
+      {/* ✅ 互換: backend が /auth/callback に飛ばすケースも拾う */}
       <Route path="/auth-callback" element={<AuthCallback />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/upgrade" element={<Upgrade />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -47,18 +47,12 @@ async def get_current_user(
     response: Response,
     db: Session = Depends(get_db),
 ) -> User:
-    # ✅ 0) Authorization を優先（cookieが送れない環境でも成立）
-    session_token = _get_bearer_token(request)
-
-    # 1) Cookie セッション（互換）
-    if not session_token:
-        session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
+    session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
 
     if session_token:
         try:
             data = serializer.loads(session_token)
 
-            # ✅ 新方式：user_id を唯一の真実にする（無料でも成立）
             user_id = data.get("user_id")
             if user_id is not None:
                 user = db.query(User).filter(User.id == int(user_id)).first()
@@ -66,7 +60,6 @@ async def get_current_user(
                     raise HTTPException(status_code=401, detail="ユーザーが存在しません")
                 return user
 
-            # 互換：古い/別方式で line_user_id が入ってるなら拾う（移行のため）
             line_user_id = data.get("line_user_id")
             if line_user_id:
                 user = db.query(User).filter(User.line_user_id == line_user_id).first()
@@ -74,7 +67,6 @@ async def get_current_user(
                     raise HTTPException(status_code=401, detail="ユーザーが存在しません")
                 return user
 
-            # 互換：google_user_id が入ってるなら拾う（移行/事故復旧用）
             google_user_id = data.get("google_user_id")
             if google_user_id:
                 user = db.query(User).filter(User.google_user_id == google_user_id).first()
@@ -85,11 +77,9 @@ async def get_current_user(
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
         except (BadSignature, ValueError, TypeError):
-            # Cookieは消しておく（Bearer の場合はフロント側で上書きされる）
             _delete_session_cookie(response)
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
-    # 2) CookieもBearerも無い場合のみ、開発用ダミーヘッダー
     if settings.DUMMY_AUTH_ENABLED:
         dummy_user_id = request.headers.get("X-Dummy-User-Id")
         if not dummy_user_id:

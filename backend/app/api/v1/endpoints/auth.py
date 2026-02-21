@@ -206,8 +206,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         "google_user_id": sub,  # ✅ 監査/互換用（security.pyはuser_id優先なので影響なし）
     })
 
-    # ✅ cookie が送れない環境でも成立するよう、token をフロントへ渡す（hash内なのでサーバへは送られない）
-    redirect_to = _frontend_base_url() + "/#/auth-callback?token=" + quote(session_token, safe="")
+    # ✅ dashboard直行をやめて、AuthCallbackへ token を渡す
+    redirect_to = _frontend_base_url() + f"/#/auth/callback?token={session_token}"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     resp.set_cookie(
@@ -303,17 +303,15 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         db.commit()
 
     session_token = _serializer().dumps({
-        "user_id": user.id,          # ✅ 唯一の真実（無料でも成立）
-        "line_user_id": line_user_id # ✅ 互換/監査用（なくてもOK）
+        "user_id": user.id,
+        "line_user_id": line_user_id
     })
 
-    redirect_to = _frontend_base_url() + "/#/auth-callback?token=" + quote(session_token, safe="")
+    redirect_to = _frontend_base_url() + f"/#/auth/callback?token={session_token}"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
-    cookie_opts = _make_cookie_opts()
-    resp.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **cookie_opts)
-    # state cookie消す
-    resp.delete_cookie("line_login_state",  path="/")
+    resp.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **_make_cookie_opts())
+    resp.delete_cookie("line_login_state", path="/")
     return resp
 
 @router.post("/logout")

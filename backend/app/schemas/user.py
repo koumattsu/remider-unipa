@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class UserBase(BaseModel):
-    line_user_id: str
+    line_user_id: Optional[str] = None
     display_name: str
     university: Optional[str] = None
     plan: str = "free"

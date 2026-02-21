@@ -206,7 +206,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         "google_user_id": sub,  # ✅ 監査/互換用（security.pyはuser_id優先なので影響なし）
     })
 
-    redirect_to = _frontend_base_url() + "/#/dashboard"
+    redirect_to = _frontend_base_url() + "/#/auth-callback"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     resp.set_cookie(
@@ -306,7 +306,7 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         "line_user_id": line_user_id
     })
 
-    redirect_to = _frontend_base_url() + "/#/dashboard"
+    redirect_to = _frontend_base_url() + "/#/auth-callback"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
     resp.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **_make_cookie_opts())

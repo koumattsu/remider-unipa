@@ -47,7 +47,12 @@ async def get_current_user(
     response: Response,
     db: Session = Depends(get_db),
 ) -> User:
+    # ✅ SSOT: cookie session を最優先
     session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
+
+    # ✅ 保険：cookie が無い環境だけ Bearer を許可（既存挙動は壊さない）
+    if not session_token:
+        session_token = _get_bearer_token(request)
 
     if session_token:
         try:

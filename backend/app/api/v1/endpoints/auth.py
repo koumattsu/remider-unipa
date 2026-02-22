@@ -30,15 +30,21 @@ def _serializer():
     return URLSafeSerializer(settings.SESSION_SECRET, salt="unipa-session")
 
 def _make_cookie_opts():
+    # ✅ セッションcookieは、productionでは必ず「SameSite=None + Secure=True」
+    #    （Chrome仕様：NoneはSecure必須。崩れると“保存されない”）
+    samesite = settings.SESSION_COOKIE_SAMESITE
+    secure = settings.SESSION_COOKIE_SECURE
+    if settings.ENV == "production":
+        samesite = "none"
+        secure = True
+
     opts = {
         "httponly": True,
-        "secure": settings.SESSION_COOKIE_SECURE,
-        "samesite": settings.SESSION_COOKIE_SAMESITE,
+        "secure": secure,
+        "samesite": samesite,
         "path": settings.SESSION_COOKIE_PATH,
     }
     # ✅ 事故防止：Domain は付けない（host-only cookie に固定）
-    # Render / Cloudflare / onrender サブドメインで Domain mis-match が起きると
-    # 「保存されてるのに送られない」事故になるため
     return opts
 
 def _make_oauth_state_cookie_opts():

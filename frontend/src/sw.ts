@@ -74,9 +74,10 @@ const normalizeToHashUrl = (raw: string) => {
   if (s.startsWith('http://') || s.startsWith('https://')) {
     try {
       const u = new URL(s)
-      // hash が無いなら "#/path?query" を入れる
+      // hash が無いなら "#/path?query" を入れる（必ず "#/..." 形式）
       if (!u.hash) {
-        u.hash = u.pathname + u.search // "#/dashboard?tab=today"
+        const path = u.pathname.startsWith('/') ? u.pathname : `/${u.pathname}`
+        u.hash = `#${path}${u.search}` // ✅ "#/dashboard?tab=today" に揃う
         u.pathname = '/'
         u.search = ''
       }
@@ -103,31 +104,38 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     (async () => {
       try {
-        const payload = {
-          type: 'opened',
-          notification_id: (event.notification as any)?.data?.notification_id ?? null,
-          run_id: (event.notification as any)?.data?.run_id ?? null,
-          event_token: (event.notification as any)?.data?.event_token ?? null,
+        const nid = (event.notification as any)?.data?.notification_id ?? null
+
+        // ✅ SSOT防波堤：
+        // - notification_id が無い通知（debug等）は opened を送らない
+        //   → DBの opened に NULL が増えない（監査資産が汚れない）
+        if (nid) {
+          const payload = {
+            type: 'opened',
+            notification_id: nid,
+            run_id: (event.notification as any)?.data?.run_id ?? null,
+            event_token: (event.notification as any)?.data?.event_token ?? null,
+          }
+
+          // ✅ backendへ直接送る（フロントscope依存を排除）
+          // - VITE_API_BASE_URL があればそれを使う（例: https://unipa-reminder-backend.onrender.com）
+          // - 無ければ本番デフォルトにフォールバック（client.ts と揃える）
+          const rawApi =
+            ((self as any).__VITE_API_BASE_URL as string | undefined) ||
+            'https://unipa-reminder-backend.onrender.com'
+
+          const apiBase = String(rawApi).replace(/\/+$/, '')
+          const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`
+
+          await fetch(eventsUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            // ✅ cookieに依存しない（iOS/Androidの運用耐性）
+            credentials: 'omit',
+            keepalive: true,
+          })
         }
-
-        // ✅ backendへ直接送る（フロントscope依存を排除）
-        // - VITE_API_BASE_URL があればそれを使う（例: https://unipa-reminder-backend.onrender.com）
-        // - 無ければ本番デフォルトにフォールバック（client.ts と揃える）
-        const rawApi =
-          ((self as any).__VITE_API_BASE_URL as string | undefined) ||
-          'https://unipa-reminder-backend.onrender.com'
-
-        const apiBase = String(rawApi).replace(/\/+$/, '')
-        const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`
-
-        await fetch(eventsUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          // ✅ cookieに依存しない（iOS/Androidの運用耐性）
-          credentials: 'omit',
-          keepalive: true,
-        })
       } catch {}
 
       const allClients = await self.clients.matchAll({

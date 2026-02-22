@@ -45,7 +45,7 @@ self.addEventListener('push', (event) => {
 
   const title = data.title || 'DueFlow'
   const body = sanitizeBody(data.body || '通知があります')
-  const rawUrl = data.url || '/dashboard?tab=today'
+  const rawUrl = data.deep_link || data.url || '/#/dashboard?tab=today'
   const normalized = normalizeToHashUrl(rawUrl)
   const url = new URL(normalized, self.registration.scope).toString()
   event.waitUntil(

@@ -276,7 +276,7 @@ class WebPushSender:
         user_id: int,
         title: str = "テスト通知",
         body: str = "Web Push テスト送信です",
-        url: str = "/dashboard?tab=today",
+        url: str = "/#/dashboard?tab=today",
     ) -> dict:
         issued_at = int(WebPushSender._utcnow().timestamp())
         event_token = _make_event_token(

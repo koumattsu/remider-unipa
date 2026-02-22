@@ -46,7 +46,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'DueFlow'
   const body = sanitizeBody(data.body || '通知があります')
   const rawUrl = data.url || '/dashboard?tab=today'
-  const url = new URL(rawUrl, self.registration.scope).toString()
+  const normalized = normalizeToHashUrl(rawUrl)
+  const url = new URL(normalized, self.registration.scope).toString()
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
@@ -61,11 +62,43 @@ self.addEventListener('push', (event) => {
   )
 })
 
+// ✅ HashRouter防波堤：どんなurlが来ても "/#/..." に寄せる
+const normalizeToHashUrl = (raw: string) => {
+  const s = String(raw || '').trim()
+  if (!s) return '/#/dashboard?tab=today'
+
+  // すでに hash router 形式ならそのまま
+  if (s.includes('#/')) return s
+
+  // absolute URL の場合
+  if (s.startsWith('http://') || s.startsWith('https://')) {
+    try {
+      const u = new URL(s)
+      // hash が無いなら "#/path?query" を入れる
+      if (!u.hash) {
+        u.hash = u.pathname + u.search // "#/dashboard?tab=today"
+        u.pathname = '/'
+        u.search = ''
+      }
+      return u.toString()
+    } catch {
+      // 失敗したら一旦そのまま
+      return s
+    }
+  }
+
+  // relative path の場合 "/dashboard?x=y" -> "/#/dashboard?x=y"
+  if (s.startsWith('/')) return `/#${s}`
+
+  // 最後の保険
+  return `/#/${s.replace(/^\/+/, '')}`
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const rawUrl = (event.notification as any)?.data?.url || '/dashboard?tab=today'
-  const url = new URL(rawUrl, self.registration.scope).toString()
+  const normalized = normalizeToHashUrl(rawUrl)
+  const url = new URL(normalized, self.registration.scope).toString()
 
   event.waitUntil(
     (async () => {
@@ -81,9 +114,8 @@ self.addEventListener('notificationclick', (event) => {
         // - VITE_API_BASE_URL があればそれを使う（例: https://unipa-reminder-backend.onrender.com）
         // - 無ければ本番デフォルトにフォールバック（client.ts と揃える）
         const rawApi =
-          // injectManifestならここに埋め込まれる想定（未定義でも落ちないように）
           ((self as any).__VITE_API_BASE_URL as string | undefined) ||
-          'https://api.dueflow.app'
+          'https://unipa-reminder-backend.onrender.com'
 
         const apiBase = String(rawApi).replace(/\/+$/, '')
         const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`

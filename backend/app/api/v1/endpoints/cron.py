@@ -41,6 +41,8 @@ from app.services.outcome_feature_lock import try_mark_outcome_feature_as_saved
 router = APIRouter()
 
 from sqlalchemy import text
+# ✅ HashRouter 前提の deeplink をSSOTとして統一
+TODAY_DEEPLINK = "/#/dashboard?tab=today"
 
 @router.post("/debug-migrate-notification-setting")
 async def debug_migrate_notification_setting(db: Session = Depends(get_db)):
@@ -449,7 +451,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         kind="task_reminder",
                         title=f"締切まで約{int(hours)}時間",
                         body=_build_single_task_push_body(task),
-                        deep_link="/dashboard?tab=today",
+                        deep_link=TODAY_DEEPLINK,
                     )
                     if n:
                         n.extra = {
@@ -583,7 +585,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         kind="morning_digest",
                         title="今日の締切",
                         body=_build_single_task_push_body(task),
-                        deep_link="/dashboard?tab=today",
+                        deep_link=TODAY_DEEPLINK,
                     )
                     if n:
                         n.extra = {
@@ -613,8 +615,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     payload = {
                         "title": "今日の締切",
                         "body": "\n".join(lines),
-                        "url": "/dashboard?tab=today",
-                        "deep_link": "/dashboard?tab=today",
+                        "url": TODAY_DEEPLINK,
+                        "deep_link": TODAY_DEEPLINK,
                         "notification_id": anchor.id,   # ✅ ここが大事
                         "run_id": run.id,
                         # event_token は無くても動く（必要なら後で改善）

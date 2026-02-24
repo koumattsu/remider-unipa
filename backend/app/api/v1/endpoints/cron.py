@@ -1248,27 +1248,21 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
 @router.post("/debug-migrate-notification-runs")
 async def debug_migrate_notification_runs(db: Session = Depends(get_db)):
-    """
-    一度だけ実行する想定:
-    notification_runs テーブルに不足カラムを追加する（Alembic無し運用のため）
-    """
     try:
-        db.execute(text("""
-        ALTER TABLE notification_runs
-          ADD COLUMN IF NOT EXISTS users_total INTEGER NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS users_with_candidates INTEGER NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0,
-
-          ADD COLUMN IF NOT EXISTS webpush_sent INTEGER NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS webpush_failed INTEGER NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS webpush_deactivated INTEGER NOT NULL DEFAULT 0,
-
-          ADD COLUMN IF NOT EXISTS line_sent INTEGER NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS line_failed INTEGER NOT NULL DEFAULT 0,
-
-          ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NULL,
-          ADD COLUMN IF NOT EXISTS stats JSONB NULL;
-        """))
+        stmts = [
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS users_total INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS users_with_candidates INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_sent INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_failed INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS webpush_deactivated INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS line_sent INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS line_failed INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NULL",
+            "ALTER TABLE notification_runs ADD COLUMN IF NOT EXISTS stats JSONB NULL",
+        ]
+        for s in stmts:
+            db.execute(text(s))
         db.commit()
         return {"status": "ok", "message": "notification_runs columns added"}
     except Exception as e:

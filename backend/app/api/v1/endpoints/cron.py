@@ -1,9 +1,10 @@
 # backend/app/api/v1/endpoints/cron.py
 
+from sqlalchemy import text
+import re
 from datetime import datetime, timedelta, timezone, time
 from typing import Dict
 from fastapi import APIRouter, Depends, Query
-import re
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import and_, func
 from app.db.session import get_db
@@ -19,12 +20,15 @@ from app.models.webpush_delivery import WebPushDelivery
 from app.models.webpush_event import WebPushEvent
 from app.core.config import settings
 from app.core.time import JST
+from zoneinfo import ZoneInfo
 from app.services.outcome_analytics import (
     build_action_effectiveness,
 )
 from app.services.notification import (
     collect_notification_candidates,
     to_utc,
+    try_mark_notification_as_sent,  # ✅ 追加
+    MORNING_OFFSET_HOURS,  
 )
 from app.services.line_client import (
     send_deadline_reminder,
@@ -40,7 +44,8 @@ from app.services.outcome_feature_lock import try_mark_outcome_feature_as_saved
 
 router = APIRouter()
 
-from sqlalchemy import text
+TOKYO = ZoneInfo("Asia/Tokyo")
+
 # ✅ HashRouter 前提の deeplink をSSOTとして統一
 TODAY_DEEPLINK = "/#/dashboard?tab=today"
 
@@ -157,12 +162,13 @@ def _is_in_digest_window(*, now_jst: datetime, digest_time_str: str | None) -> b
       例: 08:00設定なら 07:55〜08:35
     """
     t = _parse_hhmm(digest_time_str)
-    anchor = datetime.combine(now_jst.date(), t, tzinfo=JST)
+
+    # ✅ TZ を確実に固定（tzinfo の混入/ズレを防ぐ）
+    anchor = datetime(now_jst.year, now_jst.month, now_jst.day, t.hour, t.minute, tzinfo=TOKYO)
 
     start = anchor - timedelta(minutes=5)
     end = anchor + timedelta(minutes=35)
     return start <= now_jst < end
-
 
 def _format_task_lines(tasks: list[Task]) -> str:
     # 要件：タイトル/締切/内容（箇条書き）
@@ -295,7 +301,6 @@ async def run_daily_job(db: Session = Depends(get_db)):
         print("  now_jst:", now_jst)
 
         results: Dict[str, int] = {
-            "three_hours_before": 0,
             "morning": 0,
             "users_targeted": 0,
         }
@@ -428,15 +433,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
             # ---------- ① 「○時間前」通知 ----------
 
             for hours in offsets:
-                tasks_3h = cands.due_in_hours.get(hours, [])
-                if not tasks_3h:
+                tasks_due = cands.due_in_hours.get(hours, [])
+                if not tasks_due:
                     continue
 
                 # ✅ まずベル通知を作る（無料の最低保証）
                 created_inapps: list[InAppNotification] = []
-                for task in tasks_3h:
+                for task in tasks_due:
                     deadline_at_send = to_utc(task.deadline)
-                    dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
                     reason = None
                     if cands.debug:
                         reason = cands.debug.get(f"task_reason:{task.id}")
@@ -454,14 +458,10 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         deep_link=TODAY_DEEPLINK,
                     )
                     if n:
-                        n.extra = {
-                            **(n.extra or {}),
-                            "reason": reason,
-                        }
+                        n.extra = {**(n.extra or {}), "reason": reason}
                         created_inapps.append(n)
                         inapp_created += 1
 
-                    # ✅ イベント資産（InAppNotification）はここで確実に永続化
                 if created_inapps:
                     db.commit()
 
@@ -521,15 +521,13 @@ async def run_daily_job(db: Session = Depends(get_db)):
                             db.add(n)
                             touched = True
 
-                    # ✅ InAppNotification.extra の書き戻しを確実に永続化（監査SSOT）
                     if touched:
                         db.commit()
 
                 if user.plan != "free" and line_user_id:
                     try:
                         trace_id = await send_deadline_reminder(...)
-                        line_sent += len(tasks_3h)
-
+                        line_sent += len(tasks_due)
                         if created_inapps:
                             for n in created_inapps:
                                 n.extra = {
@@ -538,50 +536,70 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 }
                                 db.add(n)
                             db.commit()
-
                     except Exception as e:
                         print("[CRON] send_deadline_reminder failed:", str(e))
-                        line_failed += len(tasks_3h)
-
+                        line_failed += len(tasks_due)
                         if created_inapps:
                             for n in created_inapps:
                                 n.extra = {
                                     **(n.extra or {}),
-                                    "line": {
-                                        "status": "failed",
-                                        "at": now_utc.isoformat(),
-                                        "error": str(e)[:300],
-                                    },
+                                    "line": {"status": "failed", "at": now_utc.isoformat(), "error": str(e)[:300]},
                                 }
                                 db.add(n)
                             db.commit()
 
-                if hours == 3:
-                    results["three_hours_before"] += len(tasks_3h)
-                else:
-                    key = f"offset_{hours}"
-                    results[key] = results.get(key, 0) + len(tasks_3h)
+                # ✅ 集計は常に offset_{hours} に統一（SSOT）
+                key = f"offset_{int(hours)}"
+                results[key] = results.get(key, 0) + len(tasks_due)
         
             # ---------- ② 当日タスクの「朝通知」（時間条件を外す） ----------
             if setting.enable_morning_notification and digest_ok:
                 tasks_today = cands.morning
-                morning_candidates_total += len(tasks_today)
 
                 # ✅ 朝ダイジェストもベルに残す（無料の最低保証）
                 created_morning: list[InAppNotification] = []
+                locked_tasks_today: list[Task] = []
+
                 for task in tasks_today:
                     deadline_at_send = to_utc(task.deadline)
-                    dl_jst = task.deadline.astimezone(JST).strftime("%m/%d %H:%M") if task.deadline else "-"
+
+                    # ✅ ここで “送信確定ロック(offset=0)” を取る（候補抽出側では取らない）
+                    ok = try_mark_notification_as_sent(
+                        db,
+                        user_id=user_id,
+                        task_id=task.id,
+                        deadline_utc=deadline_at_send,
+                        offset_hours=0,               # MORNING_OFFSET_HOURS 相当
+                        sent_at_utc=now_utc,
+                        run_id=run.id,
+                    )
+                    if not ok:
+                        # ✅ 既に同じ朝のロックを取られている（重複防止）
+                        if cands.debug is not None:
+                            cands.debug["morning.skipped:already_locked"] = (
+                                int(cands.debug.get("morning.skipped:already_locked", 0)) + 1
+                            )
+                        continue
+
+                    # ✅ ここから先は「朝通知として確定」した task
+                    locked_tasks_today.append(task)
+
+                    if cands.debug is not None:
+                        cands.debug["decision.sent:morning_hit"] = (
+                            int(cands.debug.get("decision.sent:morning_hit", 0)) + 1
+                        )
+
                     reason = None
                     if cands.debug:
                         reason = cands.debug.get(f"task_reason:{task.id}")
+
                     n = _upsert_in_app_notification(
                         db=db,
                         run_id=run.id,
                         user_id=user_id,
                         task=task,
                         deadline_at_send_utc=deadline_at_send,
-                        offset_hours=0,
+                        offset_hours=MORNING_OFFSET_HOURS,
                         kind="morning_digest",
                         title="今日の締切",
                         body=_build_single_task_push_body(task),
@@ -594,47 +612,48 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         }
                         created_morning.append(n)
                         inapp_created += 1
-                if created_morning:
+
+                # ✅ “ロック成功数” を朝の公式カウントにする（嘘をやめる）
+                morning_candidates_total += len(locked_tasks_today)
+
+                # ✅ ロック成功が1件でもあれば commit（InAppが既存でもロックは資産）
+                if locked_tasks_today or created_morning:
                     db.commit()
 
                 # ✅ WebPush（朝は1本に集約：digest）
-                if setting.enable_webpush and tasks_today and created_morning:
-                    # タスク一覧を1つの本文にまとめる（最大8件 + ほかN件）
-                    show = tasks_today[:8]
+                if setting.enable_webpush and locked_tasks_today and created_morning:
+                    show = locked_tasks_today[:8]
                     lines: list[str] = []
                     for t in show:
                         hhmm = _format_deadline_hhmm_jst(t)
                         title = t.title or "(no title)"
                         lines.append(f"・{title} {hhmm}")
-                    if len(tasks_today) > len(show):
-                        lines.append(f"ほか{len(tasks_today) - len(show)}件")
+                    if len(locked_tasks_today) > len(show):
+                        lines.append(f"ほか{len(locked_tasks_today) - len(show)}件")
 
-                    # ✅ 代表InApp（1件だけ）に紐づけて delivery を残す
                     anchor = created_morning[0]
 
                     payload = {
                         "title": "今日の締切",
                         "body": "\n".join(lines),
-                        "url": anchor.deep_link,          # ✅ SSOT: InAppNotification.deep_link
-                        "deep_link": anchor.deep_link,    # ✅ 同じにする
+                        "url": anchor.deep_link,
+                        "deep_link": anchor.deep_link,
                         "notification_id": anchor.id,
                         "run_id": run.id,
                     }
 
                     try:
-                        # ✅ delivery を残すため in_app_notification_id を anchor.id にする
                         res = WebPushSender._send_payload(
                             db,
                             user_id=user_id,
                             payload=payload,
-                            in_app_notification_id=anchor.id,  # ✅ ここが大事
+                            in_app_notification_id=anchor.id,
                             run_id=run.id,
                         )
                         webpush_sent += int(res.get("sent", 0))
                         webpush_failed += int(res.get("failed", 0))
                         webpush_deactivated += int(res.get("deactivated", 0))
 
-                        # ✅ anchor の extra に「digestを送った」ログを残す（監査に効く）
                         anchor.extra = {
                             **(anchor.extra or {}),
                             "webpush_digest": {
@@ -643,7 +662,7 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                 "failed": int(res.get("failed", 0)),
                                 "deactivated": int(res.get("deactivated", 0)),
                                 "at": now_utc.isoformat(),
-                                "tasks_total": len(tasks_today),
+                                "tasks_total": len(locked_tasks_today),
                                 "shown": len(show),
                             },
                         }
@@ -654,12 +673,14 @@ async def run_daily_job(db: Session = Depends(get_db)):
                         print("[CRON] webpush digest failed:", str(e))
                         webpush_failed += 1
                         db.rollback()
-                if tasks_today:
+
+                # ✅ LINE（有料のみ）も “ロック成功分” だけ送る
+                if locked_tasks_today:
                     if user.plan != "free" and line_user_id:
                         try:
                             trace_id = await send_daily_digest(
                                 line_user_id=line_user_id,
-                                tasks=tasks_today,
+                                tasks=locked_tasks_today,
                             )
                             if created_morning:
                                 for n in created_morning:
@@ -687,15 +708,28 @@ async def run_daily_job(db: Session = Depends(get_db)):
                                     }
                                     db.add(n)
                                 db.commit()
-                    results["morning"] += len(tasks_today)
 
-        # API 表示用に名前を正規化（内部ロジックには触らない）
-        detail = {}
-        for k, v in results.items():
-            if k == "three_hours_before":
-                detail["offset_1h"] = v   # ← 今の設計実態に合わせた名前
-            else:
-                detail[k] = v
+                    # ✅ “morning” の件数も嘘をやめてロック成功数
+                    results["morning"] += len(locked_tasks_today)
+
+                    # ✅ 朝ループ内で増えた debug を run 集計に反映（合算タイミングを正す）
+                    for kk in [
+                        "morning.candidates_raw",
+                        "morning.passed_ssot",
+                        "morning.passed_label_date",
+                        "morning.skipped",
+                        "morning.skipped:label_date_mismatch",
+                        "morning.skipped:already_locked",
+                        "decision.sent:morning_hit",
+                        "due_total",
+                        "morning_total",
+                    ]:
+                        vv = (cands.debug or {}).get(kk)
+                        if isinstance(vv, int):
+                            cron_debug_counts[kk] = int(cron_debug_counts.get(kk, 0)) + int(vv)
+
+        # ✅ API 表示用：そのまま返す（嘘の正規化をしない）
+        detail = dict(results)
 
         notified = any(
             k.startswith("offset_") and v > 0 for k, v in detail.items()
@@ -1211,3 +1245,32 @@ def evaluate_task_outcomes(db: Session, user_id: int, now_utc: datetime) -> int:
 
     # ✅ commit は呼び出し側（cron）に任せる：同一トランザクションを崩さない
     return created
+
+@router.post("/debug-migrate-notification-runs")
+async def debug_migrate_notification_runs(db: Session = Depends(get_db)):
+    """
+    一度だけ実行する想定:
+    notification_runs テーブルに不足カラムを追加する（Alembic無し運用のため）
+    """
+    try:
+        db.execute(text("""
+        ALTER TABLE notification_runs
+          ADD COLUMN IF NOT EXISTS users_total INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS users_with_candidates INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0,
+
+          ADD COLUMN IF NOT EXISTS webpush_sent INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS webpush_failed INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS webpush_deactivated INTEGER NOT NULL DEFAULT 0,
+
+          ADD COLUMN IF NOT EXISTS line_sent INTEGER NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS line_failed INTEGER NOT NULL DEFAULT 0,
+
+          ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ NULL,
+          ADD COLUMN IF NOT EXISTS stats JSONB NULL;
+        """))
+        db.commit()
+        return {"status": "ok", "message": "notification_runs columns added"}
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}

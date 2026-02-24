@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date, time, timezone
 from typing import List, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError  
 from app.models.task import Task
 from app.models.task_notification_override import TaskNotificationOverride
 from app.models.weekly_task import WeeklyTask
@@ -519,7 +519,9 @@ def get_tasks_due_today_morning(
     )
 
     if debug is not None:
-        debug["morning.candidates_raw"] = debug.get("morning.candidates_raw", 0) + len(candidates)
+        debug["morning.candidates_raw"] = int(debug.get("morning.candidates_raw", 0)) + len(candidates)
+        debug["morning.passed_ssot"] = int(debug.get("morning.passed_ssot", 0)) + 0
+        debug["morning.passed_label_date"] = int(debug.get("morning.passed_label_date", 0)) + 0
 
     result: List[Task] = []
 
@@ -545,48 +547,33 @@ def get_tasks_due_today_morning(
 
         # ✅ ここは "candidate:morning" だけ通す（should_send の誤解余地を排除）
         if decision.reason != "candidate:morning":
-            if debug is not None:
-                k = f"decision.{decision.reason}"
-                debug[k] = debug.get(k, 0) + 1
-                debug["morning.skipped"] = debug.get("morning.skipped", 0) + 1
-            logger.info(
-                "[morning-skip] user_id=%s task_id=%s reason=%s",
-                user_id, task.id, decision.reason
-            )
+            ...
             continue
+
+        # ✅ SSOT候補を通過（朝通知として“あり得る”）
+        if debug is not None:
+            debug["morning.passed_ssot"] = int(debug.get("morning.passed_ssot", 0)) + 1
 
         label_date = deadline_label_date_jst(task.deadline)
         if label_date != today_jst:
-            if debug is not None:
-                debug["morning.skipped:label_date_mismatch"] = debug.get("morning.skipped:label_date_mismatch", 0) + 1
-            logger.info(
-                "[morning-skip] user_id=%s task_id=%s reason=label_date_mismatch label_date=%s today_jst=%s",
-                user_id, task.id, label_date, today_jst
-            )
+            ...
             continue
+
+        # ✅ 今日の朝通知として確定（label_dateが一致）
+        if debug is not None:
+            debug["morning.passed_label_date"] = int(debug.get("morning.passed_label_date", 0)) + 1
 
         deadline_utc = to_utc(task.deadline)
 
-        ok = try_mark_notification_as_sent(
-            db, user_id, task.id, deadline_utc, MORNING_OFFSET_HOURS,
-            sent_at_utc=now_utc,
-            run_id=run_id
-        )
-        if not ok:
-            if debug is not None:
-                debug["morning.skipped:already_locked"] = debug.get("morning.skipped:already_locked", 0) + 1
-            logger.info(
-                "[morning-skip] user_id=%s task_id=%s reason=already_locked deadline_utc=%s",
-                user_id, task.id, deadline_utc.isoformat()
-            )
-            continue
+        # ✅ ここではロックを取らない（cron側で InApp/WebPush 直前に try_mark... する）
+        # ok = try_mark_notification_as_sent(...)
 
         if debug is not None:
-            debug["decision.sent:morning_hit"] = debug.get("decision.sent:morning_hit", 0) + 1
+            # もともと task_reason を cron の InApp.extra に入れてるので、
+            # “代表reason” だけはここで残しておく（ロックと無関係）
             rk = f"task_reason:{task.id}:{decision.reason}"
             debug[rk] = debug.get(rk, 0) + 1
 
-            # ✅ UI/通知extra用：代表reason（最初に観測された1つだけ固定）
             k1 = f"task_reason:{task.id}"
             if k1 not in debug:
                 debug[k1] = decision.reason

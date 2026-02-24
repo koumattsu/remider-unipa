@@ -1284,3 +1284,16 @@ async def debug_db_info(db: Session = Depends(get_db)):
           (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier
     """)).mappings().first()
     return {"db_info": dict(row or {})}
+
+@router.get("/debug-db-fingerprint")
+async def debug_db_fingerprint(db: Session = Depends(get_db)):
+    row = db.execute(text("""
+        SELECT
+          current_database() AS db,
+          current_user AS db_user,
+          inet_server_addr()::text AS server_addr,
+          inet_server_port() AS server_port,
+          (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier
+    """)).mappings().first()
+
+    return {"db_fingerprint": dict(row) if row else None}

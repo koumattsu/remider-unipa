@@ -1275,8 +1275,12 @@ async def debug_db_info(db: Session = Depends(get_db)):
         SELECT
           current_database() AS db,
           current_user AS db_user,
+          version() AS version,
           inet_server_addr()::text AS server_addr,
           inet_server_port() AS server_port,
-          current_setting('search_path') AS search_path
+          inet_client_addr()::text AS client_addr,
+          inet_client_port() AS client_port,
+          pg_backend_pid() AS pid,
+          (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier
     """)).mappings().first()
     return {"db_info": dict(row or {})}

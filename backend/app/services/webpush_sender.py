@@ -106,6 +106,33 @@ class WebPushSender:
         if not subs:
             return {"sent": 0, "failed": 0, "deactivated": 0}
 
+        # ✅ 防波堤: もし active が増殖しても「端末カテゴリごとに1件」にdedupeして多重送信を防ぐ
+        def _ua_family(ua: str | None) -> str:
+            s = ua or ""
+            if "Macintosh" in s:
+                return "mac"
+            if "iPhone" in s:
+                return "iphone"
+            return "other"
+
+        def _freshness_key(s: WebPushSubscription):
+            # より“最近生きてる”ものを優先して残す（NULL安全）
+            return (
+                s.last_seen_at or datetime.min.replace(tzinfo=timezone.utc),
+                s.updated_at or datetime.min.replace(tzinfo=timezone.utc),
+                s.created_at or datetime.min.replace(tzinfo=timezone.utc),
+                s.id or 0,
+            )
+
+        subs_sorted = sorted(subs, key=_freshness_key, reverse=True)
+        chosen: dict[tuple[str | None, str], WebPushSubscription] = {}
+        for s in subs_sorted:
+            key = (getattr(s, "device_label", None), _ua_family(getattr(s, "user_agent", None)))
+            if key not in chosen:
+                chosen[key] = s
+
+        subs = list(chosen.values())
+
         payload_json = json.dumps(payload, ensure_ascii=False)
         now = WebPushSender._utcnow()
         sent = 0

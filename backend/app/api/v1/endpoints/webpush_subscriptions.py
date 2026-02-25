@@ -49,6 +49,10 @@ def list_my_subscriptions(
     response_model=WebPushSubscriptionResponse,
     status_code=status.HTTP_201_CREATED,
 )
+# =========================
+# backend/app/api/v1/endpoints/webpush_subscriptions.py
+# upsert_subscription() 修正後（最小diff / 丸ごと）
+# =========================
 def upsert_subscription(
     payload: WebPushSubscriptionCreate,
     request: Request,
@@ -61,8 +65,35 @@ def upsert_subscription(
     - 同一endpointが既にあれば keys 更新 + is_active=true + last_seen_at更新
     - user が違う場合でも、このブラウザが subscription を提示できている=同一端末操作なので
       user_id を付け替える（ログイン切替に強い）
+
+    追加仕様（重要）:
+    - endpoint は更新され得るため、(user_id, device_label, ua_family) ごとに active を 1 件に収束させる
+      → 新しい subscription が入ったら、同端末カテゴリの古い active を自動で is_active=false にする
     """
     now = datetime.now(timezone.utc)
+
+    def _ua_family(ua: str | None) -> str:
+        s = ua or ""
+        if "Macintosh" in s:
+            return "mac"
+        if "iPhone" in s:
+            return "iphone"
+        return "other"
+
+    def _family_filter(family: str):
+        # DBに入ってる user_agent をざっくり分類（厳密一致は不要）
+        if family == "mac":
+            return WebPushSubscription.user_agent.like("Mozilla/5.0 (Macintosh%")
+        if family == "iphone":
+            return WebPushSubscription.user_agent.like("Mozilla/5.0 (iPhone%")
+        # other: mac/iphone 以外（NULLも here 扱い）
+        return ~(
+            WebPushSubscription.user_agent.like("Mozilla/5.0 (Macintosh%")
+            | WebPushSubscription.user_agent.like("Mozilla/5.0 (iPhone%")
+        )
+
+    ua = request.headers.get("user-agent") or payload.user_agent
+    family = _ua_family(ua)
 
     existing = (
         db.query(WebPushSubscription)
@@ -74,31 +105,67 @@ def upsert_subscription(
         existing.user_id = current_user.id
         existing.p256dh = payload.keys.p256dh
         existing.auth = payload.keys.auth
-
-        ua = request.headers.get("user-agent")
-        existing.user_agent = ua or payload.user_agent
-
+        existing.user_agent = ua
         existing.device_label = payload.device_label
         existing.is_active = True
         existing.last_seen_at = now
         db.add(existing)
+
+        # ✅ 同端末カテゴリの古い active をまとめてOFF（増殖防止）
+        (
+            db.query(WebPushSubscription)
+            .filter(
+                WebPushSubscription.user_id == current_user.id,
+                WebPushSubscription.device_label == payload.device_label,
+                WebPushSubscription.is_active.is_(True),
+                WebPushSubscription.id != existing.id,
+                _family_filter(family),
+            )
+            .update(
+                {
+                    WebPushSubscription.is_active: False,
+                    WebPushSubscription.updated_at: now,
+                },
+                synchronize_session=False,
+            )
+        )
+
         db.commit()
         db.refresh(existing)
         return existing
-
-    ua = request.headers.get("user-agent")
 
     row = WebPushSubscription(
         user_id=current_user.id,
         endpoint=payload.endpoint,
         p256dh=payload.keys.p256dh,
         auth=payload.keys.auth,
-        user_agent=ua or payload.user_agent,
+        user_agent=ua,
         device_label=payload.device_label,
         is_active=True,
         last_seen_at=now,
     )
     db.add(row)
+    db.flush()  # ✅ row.id を確定させてから「他をOFF」にする
+
+    # ✅ 同端末カテゴリの古い active をまとめてOFF（増殖防止）
+    (
+        db.query(WebPushSubscription)
+        .filter(
+            WebPushSubscription.user_id == current_user.id,
+            WebPushSubscription.device_label == payload.device_label,
+            WebPushSubscription.is_active.is_(True),
+            WebPushSubscription.id != row.id,
+            _family_filter(family),
+        )
+        .update(
+            {
+                WebPushSubscription.is_active: False,
+                WebPushSubscription.updated_at: now,
+            },
+            synchronize_session=False,
+        )
+    )
+
     db.commit()
     db.refresh(row)
     return row

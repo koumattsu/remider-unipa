@@ -178,8 +178,8 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
       const hours = [...(data.reminder_offsets_hours ?? [])].filter((h) => h === 1);
 
       // 朝通知時刻：options にない値なら "08:00" にフォールバック
-      const time = MORNING_TIME_OPTIONS.includes(data.daily_digest_time)
-        ? data.daily_digest_time
+      const time = isPro
+        ? (MORNING_TIME_OPTIONS.includes(data.daily_digest_time) ? data.daily_digest_time : '08:00')
         : '08:00';
 
       // 朝通知 ON/OFF（未定義なら true 扱い）
@@ -301,9 +301,9 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
         const newOffsets = enableOneHour ? [1] : [];
         const updateData: NotificationSettingUpdate = {
           reminder_offsets_hours: newOffsets,
-          daily_digest_time: digestTime,
+          daily_digest_time: isPro ? digestTime : '08:00',
           enable_morning_notification: enableMorning,
-          enable_webpush: true,
+          enable_webpush: true, // ✅ enableWebPush() はON確定
         };
         await settingsApi.updateNotification(updateData);
         onGlobalNotificationsEnabledChange?.(true);
@@ -415,7 +415,7 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
       
       const updateData: NotificationSettingUpdate = {
         reminder_offsets_hours: newOffsets,
-        daily_digest_time: digestTime,
+        daily_digest_time: isPro ? digestTime : '08:00',
         enable_morning_notification: enableMorning,
         enable_webpush: enableWebpush,
       };
@@ -524,7 +524,7 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
               const newOffsets = enableOneHour ? [1] : [];
               const updateData: NotificationSettingUpdate = {
                 reminder_offsets_hours: newOffsets,
-                daily_digest_time: digestTime,
+                daily_digest_time: isPro ? digestTime : '08:00',
                 enable_morning_notification: enableMorning,
                 enable_webpush: next,
               };
@@ -711,9 +711,15 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
                 <select
                   value={digestTime}
                   onChange={(e) => setDigestTime(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.95rem' }}
+                  disabled={!isPro}
+                  style={{
+                    padding: '0.4rem 0.6rem',
+                    fontSize: '0.95rem',
+                    opacity: !isPro ? 0.7 : 1,
+                    cursor: !isPro ? 'not-allowed' : 'pointer',
+                  }}
                 >
-                  {MORNING_TIME_OPTIONS.map((time) => (
+                  {(isPro ? MORNING_TIME_OPTIONS : ['08:00']).map((time) => (
                     <option key={time} value={time}>
                       {time}
                     </option>

@@ -24,14 +24,18 @@ async def create_or_update_notification_setting(
     current_user: User = Depends(get_current_user),
 ):
     """通知設定を作成または更新"""
-    # TODO: 将来 plan を導入したらここで分岐する（無料/有料）
-    is_pro = False
+    # ✅ plan による分岐（SSOT）
+    is_pro = (current_user.plan != "free")
 
     # 無料ユーザーは「1時間前通知のみ」許可（ON/OFFは [] or [1]）
     # ✅ reminder_offsets_hours が送られてきた時だけフィルタする（Noneなら既存維持）
     if (not is_pro) and (setting_data.reminder_offsets_hours is not None):
         incoming = setting_data.reminder_offsets_hours or []
         setting_data.reminder_offsets_hours = [h for h in incoming if h == 1]
+
+    # ✅ free は daily_digest_time を常に 08:00 に固定（送信値は無視）
+    if not is_pro:
+        setting_data.daily_digest_time = "08:00"
 
     setting = (
         db.query(NotificationSetting)
@@ -52,8 +56,11 @@ async def create_or_update_notification_setting(
         # ✅ None は「変更なし」扱いで既存維持（フロントが部分更新でも壊れない）
         if setting_data.reminder_offsets_hours is not None:
             setting.reminder_offsets_hours = setting_data.reminder_offsets_hours
+
+        # ✅ free は常に "08:00"（上で setting_data を矯正済み）
         if setting_data.daily_digest_time is not None:
             setting.daily_digest_time = setting_data.daily_digest_time
+
         if setting_data.enable_morning_notification is not None:
             setting.enable_morning_notification = setting_data.enable_morning_notification
 
@@ -99,6 +106,11 @@ async def get_notification_setting(
     )
 
     if setting:
+        # ✅ free は daily_digest_time を常に 08:00（SSOT）
+        if current_user.plan == "free" and setting.daily_digest_time != "08:00":
+            setting.daily_digest_time = "08:00"
+            db.commit()
+            db.refresh(setting)
         return setting
 
     # ✅ 無ければ作成（安全側デフォルト）

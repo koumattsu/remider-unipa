@@ -12,9 +12,9 @@ from app.models.task_notification_log import TaskNotificationLog
 from app.services.notification_decision import NotificationDecision  # ✅ 追加
 import logging
 from zoneinfo import ZoneInfo
+from app.core.time import JST
 
 logger = logging.getLogger(__name__)
-JST = timezone(timedelta(hours=9))
 
 # ✅ SSOT契約：朝通知は offset_hours=0 として扱う
 MORNING_OFFSET_HOURS = 0
@@ -54,9 +54,8 @@ def to_utc(dt: datetime) -> datetime:
     """
     DBのdatetimeをUTCに正規化するヘルパー。
 
-    - tzinfo が無い（naive）の場合は「JSTとして保存されている」とみなして
-      JSTを付けてからUTCに変換
-    - tzinfo が付いている場合は、そのタイムゾーンからUTCに変換
+    - naive は「JSTとして保存されている」とみなして JST を付けてUTCへ
+    - aware はそのTZからUTCへ
     """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=JST).astimezone(timezone.utc)
@@ -508,12 +507,14 @@ def get_tasks_due_today_morning(
         .outerjoin(WeeklyTask, Task.weekly_task_id == WeeklyTask.id)
         .filter(
             Task.user_id == user_id,
-            Task.deleted_at.is_(None),          # ✅ 監査的にも自然（ソフトデリート除外）
+            Task.deleted_at.is_(None),
             Task.is_done == False,  # noqa: E712
             or_(
                 Task.should_notify == True,
                 Task.should_notify.is_(None),
             ),
+            Task.deadline.isnot(None),   # ✅ 朝通知は deadline 必須（ここが致命点になり得る）
+            Task.deadline >= now_utc,    # ✅ 朝時点で既に過去の締切は除外（ノイズ＆事故防止）
         )
         .all()
     )

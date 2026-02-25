@@ -36,7 +36,7 @@ from app.services.line_client import (
     send_daily_digest,
 )
 from app.services.weekly_materialize import materialize_weekly_tasks_for_user
-from app.services.webpush_sender import WebPushSender
+from app.services.webpush_sender import WebPushSender, _make_event_token  
 from app.services.outcome_decision import decide_task_outcome
 from app.services.outcome_log_lock import try_mark_outcome_as_evaluated
 from app.services.outcome_features import extract_outcome_features, FEATURE_VERSION
@@ -258,11 +258,69 @@ async def debug_migrate_task_auto_notify_flag(db: Session = Depends(get_db)):
         return {"status": "ok", "message": "column added"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+    
+def _parse_now_override(s: str | None) -> datetime | None:
+    """
+    ISO文字列を受け取って datetime を返す。
+    例: 2026-02-24T08:05:00+09:00 / 2026-02-24T23:00:00Z
+    """
+    if not s:
+        return None
+    ss = s.strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(ss)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+@router.post("/debug-daily")
+async def run_daily_job_debug(
+    db: Session = Depends(get_db),
+    now: str | None = Query(
+        None,
+        description="ISO datetime. ex: 2026-02-24T08:05:00+09:00",
+    ),
+):
+    """
+    デバッグ用：任意の now を注入して /daily と同じ処理を走らせる。
+    """
+    now_dt = _parse_now_override(now)
+    if not now_dt:
+        return {"ok": False, "error": "invalid now. use ISO like 2026-02-24T08:05:00+09:00"}
+
+    # ✅ “注入 now” を /daily の変数に載せて呼ぶだけ
+    started_at_utc = now_dt.astimezone(timezone.utc)
+    now_utc = started_at_utc
+
+    # ✅ ここから /daily と同じ実装を呼びたいので、今の run_daily_job を薄くラップする：
+    #    - 既存の run_daily_job の中身を _run_daily_job_impl に移す（最小の構造変更）
+    return await _run_daily_job_impl(db=db, started_at_utc=started_at_utc, now_utc=now_utc)
+
+async def _run_daily_job_impl(db: Session, *, started_at_utc: datetime, now_utc: datetime | None):
+    # ここに今の run_daily_job の中身を「ほぼそのまま」移す
+    # ただし、関数シグネチャに合わせて冒頭2行は不要：
+    #   started_at_utc = datetime.now(...)
+    #   now_utc = ...
+    #
+    # そして try 内の
+    #   now_utc = datetime.now(...)
+    # は “①で入れたガード” の形にする
+
+    # ==============================
+    # NotificationRun（cron 1実行 = 1行）
+    # ==============================
+    run = NotificationRun(status="running")
+    db.add(run)
+    db.commit()
+    db.refresh(run)
 
 @router.post("/daily")
 async def run_daily_job(db: Session = Depends(get_db)):
     started_at_utc = datetime.now(timezone.utc)
-    now_utc = started_at_utc
+    now_utc = None 
     # ==============================
     # NotificationRun（cron 1実行 = 1行）
     # ==============================
@@ -288,7 +346,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
 
     try:
         # 内部の基準はUTC、ログ表示はJST
-        now_utc = datetime.now(timezone.utc)
+        if now_utc is None:  # ✅ debug から注入されたら上書きしない
+            now_utc = datetime.now(timezone.utc)
         now_jst = now_utc.astimezone(JST)
 
         # ✅ 朝通知：daily_digest_time の窓で判定（固定5-10は廃止）
@@ -621,7 +680,8 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     db.commit()
 
                 # ✅ WebPush（朝は1本に集約：digest）
-                if setting.enable_webpush and locked_tasks_today and created_morning:
+                # - created_morning が空でも、既存InAppを anchor として使って送る
+                if setting.enable_webpush and locked_tasks_today:
                     show = locked_tasks_today[:8]
                     lines: list[str] = []
                     for t in show:
@@ -631,48 +691,73 @@ async def run_daily_job(db: Session = Depends(get_db)):
                     if len(locked_tasks_today) > len(show):
                         lines.append(f"ほか{len(locked_tasks_today) - len(show)}件")
 
-                    anchor = created_morning[0]
+                    anchor = created_morning[0] if created_morning else None
 
-                    payload = {
-                        "title": "今日の締切",
-                        "body": "\n".join(lines),
-                        "url": anchor.deep_link,
-                        "deep_link": anchor.deep_link,
-                        "notification_id": anchor.id,
-                        "run_id": run.id,
-                    }
-
-                    try:
-                        res = WebPushSender._send_payload(
-                            db,
-                            user_id=user_id,
-                            payload=payload,
-                            in_app_notification_id=anchor.id,
-                            run_id=run.id,
+                    # ✅ 既存InAppがあるケースに備えて anchor を復元
+                    if anchor is None:
+                        t0 = locked_tasks_today[0]
+                        dl0 = to_utc(t0.deadline)
+                        anchor = (
+                            db.query(InAppNotification)
+                            .filter(InAppNotification.user_id == user_id)
+                            .filter(InAppNotification.task_id == t0.id)
+                            .filter(InAppNotification.deadline_at_send == dl0)
+                            .filter(InAppNotification.offset_hours == MORNING_OFFSET_HOURS)
+                            .order_by(InAppNotification.id.desc())
+                            .first()
                         )
-                        webpush_sent += int(res.get("sent", 0))
-                        webpush_failed += int(res.get("failed", 0))
-                        webpush_deactivated += int(res.get("deactivated", 0))
 
-                        anchor.extra = {
-                            **(anchor.extra or {}),
-                            "webpush_digest": {
-                                "status": "sent" if int(res.get("sent", 0)) > 0 else "skipped",
-                                "sent": int(res.get("sent", 0)),
-                                "failed": int(res.get("failed", 0)),
-                                "deactivated": int(res.get("deactivated", 0)),
-                                "at": now_utc.isoformat(),
-                                "tasks_total": len(locked_tasks_today),
-                                "shown": len(show),
-                            },
+                    # anchor が取れないなら、digestは送れない（ただしロックは資産として残ってる）
+                    if anchor:
+                        issued_at = int(now_utc.timestamp())
+                        event_token = _make_event_token(
+                            user_id=user_id,
+                            notification_id=anchor.id,
+                            run_id=run.id,
+                            issued_at=issued_at,
+                        )
+
+                        payload = {
+                            "title": "今日の締切",
+                            "body": "\n".join(lines),
+                            "url": anchor.deep_link,
+                            "deep_link": anchor.deep_link,
+                            "notification_id": anchor.id,
+                            "run_id": run.id,
+                            "event_token": event_token,  # ✅ opened計測のSSOT
                         }
-                        db.add(anchor)
-                        db.commit()
 
-                    except Exception as e:
-                        print("[CRON] webpush digest failed:", str(e))
-                        webpush_failed += 1
-                        db.rollback()
+                        try:
+                            res = WebPushSender._send_payload(
+                                db,
+                                user_id=user_id,
+                                payload=payload,
+                                in_app_notification_id=anchor.id,
+                                run_id=run.id,
+                            )
+                            webpush_sent += int(res.get("sent", 0))
+                            webpush_failed += int(res.get("failed", 0))
+                            webpush_deactivated += int(res.get("deactivated", 0))
+
+                            anchor.extra = {
+                                **(anchor.extra or {}),
+                                "webpush_digest": {
+                                    "status": "sent" if int(res.get("sent", 0)) > 0 else "skipped",
+                                    "sent": int(res.get("sent", 0)),
+                                    "failed": int(res.get("failed", 0)),
+                                    "deactivated": int(res.get("deactivated", 0)),
+                                    "at": now_utc.isoformat(),
+                                    "tasks_total": len(locked_tasks_today),
+                                    "shown": len(show),
+                                },
+                            }
+                            db.add(anchor)
+                            db.commit()
+
+                        except Exception as e:
+                            print("[CRON] webpush digest failed:", str(e))
+                            webpush_failed += 1
+                            db.rollback()
 
                 # ✅ LINE（有料のみ）も “ロック成功分” だけ送る
                 if locked_tasks_today:

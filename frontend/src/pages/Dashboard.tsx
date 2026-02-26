@@ -333,30 +333,9 @@ export const Dashboard: React.FC = () => {
 
       setPlan(String(me?.plan ?? 'free'));
 
-      // ✅ SSOT: グローバル通知（親）を取得して確定（localStorageより強い）
-      try {
-        const s = await settingsApi.getNotification();
-        const enabled = !!(s as any)?.enable_webpush;
-        setGlobalNotificationsEnabled(enabled);
-
-        try {
-          const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
-          const prev = raw ? (JSON.parse(raw) as StoredNotificationSettings) : null;
-          const next: StoredNotificationSettings = {
-            enableMorning: prev?.enableMorning ?? true,
-            dailyDigestTime: prev?.dailyDigestTime ?? '08:00',
-            reminderOffsetsHours: prev?.reminderOffsetsHours ?? [1],
-            enableWebpush: enabled,
-          };
-          window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(next));
-        } catch {}
-      } catch (e) {
-        console.warn('[boot] settings/notification failed', e);
-      }
-
       const hasCache = !!loadCache<Task[]>(TASKS_CACHE_KEY);
 
-      // ✅ tasks は “画面を出す”ために重要
+      // ✅ tasks は “画面を出す”ために最優先（settingsの遅さで足止めしない）
       const pTasks = loadTasks({ silent: hasCache });
 
       // ✅ それ以外は「待たない」：コールド起動の体感を最優先
@@ -365,6 +344,29 @@ export const Dashboard: React.FC = () => {
           .then(fn)
           .catch((e) => console.warn('[boot][bg] failed', e));
       };
+
+      // ✅ SSOT: グローバル通知設定は背景で取得して反映（UIは先に出す）
+      runBg(async () => {
+        try {
+          const s = await settingsApi.getNotification();
+          const enabled = !!(s as any)?.enable_webpush;
+          setGlobalNotificationsEnabled(enabled);
+
+          try {
+            const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
+            const prev = raw ? (JSON.parse(raw) as StoredNotificationSettings) : null;
+            const next: StoredNotificationSettings = {
+              enableMorning: prev?.enableMorning ?? true,
+              dailyDigestTime: prev?.dailyDigestTime ?? '08:00',
+              reminderOffsetsHours: prev?.reminderOffsetsHours ?? [1],
+              enableWebpush: enabled,
+            };
+            window.localStorage.setItem(NOTIFICATION_STORAGE_KEY, JSON.stringify(next));
+          } catch {}
+        } catch (e) {
+          console.warn('[boot] settings/notification failed', e);
+        }
+      });
 
       // キャッシュ無し（真っ白回避）のときだけ tasks を待つ
       if (!hasCache) {
@@ -376,9 +378,6 @@ export const Dashboard: React.FC = () => {
       runBg(async () => loadWeeklyTemplates());
       runBg(async () => loadTaskNotificationOverrides());
       runBg(async () => refreshNotifBadge());
-
-      // ❌ 観測用 ping は削除（遅くなるだけ）
-      // runBg(async () => fetchInAppNotifications(1));
     })();
   }, []);
 

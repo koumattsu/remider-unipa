@@ -127,14 +127,26 @@ self.addEventListener('notificationclick', (event) => {
           const apiBase = String(rawApi).replace(/\/+$/, '')
           const eventsUrl = `${apiBase}/api/v1/notifications/webpush/events`
 
-          await fetch(eventsUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            // ✅ cookieに依存しない（iOS/Androidの運用耐性）
-            credentials: 'omit',
-            keepalive: true,
-          })
+          const sendOpened = async () => {
+            const ctrl = new AbortController()
+            const t = setTimeout(() => ctrl.abort(), 2000) // ✅ 2秒で打ち切り（体感を守る）
+            try {
+              await fetch(eventsUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                credentials: 'omit',
+                keepalive: true,
+                signal: ctrl.signal,
+              })
+            } catch {
+              // ignore
+            } finally {
+              clearTimeout(t)
+            }
+          }
+          // ✅ 送信は開始だけして、UI（focus/open）を絶対ブロックしない
+          sendOpened()
         }
       } catch {}
 

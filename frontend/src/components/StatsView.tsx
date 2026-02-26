@@ -308,10 +308,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         endOfWeek.setDate(endOfWeek.getDate() + 7);
 
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-        const endOfMonthEnd = new Date(endOfMonth);
-        endOfMonthEnd.setHours(23, 59, 59, 999);
+        // ✅ toは「次月1日 00:00」（exclusive）に統一（weekと同じ [from,to)）
+        const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
         const fromOutcomesWeek = startOfWeek.toISOString();
         const toOutcomesWeek = endOfWeek.toISOString();
@@ -320,11 +318,11 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         const toNotifs = toOutcomesWeek;
 
         const fromOutcomesMonth = startOfMonth.toISOString();
-        const toOutcomesMonth = endOfMonthEnd.toISOString();
+        const toOutcomesMonth = startOfNextMonth.toISOString();
 
-        // ✅ created_at基準の週次サマリ（Backendへ集計を寄せる）
+        // ✅ created_at基準も同じレンジに統一
         const fromNotifsMonth = startOfMonth.toISOString();
-        const toNotifsMonth = endOfMonthEnd.toISOString();
+        const toNotifsMonth = startOfNextMonth.toISOString();
         const fmtMD = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
         const fmtYM = (d: Date) => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 
@@ -499,25 +497,18 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
 
           settingsApi.getNotification().catch(() => null),
 
-          analyticsActionsApi
-            .getEffectiveness({ window_days: windowDaysOf(bucket), min_total: 5, limit_events: 500 })
-            .then(x => x.items ?? [])
-            .catch(() => []),
+          Promise.resolve([] as ActionEffectivenessItem[]),
         ]);
 
         // ✅ この取得結果を “ローカルSSOT” として確定させる（stateは非同期なので参照しない）
         const effMetaNow = { windowDays: windowDaysOf(bucket), fetchedAt: new Date() };
 
-        // ✅ bucketに応じて、週/月のどちらへ入れるかを “payload側で確定”
-        const effWeek =
-          bucket === 'week'
-            ? (effItems ?? [])
-            : (actionEffectiveness.week ?? (cached?.data?.actionEffectivenessWeek ?? null));
+        // ✅ stateはclosureで古くなり得るので、fallbackは cached を優先（ローカルSSOT）
+        const cachedEffWeek = cached?.data?.actionEffectivenessWeek ?? null;
+        const cachedEffMonth = cached?.data?.actionEffectivenessMonth ?? null;
 
-        const effMonth =
-          bucket === 'month'
-            ? (effItems ?? [])
-            : (actionEffectiveness.month ?? (cached?.data?.actionEffectivenessMonth ?? null));
+        const effWeek = bucket === 'week' ? (effItems ?? []) : cachedEffWeek;
+        const effMonth = bucket === 'month' ? (effItems ?? []) : cachedEffMonth;
 
         const effByFeatWeek =
           actionEffectivenessByFeature.week ??
@@ -527,23 +518,16 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           actionEffectivenessByFeature.month ??
           (cached?.data?.actionEffectivenessByFeatureMonth ?? null);
 
-        const effMetaWeek =
-          bucket === 'week'
-            ? effMetaNow
-            : (actionEffectivenessMeta.week
-                ? { windowDays: actionEffectivenessMeta.week.windowDays, fetchedAt: actionEffectivenessMeta.week.fetchedAt }
-                : (cached?.data?.actionEffectivenessMetaWeek
-                    ? { windowDays: cached.data.actionEffectivenessMetaWeek.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaWeek.fetchedAt) }
-                    : null));
+        const cachedMetaWeek = cached?.data?.actionEffectivenessMetaWeek
+          ? { windowDays: cached.data.actionEffectivenessMetaWeek.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaWeek.fetchedAt) }
+          : null;
 
-        const effMetaMonth =
-          bucket === 'month'
-            ? effMetaNow
-            : (actionEffectivenessMeta.month
-                ? { windowDays: actionEffectivenessMeta.month.windowDays, fetchedAt: actionEffectivenessMeta.month.fetchedAt }
-                : (cached?.data?.actionEffectivenessMetaMonth
-                    ? { windowDays: cached.data.actionEffectivenessMetaMonth.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaMonth.fetchedAt) }
-                    : null));
+        const cachedMetaMonth = cached?.data?.actionEffectivenessMetaMonth
+          ? { windowDays: cached.data.actionEffectivenessMetaMonth.windowDays, fetchedAt: new Date(cached.data.actionEffectivenessMetaMonth.fetchedAt) }
+          : null;
+
+        const effMetaWeek = bucket === 'week' ? effMetaNow : cachedMetaWeek;
+        const effMetaMonth = bucket === 'month' ? effMetaNow : cachedMetaMonth;
 
         // ✅ 画面stateも更新（UI用）
         setActionEffectiveness((prev) => ({ ...prev, [bucket]: effItems }));

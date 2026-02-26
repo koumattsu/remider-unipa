@@ -11,8 +11,10 @@ const updateSW = registerSW({
   // ✅ 初回からSWの登録/更新を進め、世代ズレで起動に失敗する確率を下げる
   immediate: true,
   onNeedRefresh() {
-    // ✅ 新しいSWが来たら即適用してリロード（“開かない”より圧倒的に安全）
-    updateSW(true)
+    // ✅ 初期表示を優先。更新は“次回起動”で反映でもOK
+    // 必要ならアプリ内で「更新があります」トーストを出すのが理想
+    updateSW(false)
+    console.log('[PWA] New version available (will apply next load)')
   },
   onOfflineReady() {
     console.log('PWA ready')

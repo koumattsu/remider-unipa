@@ -176,11 +176,13 @@ const [effectivenessSnapshotsLoading, setEffectivenessSnapshotsLoading] =
   useState(false);
 const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null);  
 
+  const currentByFeature = actionEffectivenessByFeature[bucket];
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       // ✅ キャッシュ戦略：bucket × feature 単位で一度だけ取得（read-only）
-      const shouldFetchByFeature = actionEffectivenessByFeature[bucket] === null;
+      const shouldFetchByFeature = currentByFeature === null;
       if (!shouldFetchByFeature) return;
 
       setActionEffectivenessByFeatureLoading(true);
@@ -211,7 +213,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return () => {
       mounted = false;
     };
-  }, [bucket, actionEffectivenessByFeature[bucket]]);
+  }, [bucket, currentByFeature]);
 
   // ✅ UI: キャッシュ即表示 → 裏で再取得（stale-while-revalidate）
   const [refreshing, setRefreshing] = useState(false);
@@ -470,7 +472,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           cxW, cxM,
           notifSetting,
           effItems,
-          effByFeatureItems,
         ] = await Promise.all([
           outcomesApi
             .list({ from: fromOutcomesWeek, to: toOutcomesWeek })
@@ -502,17 +503,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             .getEffectiveness({ window_days: windowDaysOf(bucket), min_total: 5, limit_events: 500 })
             .then(x => x.items ?? [])
             .catch(() => []),
-
-          analyticsActionsApi
-            .getEffectivenessByFeature({
-              version: 'v1',
-              window_days: windowDaysOf(bucket),
-              min_total: 5,
-              limit_events: 500,
-              limit_samples_per_event: 50,
-            })
-            .then(x => x.items ?? [])
-            .catch(() => []),
         ]);
 
         // ✅ この取得結果を “ローカルSSOT” として確定させる（stateは非同期なので参照しない）
@@ -530,14 +520,12 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             : (actionEffectiveness.month ?? (cached?.data?.actionEffectivenessMonth ?? null));
 
         const effByFeatWeek =
-          bucket === 'week'
-            ? (effByFeatureItems ?? [])
-            : (actionEffectivenessByFeature.week ?? (cached?.data?.actionEffectivenessByFeatureWeek ?? null));
+          actionEffectivenessByFeature.week ??
+          (cached?.data?.actionEffectivenessByFeatureWeek ?? null);
 
         const effByFeatMonth =
-          bucket === 'month'
-            ? (effByFeatureItems ?? [])
-            : (actionEffectivenessByFeature.month ?? (cached?.data?.actionEffectivenessByFeatureMonth ?? null));
+          actionEffectivenessByFeature.month ??
+          (cached?.data?.actionEffectivenessByFeatureMonth ?? null);
 
         const effMetaWeek =
           bucket === 'week'
@@ -560,7 +548,6 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         // ✅ 画面stateも更新（UI用）
         setActionEffectiveness((prev) => ({ ...prev, [bucket]: effItems }));
         setActionEffectivenessMeta((prev) => ({ ...prev, [bucket]: effMetaNow }));
-        setActionEffectivenessByFeature((prev) => ({ ...prev, [bucket]: effByFeatureItems ?? [] }));
 
         if (!mounted) return;
 
@@ -592,18 +579,14 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             logsMonth: outcomeMonth ?? [],
             summaryWeek: sumW ?? null,
             summaryMonth: sumM ?? null,
-
             byCourseWeek: byW ?? null,
             byCourseMonth: byM ?? null,
             byFeatureWeek: featW ?? null,
             byFeatureMonth: featM ?? null,
-
             weeklyNotifSummary: weeklySummary ?? null,
             monthlyNotifSummary: monthlySummary ?? null,
-
             latestRun: run ?? null,
             latestRunSummary: runSummary ?? null,
-
             courseXWeek: cxW ?? null,
             courseXMonth: cxM ?? null,
 
@@ -702,18 +685,22 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     // ✅ bucket変更 or apply後に取得し直す（再計算ではなく資産の再取得）
   }, [bucket, appliedAt]);
 
+  const currentEffectiveness = actionEffectiveness[bucket];
+
   useEffect(() => {
     let mounted = true;
     (async () => {
-      // ✅ キャッシュ戦略：bucket 単位で一度だけ取得（read-only）
-      // - 再取得したい場合は state を明示的に null に戻す
-      const current = actionEffectiveness?.[bucket];
-      const shouldFetchEffectiveness = current == null; // null/undefined を両方「未取得」と扱う
+      const shouldFetchEffectiveness = currentEffectiveness == null; // null/undefined を未取得扱い
       if (!shouldFetchEffectiveness) return;
+
       setActionEffectivenessLoading(true);
       setActionEffectivenessError(null);
       try {
-        const eff = await analyticsActionsApi.getEffectiveness({ window_days: windowDaysOf(bucket), min_total: 5, limit_events: 500 });
+        const eff = await analyticsActionsApi.getEffectiveness({
+          window_days: windowDaysOf(bucket),
+          min_total: 5,
+          limit_events: 500,
+        });
         if (!mounted) return;
         setActionEffectiveness((prev) => ({
           ...prev,
@@ -730,7 +717,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
     return () => {
       mounted = false;
     };
-  }, [bucket, actionEffectiveness?.[bucket]]);
+  }, [bucket, currentEffectiveness]);
 
   useEffect(() => {
     let mounted = true;
@@ -1237,9 +1224,7 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
                 >
                   <div style={{ fontWeight: 800 }}>
                     #{idx + 1}{' '}
-                    {r.feature_key === 'deadline_hour_jst'
-                      ? `${r.feature_value}時`
-                      : labelFeatureValue(r.feature_value, r.feature_key)}
+                    {labelFeatureValue(r.feature_value, r.feature_key)}
                   </div>
                   <div style={{ opacity: 0.82 }}>
                     {toPercent(r.missed_rate)}%（{r.missed}/{r.total}）

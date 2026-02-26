@@ -327,12 +327,10 @@ export const Dashboard: React.FC = () => {
         me = await authApi.getCurrentUser();
       } catch (e) {
         console.warn('[boot] auth/me failed -> redirect to /login', e);
-        // ✅ guest廃止：未ログインは必ず/loginへ
         window.location.hash = '/login';
         return;
       }
 
-      // ✅ ここまで来たら認証OK
       setPlan(String(me?.plan ?? 'free'));
 
       // ✅ SSOT: グローバル通知（親）を取得して確定（localStorageより強い）
@@ -341,7 +339,6 @@ export const Dashboard: React.FC = () => {
         const enabled = !!(s as any)?.enable_webpush;
         setGlobalNotificationsEnabled(enabled);
 
-        // localStorageも更新（NotificationSettings未訪問でもズレない）
         try {
           const raw = window.localStorage.getItem(NOTIFICATION_STORAGE_KEY);
           const prev = raw ? (JSON.parse(raw) as StoredNotificationSettings) : null;
@@ -357,28 +354,31 @@ export const Dashboard: React.FC = () => {
         console.warn('[boot] settings/notification failed', e);
       }
 
-      try {
-        await weeklyTasksApi.materialize();
-      } catch (e) {
-        console.error('weekly materialize 失敗:', e);
-      }
-
       const hasCache = !!loadCache<Task[]>(TASKS_CACHE_KEY);
 
-      await loadTasks({ silent: hasCache });
-      await loadWeeklyTemplates();
-      await loadTaskNotificationOverrides();
+      // ✅ tasks は “画面を出す”ために重要
+      const pTasks = loadTasks({ silent: hasCache });
 
-      // 観測用 ping
-      try {
-        console.log('[boot] ping notifications/in-app ...');
-        await fetchInAppNotifications(1);
-        console.log('[boot] ping notifications/in-app OK');
-      } catch (e) {
-        console.error('[boot] ping notifications/in-app FAILED', e);
+      // ✅ それ以外は「待たない」：コールド起動の体感を最優先
+      const runBg = (fn: () => Promise<any>) => {
+        Promise.resolve()
+          .then(fn)
+          .catch((e) => console.warn('[boot][bg] failed', e));
+      };
+
+      // キャッシュ無し（真っ白回避）のときだけ tasks を待つ
+      if (!hasCache) {
+        await pTasks;
       }
 
-      await refreshNotifBadge();
+      // 背景で実行（直列awaitしない）
+      runBg(async () => weeklyTasksApi.materialize());
+      runBg(async () => loadWeeklyTemplates());
+      runBg(async () => loadTaskNotificationOverrides());
+      runBg(async () => refreshNotifBadge());
+
+      // ❌ 観測用 ping は削除（遅くなるだけ）
+      // runBg(async () => fetchInAppNotifications(1));
     })();
   }, []);
 

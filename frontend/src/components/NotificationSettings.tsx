@@ -568,10 +568,17 @@ export const NotificationSettings: React.FC<NotificationSettingsProps> = ({
             fontSize: '0.9rem',
           }}
         >
-          通知を受け取るには、ブラウザの許可が必要です。
+          <div style={{ fontWeight: 800, marginBottom: '0.25rem' }}>
+            ブラウザの通知許可が必要です
+          </div>
+
+          <div style={{ color: '#666', lineHeight: 1.4 }}>
+            「許可する」を押すと、この端末で DueFlow の通知を受け取れるようになります（いつでもブラウザ設定から変更できます）。
+          </div>
+
           <button
             style={{
-              marginLeft: '0.75rem',
+              marginTop: '0.6rem',
               padding: '0.4rem 0.75rem',
               borderRadius: '4px',
               border: 'none',

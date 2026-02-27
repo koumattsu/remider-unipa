@@ -54,14 +54,13 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
       return;
     }
 
-    const backendHour = form.time_hour === 24 ? 0 : form.time_hour;
-
     const payload = {
       title: form.title.trim(),
       course_name: '__manual__',
       memo: form.memo,
       weekday: form.weekday,
-      time_hour: backendHour,
+      // ✅ 24:00 は 24 のまま送る（正規化はバックエンドSSOT）
+      time_hour: form.time_hour,
       time_minute: form.time_minute,
       is_active: form.is_active,
     };
@@ -86,9 +85,8 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
   const handleEditClick = (tpl: WeeklyTask) => {
     const isMidnight = tpl.time_hour === 0;
 
-    // ❌ ここでは weekday をズラさない
-    // const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
-    const uiWeekday = tpl.weekday;
+    // ✅ 00:00 は UI 上「前日 24:00」扱いに戻す（weekdayも -1）
+    const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
 
     const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
 
@@ -289,13 +287,11 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
             {templates.map((tpl) => {
               const isMidnight = tpl.time_hour === 0;
 
-              // DB の weekday をそのまま表示に使う
-              const weekdayIndex = tpl.weekday;
+              // ✅ 00:00 は「前日 24:00」表示（weekdayも -1）
+              const weekdayIndex = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
 
-              // 時刻だけ 0 → 24 に見せる
-              const hourDisplay = isMidnight
-                ? 24
-                : tpl.time_hour ?? 0;
+              // 時刻は 0 → 24 に見せる
+              const hourDisplay = isMidnight ? 24 : (tpl.time_hour ?? 0);
 
               return (
                 <tr key={tpl.id} style={{ borderTop: '1px solid rgba(255,255,255,.10)' }}>

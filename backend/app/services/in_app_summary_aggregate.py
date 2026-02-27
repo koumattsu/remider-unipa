@@ -45,10 +45,11 @@ def calc_in_app_summary_for_run(db: Session, run_id: int) -> Dict[str, int]:
         # ✅ message軸 SSOT: sent_messages（push service 受理成功のメッセージ数）
         # - ここが 0 になると UI の分母が崩れるので、防波堤を厚くする
         _sent_status = getattr(WebPushDelivery, "STATUS_SENT", "sent")
+        sent_statuses = {_sent_status, "sent"}
         sent_messages = int(
             db.query(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
             .filter(WebPushDelivery.run_id == run_id)
-            .filter(WebPushDelivery.status.in_([_sent_status, "sent"]))
+            .filter(WebPushDelivery.status.in_(list(sent_statuses)))
             .scalar()
             or 0
         )

@@ -18,6 +18,12 @@ from app.models.webpush_delivery import WebPushDelivery
 
 router = APIRouter()
 
+def _ensure_aware_utc(dt: datetime) -> datetime:
+    # naive datetime は UTC 扱いに固定（契約）
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
 @router.get(
     "/in-app",
     response_model=InAppNotificationListResponse,
@@ -43,9 +49,9 @@ async def list_in_app_notifications(
     )
 
     if from_:
-        q = q.filter(InAppNotification.created_at >= from_)
+        q = q.filter(InAppNotification.created_at >= _ensure_aware_utc(from_))
     if to:
-        q = q.filter(InAppNotification.created_at <= to)
+        q = q.filter(InAppNotification.created_at < _ensure_aware_utc(to))
 
     if not include_dismissed:
         q = q.filter(InAppNotification.dismissed_at.is_(None))
@@ -141,6 +147,11 @@ async def summarize_in_app_notifications(
         from_ = week_start_jst.astimezone(timezone.utc)
         to = now_utc
 
+    if from_:
+        from_ = _ensure_aware_utc(from_)
+    if to:
+        to = _ensure_aware_utc(to)
+
     base = (
         db.query(InAppNotification)
         .filter(InAppNotification.user_id == current_user.id)
@@ -149,7 +160,7 @@ async def summarize_in_app_notifications(
     if from_:
         base = base.filter(InAppNotification.created_at >= from_)
     if to:
-        base = base.filter(InAppNotification.created_at <= to)
+        base = base.filter(InAppNotification.created_at < to)
 
     # =========================
     # InApp（資産）集計：UI分母には使わない
@@ -173,7 +184,7 @@ async def summarize_in_app_notifications(
     if from_:
         deliveries = deliveries.filter(WebPushDelivery.attempted_at >= from_)
     if to:
-        deliveries = deliveries.filter(WebPushDelivery.attempted_at <= to)
+        deliveries = deliveries.filter(WebPushDelivery.attempted_at < to)
 
     rows = (
         deliveries.with_entities(WebPushDelivery.status, func.count(WebPushDelivery.id))
@@ -189,10 +200,11 @@ async def summarize_in_app_notifications(
     # ✅ message軸 SSOT: sent_messages（端末が何個でも通知1件=1）
     # - in_app_notification_id が NULL の delivery は message として数えない（分母の水増し防止）
     _sent_status = getattr(WebPushDelivery, "STATUS_SENT", "sent")
+    sent_statuses = {_sent_status, "sent"}
     sent_messages = int(
         deliveries
         .filter(WebPushDelivery.in_app_notification_id.isnot(None))
-        .filter(WebPushDelivery.status.in_([_sent_status, "sent"]))
+        .filter(WebPushDelivery.status.in_(list(sent_statuses)))
         .with_entities(func.count(func.distinct(WebPushDelivery.in_app_notification_id)))
         .scalar()
         or 0
@@ -207,7 +219,7 @@ async def summarize_in_app_notifications(
     if from_:
         opened_q = opened_q.filter(WebPushEvent.created_at >= from_)
     if to:
-        opened_q = opened_q.filter(WebPushEvent.created_at <= to)
+        opened_q = opened_q.filter(WebPushEvent.created_at < to)
 
     # ✅ message軸: 同じ通知IDは端末が何個でも 1
     opened_messages = int(

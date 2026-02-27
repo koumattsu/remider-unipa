@@ -456,9 +456,25 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
           }
         };
 
-        // ✅ ここが改善ポイント： fetchSeries(12回API)を await せず、他のデータ取得と並行で走らせる
-        fetchSeries().catch(() => null);
+        // ✅ series は高コスト(12回API)なのでTTLで抑制
+        const SERIES_TTL_MS = 6 * 60 * 60 * 1000; // 6h（好みで調整）
+        const cachedAtMs = cached?.saved_at ? new Date(cached.saved_at).getTime() : 0;
 
+        const cachedWeekSeriesOk =
+          Array.isArray(cached?.data?.rateSeriesWeek) && cached!.data.rateSeriesWeek.length >= 6;
+        const cachedMonthSeriesOk =
+          Array.isArray(cached?.data?.rateSeriesMonth) && cached!.data.rateSeriesMonth.length >= 6;
+
+        const seriesFresh =
+          cachedAtMs > 0 &&
+          (Date.now() - cachedAtMs) < SERIES_TTL_MS &&
+          cachedWeekSeriesOk &&
+          cachedMonthSeriesOk;
+
+        // ✅ “新鮮なseriesがあるなら” 12回APIは打たない
+        if (!seriesFresh) {
+          fetchSeries().catch(() => null);
+        }
 
         const [
           outcomeWeek,
@@ -555,12 +571,15 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
         const savedAt = new Date();
         const refWeek = rateSeriesRef.current.week;
         const refMonth = rateSeriesRef.current.month;
+        // ✅ UIキャッシュは“表示最適化”なので上限をかける（SSOTはサーバ）
+        const cap = <T,>(xs: T[] | null | undefined, n: number) =>
+          Array.isArray(xs) ? xs.slice(-n) : [];
         const payload: StatsViewCachePayload = {
           version: STATS_VIEW_CACHE_VERSION,
           saved_at: savedAt.toISOString(),
           data: {
-            logsWeek: outcomeWeek ?? [],
-            logsMonth: outcomeMonth ?? [],
+            logsWeek: cap(outcomeWeek, 800),
+            logsMonth: cap(outcomeMonth, 1200),
             summaryWeek: sumW ?? null,
             summaryMonth: sumM ?? null,
             byCourseWeek: byW ?? null,
@@ -571,8 +590,8 @@ const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null
             monthlyNotifSummary: monthlySummary ?? null,
             latestRun: run ?? null,
             latestRunSummary: runSummary ?? null,
-            courseXWeek: cxW ?? null,
-            courseXMonth: cxM ?? null,
+            courseXWeek: Array.isArray(cxW) ? cxW.slice(0, 6000) : null,
+            courseXMonth: Array.isArray(cxM) ? cxM.slice(0, 6000) : null,
 
             rateSeriesWeek:
               (Array.isArray(refWeek) && refWeek.length > 0)

@@ -1,3 +1,5 @@
+# backend/app/services/weekly_materialize.py
+
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import and_

@@ -54,13 +54,18 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
       return;
     }
 
+    // ✅ 壊れにくい補正:
+    // - UI/他経路のバグで 00:00 が入ってきたら「24:00」として送る
+    //   （backend の normalize_weekly_time(24:00→weekday+1の00:00) に必ず乗せる）
+    const effectiveHour =
+      form.time_hour === 0 && form.time_minute === 0 ? 24 : form.time_hour;
+
     const payload = {
       title: form.title.trim(),
       course_name: '__manual__',
       memo: form.memo,
       weekday: form.weekday,
-      // ✅ 24:00 は 24 のまま送る（正規化はバックエンドSSOT）
-      time_hour: form.time_hour,
+      time_hour: effectiveHour,
       time_minute: form.time_minute,
       is_active: form.is_active,
     };
@@ -83,12 +88,13 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
   };
 
   const handleEditClick = (tpl: WeeklyTask) => {
-    const isMidnight = tpl.time_hour === 0;
+    const minute = tpl.time_minute ?? 0;
 
-    // ✅ 00:00 は UI 上「前日 24:00」扱いに戻す（weekdayも -1）
-    const uiWeekday = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
+    // ✅ 「前日24:00」扱いに戻すのは、00:00 のときだけ（00:30 等は巻き込まない）
+    const isNormalized24 = tpl.time_hour === 0 && minute === 0;
 
-    const uiHour = isMidnight ? 24 : (tpl.time_hour ?? 24);
+    const uiWeekday = isNormalized24 ? (tpl.weekday + 6) % 7 : tpl.weekday;
+    const uiHour = isNormalized24 ? 24 : (tpl.time_hour ?? 24);
 
     setEditingId(tpl.id);
     setForm({
@@ -96,12 +102,10 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
       memo: tpl.memo || '',
       weekday: uiWeekday,
       time_hour: uiHour,
-      time_minute: tpl.time_minute ?? 0,
+      time_minute: minute,
       is_active: tpl.is_active,
     });
   };
-
-
 
   const handleDeleteClick = async (tpl: WeeklyTask) => {
     if (!confirm(`"${tpl.title}" を削除しますか？`)) return;
@@ -284,14 +288,15 @@ export const WeeklyTaskSettings: React.FC<WeeklyTaskSettingsProps> = ({
           </thead>
           
           <tbody>
-            {templates.map((tpl) => {
-              const isMidnight = tpl.time_hour === 0;
+              {templates.map((tpl) => {
+              const minute = tpl.time_minute ?? 0;
+              const isNormalized24 = tpl.time_hour === 0 && minute === 0;
 
-              // ✅ 00:00 は「前日 24:00」表示（weekdayも -1）
-              const weekdayIndex = isMidnight ? (tpl.weekday + 6) % 7 : tpl.weekday;
+              // ✅ 00:00 のときだけ「前日 24:00」表示（weekdayも -1）
+              const weekdayIndex = isNormalized24 ? (tpl.weekday + 6) % 7 : tpl.weekday;
 
-              // 時刻は 0 → 24 に見せる
-              const hourDisplay = isMidnight ? 24 : (tpl.time_hour ?? 0);
+              // 時刻は 00:00 のときだけ 24 に見せる
+              const hourDisplay = isNormalized24 ? 24 : (tpl.time_hour ?? 0);
 
               return (
                 <tr key={tpl.id} style={{ borderTop: '1px solid rgba(255,255,255,.10)' }}>

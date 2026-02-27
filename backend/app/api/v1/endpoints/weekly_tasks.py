@@ -65,6 +65,7 @@ def list_weekly_tasks(
     )
     return tasks
 
+@router.post("", response_model=WeeklyTaskResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=WeeklyTaskResponse, status_code=status.HTTP_201_CREATED)
 def create_weekly_task(
     body: WeeklyTaskCreate,

@@ -107,7 +107,7 @@ const loadGlobalNotificationDefaults = (): TaskNotificationOptions => {
       offsetsHours: uniqueOffsets.length > 0 ? uniqueOffsets : [1],
     };
   } catch {
-    return { morning: true, offsetsHours: [3] };
+    return { morning: true, offsetsHours: [1] };
   }
 };
 

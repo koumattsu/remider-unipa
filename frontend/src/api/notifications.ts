@@ -45,19 +45,19 @@ export type InAppNotificationsSummary = {
 };
 
 // ✅ UI表示用：本文の括弧内を非表示にする（監査用のbodyは残す）
-  const simplifyNotifBodyForUi = (s: string) => {
-    if (!s) return s;
-    return s
-      .split('\n')
-      .map((line) =>
-        line
-          .replace(/\s*\([^)]*\)\s*/g, ' ')
-          .replace(/\s{2,}/g, ' ')
-          .trim()
-      )
-      .join('\n')
-      .trim();
-  };
+const simplifyNotifBodyForUi = (s: string) => {
+  if (!s) return s;
+  return s
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/\s*\([^)]*\)\s*/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    )
+    .join('\n')
+    .trim();
+};
 
 export async function fetchInAppNotifications(
   limit = 30,

@@ -140,6 +140,7 @@ const saveTaskNotificationOptions = (
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editMemo, setEditMemo] = useState('');
+  const [editingMemoTaskId, setEditingMemoTaskId] = useState<number | null>(null);
   
   // 日付＋時刻（24時対応）
   const [editDate, setEditDate] = useState('');      // yyyy-MM-dd
@@ -845,18 +846,24 @@ const saveTaskNotificationOptions = (
                 {/* 4行目: メモ（毎週タスクで空でも placeholder を出さず、ラベルだけ残す） */}
                 {showContentRow && (
                   <div>
-                    <div
-                      style={{
-                        fontSize: '0.8rem',
-                        color: 'rgba(255,255,255,.62)',
-                        marginBottom: 2,
-                      }}
-                    >
-                      メモ
-                    </div>
+                    {editingMemoTaskId !== task.id && (
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'rgba(255,255,255,.62)',
+                          marginBottom: 2,
+                        }}
+                      >
+                        メモ
+                      </div>
+                    )}
+
                     <EditableTextCell
                       value={baseMemo}
-                      placeholder=""   // ✅ ここがポイント：空なら表示しない
+                      placeholder="" // ✅ ここがポイント：空なら表示しない
+                      onEditingChange={(isEditing) => {
+                        setEditingMemoTaskId(isEditing ? task.id : null);
+                      }}
                       onSave={async (v) => {
                         const trimmed = v.trim();
                         if (trimmed === baseMemo) return;
@@ -867,7 +874,7 @@ const saveTaskNotificationOptions = (
                           await tasksApi.update(task.id, { memo: trimmed });
                         } catch {
                           onTaskPatched?.(task.id, { memo: prev }); // rollback
-                          alert('メモの更新に失敗しました'); // ✅ ついでに文言も合わせる（任意）
+                          alert('メモの更新に失敗しました');
                         }
                       }}
                     />
@@ -1507,12 +1514,14 @@ interface EditableTextCellProps {
   value: string;
   placeholder?: string;
   onSave: (value: string) => void;
+  onEditingChange?: (isEditing: boolean) => void; 
 }
 
 const EditableTextCell: React.FC<EditableTextCellProps> = ({
   value,
   placeholder,
   onSave,
+  onEditingChange,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -1522,6 +1531,7 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
   const handleClick = () => {
     setDraft(value);
     setIsEditing(true);
+    onEditingChange?.(true);
   };
 
   // ✅ 編集開始時に caret を末尾へ
@@ -1548,6 +1558,7 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
       onSave(draft);
     }
     setIsEditing(false);
+    onEditingChange?.(false);
   };
 
   const displayText = value ? value.split('\n')[0] : '';
@@ -1592,9 +1603,8 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
         <div
           style={{
             position: 'absolute',
-            top: '100%',
+            top: 0,
             left: 0,
-            marginTop: 6,
             zIndex: 20,
             width: '100%',
           }}
@@ -1618,10 +1628,7 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
               width: '100%',
               maxWidth: '100%',
               boxSizing: 'border-box',
-
-              // ✅ iOS Safariのタップズームを防ぐ（16px未満でズームする仕様）
-              fontSize: '16px',
-
+              fontSize: '16px', // ✅ iOS zoom対策 유지
               padding: '8px 10px',
               borderRadius: 12,
               border: '1px solid rgba(255,255,255,0.14)',

@@ -258,6 +258,7 @@ export const Dashboard: React.FC = () => {
   const [showRunDetails, setShowRunDetails] = useState(false);
   const [showAllReasons, setShowAllReasons] = useState(false);
   const [plan, setPlan] = useState<string>('free');
+  const [authReady, setAuthReady] = useState<boolean>(false);
 
   // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -325,7 +326,9 @@ export const Dashboard: React.FC = () => {
 
       try {
         me = await authApi.getCurrentUser();
+        setAuthReady(true); // ✅ ここから先のAPIは認証前提でOK
       } catch (e) {
+        setAuthReady(false);
         console.warn('[boot] auth/me failed -> redirect to /login', e);
         window.location.hash = '/login';
         return;
@@ -399,7 +402,10 @@ export const Dashboard: React.FC = () => {
   // 🔔 notifications タブを開いたら通知一覧を取得
   useEffect(() => {
     if (activeTab !== 'notifications') return;
-    // ✅ これが出れば「通知タブに入って取得処理が走った」が確定
+
+    // ✅ auth/me が完了する前に通知APIを叩くと一瞬401→エラー表示→リロードで直る、が起きる
+    if (!authReady) return;
+
     console.log('[notifications] loading in-app notifications...');
     let cancelled = false;
 
@@ -419,7 +425,6 @@ export const Dashboard: React.FC = () => {
           setNotifs(items);
           setLatestRun(run);
 
-          // ✅ 通知タブを開いたら「既読」扱い（消さなくてもバッジ0）
           const inapp = (summary as any)?.inapp;
           const total = Number(inapp?.total ?? 0) || 0;
 
@@ -440,7 +445,7 @@ export const Dashboard: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, authReady]);
 
   const loadTaskNotificationOverrides = async () => {
     try {

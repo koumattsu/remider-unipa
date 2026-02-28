@@ -1618,7 +1618,10 @@ const EditableTextCell: React.FC<EditableTextCellProps> = ({
               width: '100%',
               maxWidth: '100%',
               boxSizing: 'border-box',
-              fontSize: '0.9rem',
+
+              // ✅ iOS Safariのタップズームを防ぐ（16px未満でズームする仕様）
+              fontSize: '16px',
+
               padding: '8px 10px',
               borderRadius: 12,
               border: '1px solid rgba(255,255,255,0.14)',

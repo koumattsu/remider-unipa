@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import { SafariInstallBanner } from '../components/SafariInstallBanner';
 import { Task, WeeklyTask } from '../types';
 import { tasksApi } from '../api/tasks';
 import { weeklyTasksApi } from '../api/weeklyTasks';
@@ -1148,6 +1149,24 @@ export const Dashboard: React.FC = () => {
         minHeight: '100dvh',
       }}
     >
+      <SafariInstallBanner />
+
+      {/* ✅ キャッシュ表示中に裏で更新している場合の軽い表示 */}
+      {isLoading && (
+        <div
+          style={{
+            marginBottom: '0.6rem',
+            padding: '0.55rem 0.75rem',
+            borderRadius: 14,
+            border: '1px solid rgba(255,255,255,.10)',
+            background: 'rgba(255,255,255,.06)',
+            color: 'rgba(255,255,255,.82)',
+            fontSize: '0.85rem',
+          }}
+        >
+          更新中…
+        </div>
+      )}
       {/* ✅ キャッシュ表示中に裏で更新している場合の軽い表示 */}
       {isLoading && (
         <div

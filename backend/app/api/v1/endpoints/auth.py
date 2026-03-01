@@ -74,12 +74,14 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)) 
     return UserResponse.model_validate(current_user)
 
 @router.get("/line/authorize")
-async def line_authorize():
-    if not settings.LINE_LOGIN_CHANNEL_ID or not settings.LINE_LOGIN_REDIRECT_URI:
+async def line_authorize(request: Request):
+    if not settings.LINE_LOGIN_CHANNEL_ID:
         raise HTTPException(status_code=500, detail="LINE Login settings are missing")
 
     state = secrets.token_urlsafe(24)
-    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI
+
+    # ✅ SSOT: 実際の公開URLから callback を生成（http混入事故を防ぐ）
+    redirect_uri = str(request.url_for("line_callback"))
 
     params = {
         "response_type": "code",
@@ -93,7 +95,6 @@ async def line_authorize():
     redirect_url = f"{url}?{urlencode(params)}"
     resp = RedirectResponse(url=redirect_url, status_code=302)
 
-    # state をcookieに保存（CSRF対策）
     resp.set_cookie("line_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
     return resp
 
@@ -225,12 +226,14 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     resp.delete_cookie("google_login_state", path="/")
     return resp
 
-@router.get("/line/callback")
+@router.get("/line/callback", name="line_callback")
 async def line_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
     state = request.query_params.get("state")
     saved_state = request.cookies.get("line_login_state")
-    redirect_uri = settings.LINE_LOGIN_REDIRECT_URI
+
+    # ✅ authorize と同一の redirect_uri を使う（OAuth契約 + https固定）
+    redirect_uri = str(request.url_for("line_callback"))
 
     if not code or not state or not saved_state or state != saved_state:
         # 次の試行で詰まらないよう、先に消す

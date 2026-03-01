@@ -25,6 +25,7 @@ const NOTIFY_OVERRIDES_STORAGE_KEY = 'unipa_notify_overrides_v1';
 const TASKS_CACHE_KEY = 'unipa_tasks_cache_v1';
 const WEEKLY_CACHE_KEY = 'unipa_weekly_templates_cache_v1';
 const NOTIF_LAST_SEEN_TOTAL_KEY = 'unipa_notif_last_seen_total_v1';
+const OAUTH_RETURN_KEY = 'df_oauth_returned_v1';
 
 const loadNotifLastSeenTotal = (): number => {
   if (typeof window === 'undefined') return 0;
@@ -260,6 +261,7 @@ export const Dashboard: React.FC = () => {
   const [showAllReasons, setShowAllReasons] = useState(false);
   const [plan, setPlan] = useState<string>('free');
   const [authReady, setAuthReady] = useState<boolean>(false);
+  const [authLoopBlocked, setAuthLoopBlocked] = useState(false);
 
   // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -330,7 +332,20 @@ export const Dashboard: React.FC = () => {
         setAuthReady(true); // ✅ ここから先のAPIは認証前提でOK
       } catch (e) {
         setAuthReady(false);
-        console.warn('[boot] auth/me failed -> redirect to /login', e);
+        console.warn('[boot] auth/me failed', e);
+
+        // ✅ OAuth直後の失敗は /login へ飛ばすと無限ループになりやすい
+        let oauthJustReturned = false;
+        try {
+          const v = sessionStorage.getItem(OAUTH_RETURN_KEY);
+          oauthJustReturned = !!v;
+        } catch {}
+
+        if (oauthJustReturned) {
+          setAuthLoopBlocked(true);
+          return;
+        }
+
         window.location.hash = '/login';
         return;
       }
@@ -580,6 +595,51 @@ export const Dashboard: React.FC = () => {
     const cached = loadCache<Task[]>(TASKS_CACHE_KEY);
     return !!(cached && Array.isArray(cached.data) && cached.data.length >= 0);
   }, []);
+
+  // ✅ OAuth直後に Cookie が成立せず auth/me が落ちる環境で、永久ループを止める
+  if (authLoopBlocked) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: 720, margin: '0 auto' }}>
+        <h2 style={{ marginBottom: '0.75rem' }}>ログインを完了できませんでした</h2>
+        <div
+          style={{
+            whiteSpace: 'pre-line',
+            color: '#444',
+            lineHeight: 1.6,
+            border: '1px solid rgba(0,0,0,.12)',
+            borderRadius: 12,
+            padding: '1rem',
+            background: 'rgba(0,0,0,.03)',
+          }}
+        >
+          Xアプリ内ブラウザやシークレットモードでは、ログイン用Cookieが保存されず、ログインが完了しないことがあります。
+          {'\n'}「Safari/Chromeで開く」で再度お試しください。
+        </div>
+
+        <div style={{ marginTop: '1rem' }}>
+          <button
+            onClick={() => {
+              // ✅ 印を消して通常遷移に戻す
+              try { sessionStorage.removeItem(OAUTH_RETURN_KEY); } catch {}
+              window.location.hash = '/login';
+            }}
+            style={{
+              width: '100%',
+              padding: '0.9rem',
+              fontSize: '1rem',
+              backgroundColor: '#111',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+            }}
+          >
+            ログイン画面に戻る
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading && !hasTasksCache) {
     return (

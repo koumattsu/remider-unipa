@@ -1,115 +1,201 @@
-# UNIPA Reminder App
+# DueFlow
 
-大学生向けの課題管理 + 通知（Web Push / In-app / 将来LINE）アプリ  
-**M&A耐性（監査可能性）を最優先**に、通知の「事実」をサーバ側に残す設計で実装しています。
+**DueFlow** is a task and deadline management application designed to help university students avoid missing assignment submissions.
 
----
+University courses often provide a large amount of information across different systems, making it difficult for students to manage deadlines reliably.  
+DueFlow centralizes task management and sends notifications at appropriate times to reduce the risk of missed submissions.
 
-## Documentation
-
-This project is designed with **auditability, explainability, and long-term M&A resilience**
-as first-class requirements.
-
-- [Analytics Architecture](docs/analytics-architecture.md)
+This project is built with a strong emphasis on **auditability**, **data integrity**, and **long-term system reliability**.
 
 ---
 
-## 何ができるか（現状）
+# Demo
 
-### 課題管理
-- ✅ 課題の手動追加・一覧表示
-- ✅ 完了 / 未完了切り替え（完了タスクは通知対象外）
-- ✅ 削除
-- ✅（将来）Moodle / UNIPA からの自動取得・重複判定・AI理解レイヤー
+Frontend  
+https://your-frontend-url
 
-### 通知（現状の主軸）
-- ✅ **In-app通知（ベル通知）**  
-  通知を DB に保存し、ユーザーが dismiss（既読化）できる
-- ✅ **Web Push（無料プラン向け）**  
-  Service Worker 経由で OS 通知（アプリ未起動でも通知）
-- ✅ **通知基盤の監査ログ**
-  - cron 実行 1 回 = 1 レコード（NotificationRun）
-  - 重複通知防止（TaskNotificationLog）
-  - 通知生成時の締切を固定保存（deadline_at_send）
-
-※ LINE通知は将来の有料プラン想定（現在は未実装）
+Backend API  
+https://your-backend-url
 
 ---
 
-## 設計方針（M&A耐性）
+# Key Features
 
-### 1. 「通知が来た / 来なかった」をサーバの事実として追跡
-- **NotificationRun**
-  - cron 実行 1 回 = 1 行
-  - status / error_summary / counters / finished_at / stats(snapshot)
-- 障害時でも「なぜ通知されなかったか」を後から説明可能
+## Task Management
 
-### 2. 幽霊通知（重複通知）を設計で排除
-- **TaskNotificationLog**
-  - 「この通知は送った」という事実を保存
-- **deadline_at_send**
-  - 通知作成時点の締切をコピー
-  - 締切変更があっても当時の事実は不変
+DueFlow provides simple task management designed specifically for academic assignments.
 
-### 3. UI 表示と分析データを分離
-- **OutcomeLog（task_outcome_log）**
-  - 締切到達時点で「完了 / 未完了」を記録
-  - 後から状態が変わっても分析結果は変わらない
+- Create and manage tasks
+- View upcoming deadlines
+- Mark tasks as completed
+- Delete tasks
+- Weekly recurring tasks
+
+Tasks are presented in a clear list format to help users quickly understand their workload.
 
 ---
 
-## 技術スタック
+## Notification System
 
-### Backend
-- Python 3.11+
+Preventing missed deadlines is the primary goal of DueFlow.
+
+The system currently supports the following notifications:
+
+### In-App Notifications
+
+Notifications stored in the database and displayed inside the application.
+
+Features
+
+- Persistent notification storage
+- User-controlled dismiss
+- Notification summaries
+
+---
+
+### Web Push Notifications
+
+DueFlow supports **Web Push notifications via Service Workers**, enabling OS-level notifications even when the application is not open.
+
+Features
+
+- Browser-level notifications
+- Works when the app is closed
+- Background push via Service Worker
+
+---
+
+## Notification Logging
+
+DueFlow records notification-related events on the server side.
+
+Examples
+
+- When a notification was created
+- Which task triggered the notification
+- When the notification run occurred
+
+These logs allow the system to explain **why a notification was sent or not sent**, improving system transparency.
+
+---
+
+# System Design
+
+DueFlow is designed with long-term maintainability and reliability in mind.
+
+Two major principles guide the architecture.
+
+---
+
+## Single Source of Truth (SSOT)
+
+Important data is stored in a single authoritative location.
+
+This prevents
+
+- duplicated notifications
+- inconsistent task states
+- unreliable analytics
+
+---
+
+## Auditability
+
+Notification events are stored so that system behavior can be explained later.
+
+Examples
+
+- notification run records
+- notification logs
+- outcome logs
+
+This design allows developers to inspect system behavior and verify notification decisions.
+
+---
+
+# Architecture Overview
+
+Frontend  
+React + TypeScript
+
+Backend  
+FastAPI + SQLAlchemy
+
+Database  
+PostgreSQL
+
+Deployment  
+Render
+
+Notifications  
+Web Push (Service Worker)
+
+---
+
+# Tech Stack
+
+## Backend
+
+- Python
 - FastAPI
 - SQLAlchemy
-- PostgreSQL（本番） / SQLite（開発）
-- Web Push: pywebpush
-- 認証: Cookie Session（itsdangerous）
+- PostgreSQL
+- pywebpush
 
-### Frontend
+---
+
+## Frontend
+
 - React
 - TypeScript
 - Vite
-- Service Worker（Web Push）
+- Service Worker
 
 ---
 
-## セットアップ（ローカル）
+# Local Development
 
-### Backend
+## Backend
+
 ```bash
 cd backend
 
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python -m venv .venv
+source .venv/bin/activate
 
 pip install -r requirements.txt
 
 cp env.example .env
-# DATABASE_URL / SESSION_SECRET / FRONTEND_URL 等を設定
 
 uvicorn app.main:app --reload --port 8000
 
-## API（抜粋）
+## Frontend
+cd frontend
 
-### In-app 通知
-- GET /api/v1/notifications/in-app
-- POST /api/v1/notifications/in-app/{id}/dismiss
-- GET /api/v1/notifications/in-app/summary?from=&to=
+npm install
+npm run dev
 
-### Web Push
-- POST /api/v1/notifications/webpush/subscribe
-- POST /api/v1/notifications/webpush/unsubscribe
+API Examples
+In-App Notifications
 
-### 監査（NotificationRun）
-- GET /api/v1/admin/notification-runs/latest
-- GET /api/v1/admin/notification-runs/{run_id}/summary
+GET /api/v1/notifications/in-app
+POST /api/v1/notifications/in-app/{id}/dismiss
 
+Web Push
 
-## 認証（現状）
+POST /api/v1/notifications/webpush/subscribe
+POST /api/v1/notifications/webpush/unsubscribe
 
-- Cookie セッション（HttpOnly）
-- 開発時のみ `DUMMY_AUTH_ENABLED=true` の場合、
-  `X-Dummy-User-Id` ヘッダを許可
+Future Development
+
+Planned improvements include
+
+Automatic assignment synchronization from university systems
+
+Improved notification timing algorithms
+
+Enhanced analytics for learning behavior
+
+UI/UX improvements
+
+The long-term goal is to evolve DueFlow into a platform that helps students manage their academic workflow more effectively.

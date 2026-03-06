@@ -9,17 +9,12 @@ DueFlow はタスク管理を一元化し、適切なタイミングで通知を
 
 ---
 
-# Live Demo
+# Project Status
 
-You can try DueFlow using the following links.
+DueFlow は現在も開発を継続している個人プロジェクトです。  
+このリポジトリには、タスク管理機能、通知ロジック、Web Push 対応、バックエンドのシステム設計など、現在の実装内容が含まれています。
 
-Frontend  
-https://unipa-reminder-frontend.onrender.com
-
-Backend API  
-https://unipa-reminder-backend.onrender.com
-
----
+認証フローやデプロイ周りの改善を進めているため、現時点では公開デモは提供していません。
 
 # Key Features
 

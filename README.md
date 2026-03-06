@@ -1,21 +1,23 @@
 # DueFlow
 
-**DueFlow** is a task and deadline management application designed to help university students avoid missing assignment submissions.
+DueFlow は、大学生が課題の提出期限を見逃さないようにするために設計されたタスク・締切管理アプリケーションです。
 
-University courses often provide a large amount of information across different systems, making it difficult for students to manage deadlines reliably.  
-DueFlow centralizes task management and sends notifications at appropriate times to reduce the risk of missed submissions.
+大学の授業では多くの情報があり、課題の締切を確実に管理することが難しくなることがあります。  
+DueFlow はタスク管理を一元化し、適切なタイミングで通知を送ることで提出忘れのリスクを減らします。
 
-This project is built with a strong emphasis on **auditability**, **data integrity**, and **long-term system reliability**.
+このプロジェクトは監査性（auditability）、データ整合性（data integrity）、長期的なシステム信頼性（long-term system reliability）を重視して設計されています。
 
 ---
 
-# Demo
+# Live Demo
+
+You can try DueFlow using the following links.
 
 Frontend  
-https://your-frontend-url
+https://unipa-reminder-frontend.onrender.com
 
 Backend API  
-https://your-backend-url
+https://unipa-reminder-backend.onrender.com
 
 ---
 
@@ -23,85 +25,87 @@ https://your-backend-url
 
 ## Task Management
 
-DueFlow provides simple task management designed specifically for academic assignments.
+DueFlow は大学の課題管理に特化したシンプルなタスク管理機能を提供します。
 
-- Create and manage tasks
-- View upcoming deadlines
-- Mark tasks as completed
-- Delete tasks
-- Weekly recurring tasks
+- タスクの作成と管理
+- 期限が近い課題の一覧表示
+- タスクの完了処理
+- タスクの削除
+- 週次の繰り返しタスク
 
-Tasks are presented in a clear list format to help users quickly understand their workload.
+タスクは分かりやすいリスト形式で表示され、ユーザーが現在の作業量をすぐに把握できるようになっています。
 
 ---
 
 ## Notification System
 
-Preventing missed deadlines is the primary goal of DueFlow.
+DueFlow の主な目的は、締切の見逃しを防ぐことです。
 
-The system currently supports the following notifications:
+現在、以下の通知機能をサポートしています。
 
 ### In-App Notifications
 
-Notifications stored in the database and displayed inside the application.
+アプリケーション内で表示される通知です。  
+通知はデータベースに保存されます。
 
 Features
 
-- Persistent notification storage
-- User-controlled dismiss
-- Notification summaries
+- 通知の永続保存
+- ユーザーによる既読・非表示操作
+- 通知のサマリー表示
 
 ---
 
 ### Web Push Notifications
 
-DueFlow supports **Web Push notifications via Service Workers**, enabling OS-level notifications even when the application is not open.
+DueFlow は Service Worker を利用した Web Push 通知に対応しています。  
+アプリを開いていない状態でも OS レベルで通知を受け取ることができます。
 
 Features
 
-- Browser-level notifications
-- Works when the app is closed
-- Background push via Service Worker
+- ブラウザレベルの通知
+- アプリが閉じていても通知可能
+- Service Worker によるバックグラウンド Push
 
 ---
 
 ## Notification Logging
 
-DueFlow records notification-related events on the server side.
+DueFlow では通知に関するイベントをサーバー側で記録しています。
 
 Examples
 
-- When a notification was created
-- Which task triggered the notification
-- When the notification run occurred
+- 通知が作成されたタイミング
+- どのタスクが通知のトリガーになったか
+- 通知処理（notification run）が実行された時間
 
-These logs allow the system to explain **why a notification was sent or not sent**, improving system transparency.
+これらのログにより、なぜ通知が送信されたのか、または送信されなかったのかを後から確認できるようになっています。
 
 ---
 
 # System Design
 
-DueFlow is designed with long-term maintainability and reliability in mind.
+DueFlow は長期的な保守性と信頼性を重視して設計されています。
 
-Two major principles guide the architecture.
+アーキテクチャは主に以下の2つの原則に基づいています。
 
 ---
 
 ## Single Source of Truth (SSOT)
 
-Important data is stored in a single authoritative location.
+重要なデータは一つの正しいデータソースにのみ保存されます。
 
-This prevents
+これにより次の問題を防ぎます。
 
-- duplicated notifications
-- inconsistent task states
-- unreliable analytics
+- 通知の重複
+- タスク状態の不整合
+- 信頼性の低い分析データ
 
 ---
 
 ## Auditability
 
-Notification events are stored so that system behavior can be explained later.
+通知イベントは後から確認できるように保存されています。
 
 Examples
 
@@ -109,7 +113,7 @@ Examples
 - notification logs
 - outcome logs
 
-This design allows developers to inspect system behavior and verify notification decisions.
+この設計により、開発者はシステムの挙動を検証し、通知ロジックの判断を追跡できます。
 
 ---
 
@@ -157,45 +161,47 @@ Web Push (Service Worker)
 
 ## Backend
 
-```bash
 cd backend
 
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv  
+source .venv/bin/activate  
 
-pip install -r requirements.txt
+pip install -r requirements.txt  
 
-cp env.example .env
+cp env.example .env  
 
 uvicorn app.main:app --reload --port 8000
 
 ## Frontend
+
 cd frontend
 
-npm install
-npm run dev
+npm install  
+npm run dev  
 
-API Examples
+---
+
+# API Examples
+
 In-App Notifications
 
-GET /api/v1/notifications/in-app
-POST /api/v1/notifications/in-app/{id}/dismiss
+GET /api/v1/notifications/in-app  
+POST /api/v1/notifications/in-app/{id}/dismiss  
 
 Web Push
 
-POST /api/v1/notifications/webpush/subscribe
-POST /api/v1/notifications/webpush/unsubscribe
+POST /api/v1/notifications/webpush/subscribe  
+POST /api/v1/notifications/webpush/unsubscribe  
 
-Future Development
+---
 
-Planned improvements include
+# Future Development
 
-Automatic assignment synchronization from university systems
+今後の予定機能
 
-Improved notification timing algorithms
+- 大学システムからの課題自動同期
+- 通知タイミングアルゴリズムの改善
+- 学習行動分析の強化
+- UI / UX 改善
 
-Enhanced analytics for learning behavior
-
-UI/UX improvements
-
-The long-term goal is to evolve DueFlow into a platform that helps students manage their academic workflow more effectively.
+最終的には、DueFlow を学生の学習ワークフローを支援するプラットフォームへ発展させることを目標としています。

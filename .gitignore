@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -23,6 +24,13 @@ wheels/
 .installed.cfg
 *.egg
 
+# Python cache / test / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
 # データベース
 *.db
 *.sqlite
@@ -31,6 +39,12 @@ wheels/
 # 環境変数
 .env
 .env.local
+.env.*
+!.env.example
+
+# Secrets / keys
+*.pem
+*.key
 
 # IDE
 .vscode/
@@ -41,6 +55,7 @@ wheels/
 
 # Node
 node_modules/
+frontend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -54,4 +69,5 @@ frontend/build/
 # OS
 .DS_Store
 Thumbs.db
-
+.AppleDouble
+.LSOverride

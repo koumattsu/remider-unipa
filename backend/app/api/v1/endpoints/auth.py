@@ -5,73 +5,93 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import secrets
 import httpx
-from urllib.parse import urlencode, quote
-from itsdangerous import URLSafeSerializer
+from urllib.parse import urlencode
+from itsdangerous import URLSafeTimedSerializer
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.models.user import User
-from app.models.notification_setting import NotificationSetting  # ✅ 追加（パスは実ファイルに合わせて）
+from app.models.notification_setting import NotificationSetting
 from app.schemas.user import UserResponse
 from app.core.config import settings
-from uuid import uuid4
-from fastapi.responses import JSONResponse
 
 router = APIRouter(tags=["auth"])
+
 
 def _frontend_base_url() -> str:
     base = settings.FRONTEND_URL or "http://localhost:5173"
     base = base.strip()
     if not (base.startswith("http://") or base.startswith("https://")):
-        # ここが壊れてるとChromeでERR_INVALID_REDIRECTになる
         raise HTTPException(status_code=500, detail=f"Invalid FRONTEND_URL: {base}")
     return base.rstrip("/")
 
+
 def _serializer():
-    return URLSafeSerializer(settings.SESSION_SECRET, salt="unipa-session")
+    return URLSafeTimedSerializer(settings.SESSION_SECRET, salt="unipa-session")
+
+
+def _normalize_absolute_url(url: str, *, label: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        raise HTTPException(status_code=500, detail=f"{label} is missing")
+    if not (value.startswith("http://") or value.startswith("https://")):
+        raise HTTPException(status_code=500, detail=f"Invalid {label}: {value}")
+    return value
+
+
+def _google_redirect_uri(request: Request) -> str:
+    configured = (settings.GOOGLE_OAUTH_REDIRECT_URI or "").strip()
+    if configured:
+        return _normalize_absolute_url(configured, label="GOOGLE_OAUTH_REDIRECT_URI")
+    if settings.ENV == "production":
+        raise HTTPException(status_code=500, detail="GOOGLE_OAUTH_REDIRECT_URI is missing")
+    return str(request.url_for("google_callback"))
+
+
+def _line_redirect_uri(request: Request) -> str:
+    configured = (settings.LINE_LOGIN_REDIRECT_URI or "").strip()
+    if configured:
+        return _normalize_absolute_url(configured, label="LINE_LOGIN_REDIRECT_URI")
+    if settings.ENV == "production":
+        raise HTTPException(status_code=500, detail="LINE_LOGIN_REDIRECT_URI is missing")
+    return str(request.url_for("line_callback"))
+
 
 def _make_cookie_opts():
-    # ✅ セッションcookieは、productionでは必ず「SameSite=None + Secure=True」
-    #    （Chrome仕様：NoneはSecure必須。崩れると“保存されない”）
     samesite = settings.SESSION_COOKIE_SAMESITE
     secure = settings.SESSION_COOKIE_SECURE
     if settings.ENV == "production":
         samesite = "none"
         secure = True
 
-    opts = {
+    return {
         "httponly": True,
         "secure": secure,
         "samesite": samesite,
         "path": settings.SESSION_COOKIE_PATH,
     }
-    # ✅ 事故防止：Domain は付けない（host-only cookie に固定）
-    return opts
+
 
 def _make_oauth_state_cookie_opts():
-    # LINE -> backend の「トップレベル遷移」で確実に返ってくる設定
-    # SESSION_COOKIE_* とは分ける（ここがポイント）
     return {
         "httponly": True,
-        # dev(http://localhost) でも動くよう固定しない
         "secure": settings.SESSION_COOKIE_SECURE,
-        # OAuth callback はトップレベルGETなので Lax が最も安定
         "samesite": "lax",
-        "path": "/",        # 念のため明示
+        "path": "/",
     }
+
 
 @router.post("/guest")
 async def guest_login():
-    # ✅ ゲストログイン廃止（最終方針）
-    # - 旧フロント/古いSW/手動リクエストが残っていても事故らないように
-    # - DBにGuestが増殖して資産価値を汚さないように
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="Guest login has been discontinued. Please login with LINE or Google.",
     )
 
+
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)) -> UserResponse:
     return UserResponse.model_validate(current_user)
+
 
 @router.get("/line/authorize")
 async def line_authorize(request: Request):
@@ -79,9 +99,7 @@ async def line_authorize(request: Request):
         raise HTTPException(status_code=500, detail="LINE Login settings are missing")
 
     state = secrets.token_urlsafe(24)
-
-    # ✅ SSOT: 実際の公開URLから callback を生成（http混入事故を防ぐ）
-    redirect_uri = str(request.url_for("line_callback"))
+    redirect_uri = _line_redirect_uri(request)
 
     params = {
         "response_type": "code",
@@ -94,9 +112,9 @@ async def line_authorize(request: Request):
 
     redirect_url = f"{url}?{urlencode(params)}"
     resp = RedirectResponse(url=redirect_url, status_code=302)
-
     resp.set_cookie("line_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
     return resp
+
 
 @router.get("/google/authorize")
 async def google_authorize(request: Request):
@@ -104,9 +122,7 @@ async def google_authorize(request: Request):
         raise HTTPException(status_code=500, detail="Google OAuth settings are missing")
 
     state = secrets.token_urlsafe(24)
-
-    # ✅ SSOT: 実際の公開URLから callback を生成（envミスで壊れない）
-    redirect_uri = str(request.url_for("google_callback"))
+    redirect_uri = _google_redirect_uri(request)
 
     params = {
         "response_type": "code",
@@ -124,6 +140,7 @@ async def google_authorize(request: Request):
     resp.set_cookie("google_login_state", state, max_age=600, **_make_oauth_state_cookie_opts())
     return resp
 
+
 @router.get("/google/callback", name="google_callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     code = request.query_params.get("code")
@@ -136,8 +153,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         return resp
 
     token_url = "https://oauth2.googleapis.com/token"
-    # ✅ authorize と同一の redirect_uri を使う（OAuth契約）
-    redirect_uri = str(request.url_for("google_callback"))
+    redirect_uri = _google_redirect_uri(request)
 
     data = {
         "code": code,
@@ -161,7 +177,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         if not id_token:
             raise HTTPException(status_code=400, detail=f"id_token missing: {token_res.text}")
 
-        # ✅ 最小diffの検証：tokeninfo で id_token を検証して sub を取得
         info_res = await client.get(
             "https://oauth2.googleapis.com/tokeninfo",
             params={"id_token": id_token},
@@ -179,7 +194,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         if not sub:
             raise HTTPException(status_code=400, detail="Google sub missing")
 
-    # user upsert（google_user_id）
     user = db.query(User).filter(User.google_user_id == sub).first()
     if not user:
         user = User(
@@ -195,7 +209,6 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         user.display_name = name
         db.commit()
 
-    # NotificationSetting 自動修復（LINEと同じ）
     ns = db.query(NotificationSetting).filter(NotificationSetting.user_id == user.id).first()
     if not ns:
         ns = NotificationSetting(
@@ -210,7 +223,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
     session_token = _serializer().dumps({
         "user_id": user.id,
-        "google_user_id": sub,  # ✅ 監査/互換用（security.pyはuser_id優先なので影響なし）
+        "google_user_id": sub,
     })
 
     redirect_to = _frontend_base_url() + "/#/auth-callback"
@@ -219,12 +232,13 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     resp.set_cookie(
         settings.SESSION_COOKIE_NAME,
         session_token,
-        max_age=60 * 60 * 24 * 30,
+        max_age=settings.SESSION_MAX_AGE_SECONDS,
         **_make_cookie_opts(),
     )
 
     resp.delete_cookie("google_login_state", path="/")
     return resp
+
 
 @router.get("/line/callback", name="line_callback")
 async def line_callback(request: Request, db: Session = Depends(get_db)):
@@ -232,16 +246,13 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     state = request.query_params.get("state")
     saved_state = request.cookies.get("line_login_state")
 
-    # ✅ authorize と同一の redirect_uri を使う（OAuth契約 + https固定）
-    redirect_uri = str(request.url_for("line_callback"))
+    redirect_uri = _line_redirect_uri(request)
 
     if not code or not state or not saved_state or state != saved_state:
-        # 次の試行で詰まらないよう、先に消す
         resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
         resp.delete_cookie("line_login_state", path="/")
         return resp
 
-    # code -> access_token
     token_url = "https://api.line.me/oauth2/v2.1/token"
     data = {
         "grant_type": "authorization_code",
@@ -252,9 +263,14 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
-        token_res = await client.post(token_url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        token_res = await client.post(
+            token_url,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
         if token_res.status_code != 200:
             raise HTTPException(status_code=400, detail=f"Token exchange failed: {token_res.text}")
+
         token_json = token_res.json()
         access_token = token_json.get("access_token")
         if not access_token:
@@ -263,7 +279,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
                 detail=f"Token exchange failed: {token_res.text} (redirect_uri={redirect_uri!r})"
             )
 
-        # LINE profile 取得
         prof_res = await client.get(
             "https://api.line.me/v2/profile",
             headers={"Authorization": f"Bearer {access_token}"},
@@ -277,7 +292,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
     if not line_user_id:
         raise HTTPException(status_code=400, detail="LINE userId missing")
 
-    # user upsert
     user = db.query(User).filter(User.line_user_id == line_user_id).first()
     if not user:
         user = User(
@@ -293,7 +307,6 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
         user.display_name = display_name
         db.commit()
 
-    # ✅ NotificationSetting を必ず1行持たせる（欠損自動修復）
     ns = (
         db.query(NotificationSetting)
         .filter(NotificationSetting.user_id == user.id)
@@ -312,27 +325,31 @@ async def line_callback(request: Request, db: Session = Depends(get_db)):
 
     session_token = _serializer().dumps({
         "user_id": user.id,
-        "line_user_id": line_user_id
+        "line_user_id": line_user_id,
     })
 
     redirect_to = _frontend_base_url() + "/#/auth-callback"
     resp = RedirectResponse(url=redirect_to, status_code=302)
 
-    resp.set_cookie(settings.SESSION_COOKIE_NAME, session_token, max_age=60 * 60 * 24 * 30, **_make_cookie_opts())
+    resp.set_cookie(
+        settings.SESSION_COOKIE_NAME,
+        session_token,
+        max_age=settings.SESSION_MAX_AGE_SECONDS,
+        **_make_cookie_opts(),
+    )
     resp.delete_cookie("line_login_state", path="/")
     return resp
+
 
 @router.post("/logout")
 async def logout():
     resp = RedirectResponse(url=_frontend_base_url() + "/#/login", status_code=302)
 
-    # ① host-only cookie を消す
     resp.delete_cookie(
         key=settings.SESSION_COOKIE_NAME,
         path=settings.SESSION_COOKIE_PATH,
     )
 
-    # ② domain 付き cookie を消す（過去互換）
     if settings.SESSION_COOKIE_DOMAIN:
         resp.delete_cookie(
             key=settings.SESSION_COOKIE_NAME,
@@ -341,6 +358,7 @@ async def logout():
         )
 
     return resp
+
 
 @router.get("/logout")
 async def logout_get():

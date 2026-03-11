@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 from typing import Optional, Union
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "UniPA Reminder App"
     APP_VERSION: str = "1.0.0"
@@ -13,8 +14,6 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = ""
     VAPID_SUBJECT: str = "mailto:admin@example.com"
 
-    # ✅ 本番(frontend on render)もデフォで許可しておく
-    #    Renderで環境変数CORS_ORIGINSを入れたらそっちが優先される
     CORS_ORIGINS: Union[str, list[str]] = (
         "https://unipa-reminder-frontend.onrender.com,"
         "http://localhost:5173,"
@@ -33,15 +32,12 @@ class Settings(BaseSettings):
     LINE_CHANNEL_ACCESS_TOKEN: Optional[str] = None
     LINE_CHANNEL_SECRET: Optional[str] = None
 
-    # ✅ 安全側デフォルト（本番事故を防ぐ）
-    # ローカルで使うなら .env で DUMMY_AUTH_ENABLED=true を明示
     DUMMY_AUTH_ENABLED: bool = False
     DUMMY_USER_ID: int = 1
     LINE_LOGIN_CHANNEL_ID: str = ""
     LINE_LOGIN_CHANNEL_SECRET: str = ""
     LINE_LOGIN_REDIRECT_URI: str = ""
 
-    # ✅ Google OAuth
     GOOGLE_OAUTH_CLIENT_ID: str = ""
     GOOGLE_OAUTH_CLIENT_SECRET: str = ""
     GOOGLE_OAUTH_REDIRECT_URI: str = ""
@@ -80,17 +76,15 @@ class Settings(BaseSettings):
         if not isinstance(v, str):
             v = str(v)
         s = v.strip().replace("\r", "").replace("\n", "")
-        # "..." / '...' を剥がす
         if len(s) >= 2 and ((s[0] == '"' and s[-1] == '"') or (s[0] == "'" and s[-1] == "'")):
             s = s[1:-1].strip()
-        # スキーム無しを救済（本番事故の典型）
         if s and not (s.startswith("http://") or s.startswith("https://")):
             s = "https://" + s
         return s
-    
+
     SESSION_SECRET: str = ""
+    SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 30
     FEATURE_HASH_SECRET: str = ""
-    # ✅ 監査用：どのデプロイの実行かをRunに刻む（Renderが持つcommitも拾える）
     BUILD_SHA: str = ""
     RENDER_GIT_COMMIT: str = ""
 
@@ -100,38 +94,70 @@ class Settings(BaseSettings):
         return f"{base}:{self.ENV}"
 
     SESSION_COOKIE_NAME: str = "unipa_session"
-    # ✅ cookie属性を一箇所に集約（auth/securityで必ずこれを使う）
     SESSION_COOKIE_PATH: str = "/"
     SESSION_COOKIE_DOMAIN: Optional[str] = None
     ENV: str = "development"
     AUTO_INIT_DB: bool = False
 
     @model_validator(mode="after")
-    def _validate_prod_secrets(self):
+    def _validate_runtime_contract(self):
         if self.ENV == "production":
             if not self.FEATURE_HASH_SECRET:
                 raise ValueError("FEATURE_HASH_SECRET is required in production")
+            if not self.SESSION_SECRET:
+                raise ValueError("SESSION_SECRET is required in production")
+            if not self.FRONTEND_URL.startswith("https://"):
+                raise ValueError("FRONTEND_URL must be https in production")
+
+        google_any = any([
+            self.GOOGLE_OAUTH_CLIENT_ID,
+            self.GOOGLE_OAUTH_CLIENT_SECRET,
+            self.GOOGLE_OAUTH_REDIRECT_URI,
+        ])
+        if google_any and not all([
+            self.GOOGLE_OAUTH_CLIENT_ID,
+            self.GOOGLE_OAUTH_CLIENT_SECRET,
+            self.GOOGLE_OAUTH_REDIRECT_URI,
+        ]):
+            raise ValueError(
+                "GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_OAUTH_REDIRECT_URI must be set together"
+            )
+
+        line_any = any([
+            self.LINE_LOGIN_CHANNEL_ID,
+            self.LINE_LOGIN_CHANNEL_SECRET,
+            self.LINE_LOGIN_REDIRECT_URI,
+        ])
+        if line_any and not all([
+            self.LINE_LOGIN_CHANNEL_ID,
+            self.LINE_LOGIN_CHANNEL_SECRET,
+            self.LINE_LOGIN_REDIRECT_URI,
+        ]):
+            raise ValueError(
+                "LINE_LOGIN_CHANNEL_ID / LINE_LOGIN_CHANNEL_SECRET / LINE_LOGIN_REDIRECT_URI must be set together"
+            )
+
+        if self.ENV == "production":
+            if self.GOOGLE_OAUTH_REDIRECT_URI and not self.GOOGLE_OAUTH_REDIRECT_URI.startswith("https://"):
+                raise ValueError("GOOGLE_OAUTH_REDIRECT_URI must be https in production")
+            if self.LINE_LOGIN_REDIRECT_URI and not self.LINE_LOGIN_REDIRECT_URI.startswith("https://"):
+                raise ValueError("LINE_LOGIN_REDIRECT_URI must be https in production")
+
         return self
 
     @property
     def SESSION_COOKIE_SECURE(self) -> bool:
-        # ✅ SameSite=None は Secure 必須（Chromeが非Secureを拒否する）
-        # override で none を入れたときに「保存されずcookieが無い」事故を防ぐ
         if str(self.SESSION_COOKIE_SAMESITE_OVERRIDE or "").strip().lower() == "none":
             return True
         return self.ENV == "production"
 
-    # ✅ 将来のドメイン分離にも耐えるため、envで上書き可能にする
-    # 例: productionで本当に cross-site が必要なら "none" を渡す
     SESSION_COOKIE_SAMESITE_OVERRIDE: Optional[str] = None
 
     @property
     def SESSION_COOKIE_SAMESITE(self) -> str:
         if self.SESSION_COOKIE_SAMESITE_OVERRIDE:
-            # ✅ 大文字/空白の事故を防ぐ（Renderの入力揺れ対策）
             return str(self.SESSION_COOKIE_SAMESITE_OVERRIDE).strip().lower()
 
-        # ✅ 本番はフロント/バックが別オリジンのため、XHRでcookieを確実に成立させる
         if self.ENV == "production":
             return "none"
 
@@ -142,5 +168,6 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = True
         extra = "ignore"
+
 
 settings = Settings()

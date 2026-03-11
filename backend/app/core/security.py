@@ -1,27 +1,26 @@
 # backend/app/core/security.py
 
 from typing import Optional
-from fastapi import Request, Response, HTTPException, status, Depends
+from fastapi import Request, Response, HTTPException, Depends
 from sqlalchemy.orm import Session
-from itsdangerous import URLSafeSerializer, BadSignature
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from app.db.session import get_db
 from app.models.user import User
 from app.core.config import settings
 
-serializer = URLSafeSerializer(
+serializer = URLSafeTimedSerializer(
     settings.SESSION_SECRET,
     salt="unipa-session",
 )
 
+
 def _delete_session_cookie(response: Response) -> None:
-    # ① host-only cookie を消す
     response.delete_cookie(
         key=settings.SESSION_COOKIE_NAME,
         path=getattr(settings, "SESSION_COOKIE_PATH", "/"),
         samesite=settings.SESSION_COOKIE_SAMESITE,
         secure=settings.SESSION_COOKIE_SECURE,
     )
-    # ② domain付き cookie を消す（過去互換）
     if getattr(settings, "SESSION_COOKIE_DOMAIN", None):
         response.delete_cookie(
             key=settings.SESSION_COOKIE_NAME,
@@ -31,8 +30,8 @@ def _delete_session_cookie(response: Response) -> None:
             secure=settings.SESSION_COOKIE_SECURE,
         )
 
+
 def _get_bearer_token(request: Request) -> Optional[str]:
-    # ✅ Cookie が死ぬ環境向け：Authorization: Bearer <token> を許可
     auth = request.headers.get("Authorization")
     if not auth:
         return None
@@ -42,21 +41,23 @@ def _get_bearer_token(request: Request) -> Optional[str]:
     token = auth[len(prefix):].strip()
     return token or None
 
+
 async def get_current_user(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> User:
-    # ✅ SSOT: cookie session を最優先
     session_token = request.cookies.get(settings.SESSION_COOKIE_NAME)
 
-    # ✅ 保険：cookie が無い環境だけ Bearer を許可（既存挙動は壊さない）
     if not session_token:
         session_token = _get_bearer_token(request)
 
     if session_token:
         try:
-            data = serializer.loads(session_token)
+            data = serializer.loads(
+                session_token,
+                max_age=settings.SESSION_MAX_AGE_SECONDS,
+            )
 
             user_id = data.get("user_id")
             if user_id is not None:
@@ -81,6 +82,9 @@ async def get_current_user(
 
             raise HTTPException(status_code=401, detail="無効なセッションです")
 
+        except SignatureExpired:
+            _delete_session_cookie(response)
+            raise HTTPException(status_code=401, detail="セッションの有効期限が切れています")
         except (BadSignature, ValueError, TypeError):
             _delete_session_cookie(response)
             raise HTTPException(status_code=401, detail="無効なセッションです")

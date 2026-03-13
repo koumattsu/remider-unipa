@@ -6,26 +6,19 @@ import { authApi } from '../api/auth';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const OAUTH_RETURN_KEY = 'df_oauth_returned_v1';
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const isRetryableAuthWarmupError = (error: unknown): boolean => {
   const e = error as any;
-
   const status = e?.response?.status;
   if (status === 401) return false; // 本当に未認証
   if (status === 400) return false; // 契約違反系
-
   // timeout / network / cold start っぽいものは再試行
   const code = String(e?.code ?? '');
   if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') return true;
-
   // response が無い = backend起動待ち / network失敗 の可能性が高い
   if (!e?.response) return true;
-
   // 502/503/504 は起動中の可能性あり
   if ([502, 503, 504].includes(Number(status))) return true;
-
   return false;
 };
 
@@ -51,7 +44,6 @@ const waitForAuthenticatedSession = async (
       }
     }
   }
-
   throw new Error('session warmup failed');
 };
 

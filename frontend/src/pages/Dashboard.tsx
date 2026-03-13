@@ -1,6 +1,6 @@
 // frontend/src/pages/Dashboard.tsx
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SafariInstallBanner } from '../components/SafariInstallBanner';
 import { Task, WeeklyTask } from '../types';
@@ -262,6 +262,7 @@ export const Dashboard: React.FC = () => {
   const [plan, setPlan] = useState<string>('free');
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [authLoopBlocked, setAuthLoopBlocked] = useState(false);
+  const weeklyBootstrappedRef = useRef(false);
 
   // 🔔 通知ON/OFFの上書き状態（today / all で共有）
   //    → 初期値を localStorage から読み込む
@@ -393,27 +394,31 @@ export const Dashboard: React.FC = () => {
       }
 
       // 背景で実行（直列awaitしない）
-      runBg(async () => weeklyTasksApi.materialize());
-      runBg(async () => loadWeeklyTemplates());
       runBg(async () => loadTaskNotificationOverrides());
-      runBg(async () => refreshNotifBadge());
     })();
   }, []);
 
   useEffect(() => {
-    // ✅ HashRouter: "#/dashboard?tab=notifications" から tab を読む
-    const hash = location.hash ?? '';
-    const qIndex = hash.indexOf('?');
-    const query = qIndex >= 0 ? hash.slice(qIndex + 1) : '';
-    const sp = new URLSearchParams(query);
+    const sp = new URLSearchParams(location.search);
     const tab = sp.get('tab');
 
-    // 許可リスト（壊れない）
     const allowed: TabKey[] = ['today', 'all', 'stats', 'weekly', 'add', 'settings', 'notifications'];
     if (tab && allowed.includes(tab as TabKey)) {
       setActiveTab(tab as TabKey);
     }
-  }, [location.hash]);
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    const timer = window.setTimeout(() => {
+      refreshNotifBadge().catch(() => {
+        // badge取得失敗は無視（初動優先）
+      });
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [authReady]);
 
   // 🔔 notifications タブを開いたら通知一覧を取得
   useEffect(() => {
@@ -455,6 +460,35 @@ export const Dashboard: React.FC = () => {
       } finally {
         if (!cancelled) setNotifsLoading(false);
         if (!cancelled) setLatestRunLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, authReady]);
+
+  useEffect(() => {
+    if (activeTab !== 'weekly') return;
+    if (!authReady) return;
+    if (weeklyBootstrappedRef.current) return;
+
+    let cancelled = false;
+    weeklyBootstrappedRef.current = true;
+
+    (async () => {
+      try {
+        await weeklyTasksApi.materialize();
+      } catch (e) {
+        console.warn('weekly materialize 失敗:', e);
+      }
+
+      if (cancelled) return;
+
+      try {
+        await loadWeeklyTemplates();
+      } catch (e) {
+        console.warn('weekly templates 取得失敗:', e);
       }
     })();
 
@@ -1211,22 +1245,6 @@ export const Dashboard: React.FC = () => {
     >
       <SafariInstallBanner />
 
-      {/* ✅ キャッシュ表示中に裏で更新している場合の軽い表示 */}
-      {isLoading && (
-        <div
-          style={{
-            marginBottom: '0.6rem',
-            padding: '0.55rem 0.75rem',
-            borderRadius: 14,
-            border: '1px solid rgba(255,255,255,.10)',
-            background: 'rgba(255,255,255,.06)',
-            color: 'rgba(255,255,255,.82)',
-            fontSize: '0.85rem',
-          }}
-        >
-          更新中…
-        </div>
-      )}
       {/* ✅ キャッシュ表示中に裏で更新している場合の軽い表示 */}
       {isLoading && (
         <div

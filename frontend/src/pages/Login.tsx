@@ -90,7 +90,7 @@ export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showInAppGate, setShowInAppGate] = useState(false);
   const [backendReady, setBackendReady] = useState(false);
-  const [prewarming, setPrewarming] = useState(false);
+  const [, setPrewarming] = useState(false);
   const [warmupMessage, setWarmupMessage] = useState('');
   const [loginStarting, setLoginStarting] = useState<'google' | 'line' | null>(null);
   const prewarmPromiseRef = useRef<Promise<boolean> | null>(null);
@@ -273,12 +273,6 @@ export const Login: React.FC = () => {
             ※ Xアプリ内ブラウザ / シークレットではログインが完了しない場合があります。
             その場合は Safari / Chrome で開いてください。
           </p>
-  
-          {(prewarming || !backendReady) && (
-            <p className="df-auth-help df-auth-help--sub">
-              ※ Render無料プランでは、初回ログイン時に数秒〜数十秒の起動待ちが発生することがあります。
-            </p>
-          )}
         </div>
       </div>
     </div>

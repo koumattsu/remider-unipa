@@ -426,8 +426,8 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   border-radius: 24px;
   padding: 2rem;
   background:
-    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
-  border: 1px solid rgba(255,255,255,.18);
+    linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.08));
+  border: 1px solid rgba(255,255,255,.22);
   box-shadow:
     0 20px 70px rgba(0,0,0,.45),
     inset 0 1px 0 rgba(255,255,255,.10);
@@ -442,7 +442,7 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
 .df-auth-brand {
   margin: 0 0 1.6rem 0;
   text-align: center;
-  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-size: clamp(2.8rem, 5vw, 3.8rem);
   font-weight: 800;
   letter-spacing: -.03em;
   color: rgba(255,255,255,.96);
@@ -458,7 +458,7 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
 
 .df-auth-subtext {
   margin: 0 0 1.25rem 0;
-  color: rgba(255,255,255,.78);
+  color: rgba(255,255,255,.86);
   font-size: 1.08rem;
   line-height: 1.65;
 }
@@ -544,8 +544,8 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
 .df-btn--google {
   margin-top: 0.8rem;
   color: rgba(255,255,255,.96);
-  background: linear-gradient(180deg, rgba(20,24,36,.95), rgba(10,12,20,.96));
-  border-color: rgba(255,255,255,.14);
+  background: linear-gradient(180deg, rgba(35,40,60,.95), rgba(15,18,28,.96));
+  border-color: rgba(255,255,255,.18);
   box-shadow:
     0 14px 34px rgba(0,0,0,.30),
     inset 0 1px 0 rgba(255,255,255,.08);

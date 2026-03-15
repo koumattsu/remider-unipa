@@ -334,7 +334,6 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
 
 /* ===== DueFlow foreground legibility tweaks ===== */
 
-/* 画面の中心に視線を戻す（背景が強い時に効く） */
 .df-shell {
   position: relative;
 }
@@ -400,6 +399,249 @@ input[type="date"].glass-field::-webkit-calendar-picker-indicator {
   background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.55), transparent 55%);
   opacity: .35;
   pointer-events: none;
+}
+
+/* ===== Auth / Login ===== */
+
+.df-auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  position: relative;
+}
+
+.df-auth-wrap {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.df-auth-wrap--wide {
+  max-width: 760px;
+}
+
+.df-auth-card {
+  border-radius: 24px;
+  padding: 2rem;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow:
+    0 20px 70px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+.df-auth-card--compact {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.df-auth-brand {
+  margin: 0 0 1.6rem 0;
+  text-align: center;
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: rgba(255,255,255,.96);
+}
+
+.df-auth-heading {
+  margin: 0 0 0.9rem 0;
+  font-size: clamp(1.9rem, 3vw, 2.4rem);
+  font-weight: 800;
+  color: rgba(255,255,255,.96);
+  letter-spacing: -.02em;
+}
+
+.df-auth-subtext {
+  margin: 0 0 1.25rem 0;
+  color: rgba(255,255,255,.78);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.df-auth-loading {
+  color: rgba(255,255,255,.82);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.df-auth-status {
+  margin-bottom: 1.15rem;
+  padding: 1rem 1.05rem;
+  border-radius: 16px;
+  line-height: 1.55;
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.df-auth-status--ready {
+  background:
+    linear-gradient(180deg, rgba(0,195,0,.20), rgba(0,195,0,.11));
+  border-color: rgba(80,255,120,.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 10px 28px rgba(0,0,0,.20);
+}
+
+.df-auth-status--warming {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.05));
+  border-color: rgba(255,255,255,.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 10px 28px rgba(0,0,0,.20);
+}
+
+.df-auth-status-title {
+  margin-bottom: 0.35rem;
+  font-weight: 800;
+  color: rgba(255,255,255,.97);
+  font-size: 1.06rem;
+}
+
+.df-auth-status-text {
+  color: rgba(255,255,255,.84);
+  font-size: 0.95rem;
+}
+
+.df-btn {
+  width: 100%;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font-size: 1.06rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform .16s ease,
+    opacity .16s ease,
+    box-shadow .16s ease,
+    border-color .16s ease;
+}
+
+.df-btn:disabled {
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.df-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.df-btn--line {
+  color: #fff;
+  background: linear-gradient(180deg, #18d418, #00C300);
+  box-shadow:
+    0 14px 34px rgba(0,195,0,.28),
+    inset 0 1px 0 rgba(255,255,255,.18);
+}
+
+.df-btn--google {
+  margin-top: 0.8rem;
+  color: rgba(255,255,255,.96);
+  background: linear-gradient(180deg, rgba(20,24,36,.95), rgba(10,12,20,.96));
+  border-color: rgba(255,255,255,.14);
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.df-btn--dark {
+  margin-top: 0.8rem;
+  color: rgba(255,255,255,.96);
+  background: linear-gradient(180deg, rgba(22,26,38,.96), rgba(10,12,20,.98));
+  border-color: rgba(255,255,255,.14);
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.30),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.df-btn--secondary {
+  margin-top: 1rem;
+  color: rgba(255,255,255,.94);
+  background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+  border-color: rgba(255,255,255,.16);
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.df-auth-help {
+  margin-top: 1rem;
+  color: rgba(255,255,255,.76);
+  font-size: 0.93rem;
+  line-height: 1.7;
+}
+
+.df-auth-help--sub {
+  margin-top: 0.65rem;
+  color: rgba(255,255,255,.68);
+  font-size: 0.89rem;
+}
+
+.df-auth-note {
+  white-space: pre-line;
+  color: rgba(255,255,255,.84);
+  line-height: 1.7;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  padding: 1rem 1.05rem;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.05));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.05),
+    0 10px 28px rgba(0,0,0,.16);
+}
+
+.df-auth-note--warning {
+  background:
+    linear-gradient(180deg, rgba(255,180,80,.12), rgba(255,180,80,.06));
+  border-color: rgba(255,210,120,.18);
+}
+
+.df-auth-actions {
+  margin-top: 1rem;
+}
+
+.df-auth-help--list ul {
+  margin: 0.45rem 0 0 1.2rem;
+  padding: 0;
+}
+
+.df-auth-help--list li {
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 640px) {
+  .df-auth-page {
+    padding: 1.25rem 0.9rem;
+  }
+
+  .df-auth-card {
+    padding: 1.3rem;
+    border-radius: 20px;
+  }
+
+  .df-auth-brand {
+    margin-bottom: 1.2rem;
+  }
+
+  .df-auth-heading {
+    font-size: 1.8rem;
+  }
+
+  .df-auth-subtext {
+    font-size: 1rem;
+  }
+
+  .df-btn {
+    font-size: 1rem;
+  }
 }
 
 /* iOS Safari等で疑似要素/固定が重く感じる時の保険：視覚は維持しつつ軽量化しやすい */

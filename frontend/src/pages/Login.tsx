@@ -172,154 +172,114 @@ export const Login: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        {warmupMessage || '読み込み中...'}
+      <div className="df-auth-page">
+        <div className="df-auth-wrap">
+          <div className="glass glass-strong glass-card df-auth-card df-auth-card--compact">
+            <h1 className="df-auth-brand df-title">DueFlow</h1>
+            <div className="df-auth-loading">
+              {warmupMessage || '読み込み中...'}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
-
+  
   if (showInAppGate) {
     return (
-      <div style={{ padding: '2rem', maxWidth: 720, margin: '0 auto' }}>
-        <h1 style={{ textAlign: 'center', marginBottom: '1rem' }}>DueFlow</h1>
-
-        <h2 style={{ marginBottom: '0.75rem' }}>
-          Xアプリ内ブラウザではログインできないことがあります
-        </h2>
-
-        <div
-          style={{
-            whiteSpace: 'pre-line',
-            color: '#444',
-            lineHeight: 1.6,
-            border: '1px solid rgba(0,0,0,.12)',
-            borderRadius: 12,
-            padding: '1rem',
-            background: 'rgba(0,0,0,.03)',
-          }}
-        >
-          {`この画面は「Xアプリ内ブラウザ」で開かれている可能性があります。
-この環境ではログイン用Cookieが保存されず、ログインが完了しないことがあります。
-
-✅ 対処：
-1) Xアプリの「…」→「Safariで開く / ブラウザで開く」
-2) それが無ければ「URLをコピー」→ Safari/Chrome に貼り付けて開く
-3) シークレットモードはOFF推奨`}
+      <div className="df-auth-page">
+        <div className="df-auth-wrap df-auth-wrap--wide">
+          <div className="glass glass-strong glass-card df-auth-card">
+            <h1 className="df-auth-brand df-title">DueFlow</h1>
+            <h2 className="df-auth-heading">
+              Xアプリ内ブラウザではログインできないことがあります
+            </h2>
+  
+            <div className="df-auth-note df-auth-note--warning">
+              {`この画面は「Xアプリ内ブラウザ」で開かれている可能性があります。
+  この環境ではログイン用Cookieが保存されず、ログインが完了しないことがあります。
+  
+  ✅ 対処：
+  1) Xアプリの「…」→「Safariで開く / ブラウザで開く」
+  2) それが無ければ「URLをコピー」→ Safari/Chrome に貼り付けて開く
+  3) シークレットモードはOFF推奨`}
+            </div>
+  
+            <button
+              onClick={copyUrl}
+              className="df-btn df-btn--secondary"
+            >
+              URLをコピー（Safari/Chromeで開く）
+            </button>
+  
+            <button
+              onClick={() => setShowInAppGate(false)}
+              className="df-btn df-btn--dark"
+            >
+              （理解した上で）このままログインを試す
+            </button>
+          </div>
         </div>
-
-        <button
-          onClick={copyUrl}
-          style={{
-            width: '100%',
-            padding: '0.95rem',
-            fontSize: '1rem',
-            backgroundColor: '#fff',
-            color: '#111',
-            border: '1px solid rgba(0,0,0,.2)',
-            borderRadius: 10,
-            cursor: 'pointer',
-            marginTop: '1rem',
-          }}
-        >
-          URLをコピー（Safari/Chromeで開く）
-        </button>
-
-        <button
-          onClick={() => setShowInAppGate(false)}
-          style={{
-            width: '100%',
-            padding: '0.95rem',
-            fontSize: '1rem',
-            backgroundColor: '#111',
-            color: 'white',
-            border: 'none',
-            borderRadius: 10,
-            cursor: 'pointer',
-            marginTop: '0.75rem',
-          }}
-        >
-          （理解した上で）このままログインを試す
-        </button>
       </div>
     );
   }
-
+  
   return (
-    <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center' }}>DueFlow</h1>
-      <div style={{ marginTop: '2rem', padding: '2rem', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <h2>ログイン</h2>
-
-        <p style={{ color: '#666', marginBottom: '1rem' }}>
-          ログイン方法を選択してください
-        </p>
-
-        <div
-          style={{
-            marginBottom: '1rem',
-            padding: '0.85rem 1rem',
-            border: '1px solid rgba(0,0,0,.12)',
-            borderRadius: 12,
-            background: backendReady ? 'rgba(0, 195, 0, 0.08)' : 'rgba(0,0,0,.03)',
-            color: '#444',
-            lineHeight: 1.5,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
-            {backendReady ? 'DueFlowは起動済みです' : 'DueFlowを先に起動しています'}
-          </div>
-          <div style={{ fontSize: '0.92rem' }}>
-            {warmupMessage || 'サーバー起動待ちを減らすため、事前準備しています。'}
-          </div>
-        </div>
-
-        <button
-          onClick={() => startOAuthLogin('line')}
-          disabled={loginStarting !== null}
-          style={{
-            width: '100%',
-            padding: '1rem',
-            fontSize: '1.1rem',
-            backgroundColor: '#00C300',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loginStarting ? 'not-allowed' : 'pointer',
-            opacity: loginStarting && loginStarting !== 'line' ? 0.7 : 1,
-          }}
-        >
-          {loginStarting === 'line' ? 'LINEログインを開始しています...' : 'LINEでログイン'}
-        </button>
-
-        <button
-          onClick={() => startOAuthLogin('google')}
-          disabled={loginStarting !== null}
-          style={{
-            width: '100%',
-            padding: '1rem',
-            fontSize: '1.1rem',
-            backgroundColor: '#111',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loginStarting ? 'not-allowed' : 'pointer',
-            marginTop: '0.75rem',
-            opacity: loginStarting && loginStarting !== 'google' ? 0.7 : 1,
-          }}
-        >
-          {loginStarting === 'google' ? 'Googleログインを開始しています...' : 'Googleでログイン'}
-        </button>
-
-        <p style={{ color: '#777', marginTop: '1rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
-          ※ Xアプリ内ブラウザ / シークレットではログインが完了しない場合があります。
-          その場合は Safari/Chrome で開いてください。
-        </p>
-
-        {(prewarming || !backendReady) && (
-          <p style={{ color: '#777', marginTop: '0.75rem', fontSize: '0.88rem', lineHeight: 1.5 }}>
-            ※ Render無料プランでは、初回ログイン時に数秒〜数十秒の起動待ちが発生することがあります。
+    <div className="df-auth-page">
+      <div className="df-auth-wrap">
+        <h1 className="df-auth-brand df-title">DueFlow</h1>
+  
+        <div className="glass glass-strong glass-card df-auth-card">
+          <h2 className="df-auth-heading">ログイン</h2>
+  
+          <p className="df-auth-subtext">
+            ログイン方法を選択してください
           </p>
-        )}
+  
+          <div
+            className={
+              backendReady
+                ? 'df-auth-status df-auth-status--ready'
+                : 'df-auth-status df-auth-status--warming'
+            }
+          >
+            <div className="df-auth-status-title">
+              {backendReady ? 'DueFlowは起動済みです' : 'DueFlowを先に起動しています'}
+            </div>
+            <div className="df-auth-status-text">
+              {warmupMessage || 'サーバー起動待ちを減らすため、事前準備しています。'}
+            </div>
+          </div>
+  
+          <button
+            onClick={() => startOAuthLogin('line')}
+            disabled={loginStarting !== null}
+            className="df-btn df-btn--line"
+          >
+            {loginStarting === 'line' ? 'LINEログインを開始しています...' : 'LINEでログイン'}
+          </button>
+  
+          <button
+            onClick={() => startOAuthLogin('google')}
+            disabled={loginStarting !== null}
+            className="df-btn df-btn--google"
+          >
+            {loginStarting === 'google'
+              ? 'Googleログインを開始しています...'
+              : 'Googleでログイン'}
+          </button>
+  
+          <p className="df-auth-help">
+            ※ Xアプリ内ブラウザ / シークレットではログインが完了しない場合があります。
+            その場合は Safari / Chrome で開いてください。
+          </p>
+  
+          {(prewarming || !backendReady) && (
+            <p className="df-auth-help df-auth-help--sub">
+              ※ Render無料プランでは、初回ログイン時に数秒〜数十秒の起動待ちが発生することがあります。
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
